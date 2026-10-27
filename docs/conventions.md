@@ -50,7 +50,7 @@ structure of the page body; nothing about them is stored in the file.
 | List item, at any depth                | Yes (its own content, not its children)   |
 | Top-level code fence, table, quote     | Yes                                       |
 | Code fence, table, quote inside an item | Part of that item's block                |
-| Heading                                | No; it is context for the blocks below it |
+| Heading                                | No; its refs apply to the blocks below it |
 | Frontmatter                            | No; it belongs to the page                |
 
 Each block in the index carries:
@@ -59,9 +59,10 @@ Each block in the index carries:
 - **parent**: the enclosing list item, if any. Nested lists form a tree, as in Logseq.
 - **heading path**: the headings above it, for display and search context.
 - **refs**: the concepts the block itself mentions (§4).
-- **path refs**: its own refs plus the refs of every ancestor list item. Queries
-  match on path refs by default, so a child bullet shows up under its parent's tag,
-  as in Logseq. An "own refs only" option exists.
+- **path refs**: its own refs plus the refs of every ancestor list item and of
+  every heading in its heading path. Queries match on path refs by default, so a
+  child bullet shows up under its parent's tag, as in Logseq, and a paragraph
+  shows up under a tag in the heading above it. An "own refs only" option exists.
 
 ### Block handles
 
@@ -225,15 +226,17 @@ When the cursor lands in the target, the editor offers existing concepts from
 | `[[Foo Bar]]`, `#[[Foo Bar]]`       | `[Foo Bar](/foo-bar.md)`                        |
 | `#foo`                              | `#foo`                                          |
 | Page properties (first block)       | Frontmatter keys                                |
+| Block property `status:: done`      | Tag `#status/done` appended to the block        |
+| Block property `author:: [[Jane]]`  | `[author](/author.md): [Jane](/jane.md)`        |
+| `((uuid))` reference, `{{embed}}`   | The referenced block's text, inlined once       |
+| `id:: uuid` property                | Dropped after references are inlined            |
+
+Block properties become references, so the key itself is a concept: a page such
+as `status.md` or `author.md` can describe what the property means, and
+`#status/done` lives under it. Values that are already links keep their target.
+
+Block references and embeds are inlined at import time with the text the
+referenced block had then. After import there is no live link between the copies.
 
 Because path refs include ancestors (§3), a nested bullet still shows up under
 its parent's tag after import.
-
-## Open questions
-
-1. Block properties (`key:: value` on a Logseq bullet): drop them, keep them as
-   text, or turn them into tags?
-2. Block references (`((uuid))`) and embeds: inline the referenced text once at
-   import, or replace with a link to its page?
-3. Do top-level paragraphs inherit refs from the heading above them, the way list
-   items inherit from their parents?
