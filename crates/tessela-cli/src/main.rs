@@ -1,9 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
-use tessela_core::{Bundle, HitKind, Linter, Query, Severity, vocabulary};
+use tessela_core::{Bundle, HitKind, Linter, Query, Severity, logseq, vocabulary};
 
 #[derive(Parser)]
 #[command(
@@ -71,6 +71,16 @@ enum Command {
         #[arg(long)]
         limit: Option<usize>,
     },
+    /// Convert a Logseq graph into a new Tessela bundle
+    ImportLogseq {
+        /// The Logseq graph folder (the one with `pages` and `journals`)
+        graph: PathBuf,
+        /// Where to write the bundle; must not exist or must be empty
+        out: PathBuf,
+        /// Print the report as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// List the concepts that exist: tags, links and pages
     Vocab {
         #[command(flatten)]
@@ -118,6 +128,7 @@ fn main() -> ExitCode {
             };
             run_query(common, query, limit)
         }
+        Command::ImportLogseq { graph, out, json } => import_logseq(&graph, &out, json),
         Command::Vocab {
             common,
             unwritten,
@@ -268,5 +279,56 @@ fn vocab(common: Common, unwritten: bool, min_count: usize, prefix: Option<Strin
         }
         eprintln!("{} concepts", entries.len());
     }
+    ExitCode::SUCCESS
+}
+
+fn import_logseq(graph: &Path, out: &Path, json: bool) -> ExitCode {
+    let report = match logseq::import(graph, out) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("tessela: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    if json {
+        print_json(&report);
+        return ExitCode::SUCCESS;
+    }
+    println!(
+        "Imported {} pages and {} journals ({} blocks) into {}",
+        report.pages,
+        report.journals,
+        report.blocks,
+        out.display()
+    );
+    let lines = [
+        (
+            report.properties_converted,
+            "properties turned into tags and links",
+        ),
+        (
+            report.block_refs_inlined,
+            "block references and embeds inlined",
+        ),
+        (report.assets_copied, "assets copied"),
+        (report.empty_pages_skipped, "empty pages skipped"),
+        (
+            report.unresolved_block_refs,
+            "block references could not be found",
+        ),
+        (report.macros_left, "Logseq macros left as they were"),
+    ];
+    for (count, what) in lines {
+        if count > 0 {
+            println!("  {count} {what}");
+        }
+    }
+    for (page, file) in &report.renamed {
+        println!("  page \"{page}\" was written as {file} because of a name clash");
+    }
+    for skipped in &report.skipped {
+        println!("  skipped {}: {}", skipped.path, skipped.reason);
+    }
+    println!("Next: tessela lint {}", out.display());
     ExitCode::SUCCESS
 }

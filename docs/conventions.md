@@ -67,6 +67,25 @@ Each block in the index carries:
   child bullet shows up under its parent's tag, as in Logseq, and a paragraph
   shows up under a tag in the heading above it. An "own refs only" option exists.
 
+### Outlines: a paragraph with a list beneath it
+
+A list that starts on the line right after a paragraph, with no blank line
+between them, belongs to that paragraph. Its top-level items are children of the
+paragraph, so they inherit its refs, just like children of a list item. A blank
+line between them keeps them apart. This is the shape of an outline: each
+top-level point is a paragraph, and its sub-points are the list beneath it.
+
+```markdown
+Idea about #tessela
+- detail about indexing #rust
+  - and a note on it
+
+Another thought
+```
+
+Here both list items match `#tessela`; "Another thought" does not. Only a
+paragraph owns a list this way, not a heading or another list.
+
 ### Block handles
 
 Tools need to point at a block ("edit this one") without storing IDs in files. A
@@ -245,26 +264,64 @@ When the cursor lands in the target, the editor offers existing concepts from
 
 ## 12. Importing from Logseq
 
-| Logseq                              | Tessela                                         |
-| ----------------------------------- | ----------------------------------------------- |
-| `journals/2026_10_27.md`            | `journals/2026-10-27.md`, `type: journal`       |
-| `pages/Foo Bar.md`                  | `foo-bar.md`, `type: concept`, `title: Foo Bar` |
-| Top-level bullets                   | Paragraphs                                      |
-| Nested bullets                      | Lists under that paragraph                      |
-| `[[Foo Bar]]`, `#[[Foo Bar]]`       | `[Foo Bar](/foo-bar.md)`                        |
-| `#foo`                              | `#foo`                                          |
-| Page properties (first block)       | Frontmatter keys                                |
-| Block property `status:: done`      | Tag `#status/done` appended to the block        |
-| Block property `author:: [[Jane]]`  | `[author](/author.md): [Jane](/jane.md)`        |
-| `((uuid))` reference, `{{embed}}`   | The referenced block's text, inlined once       |
-| `id:: uuid` property                | Dropped after references are inlined            |
+`tessela import-logseq GRAPH OUT` reads a Logseq graph (the folder with `pages`
+and `journals`) and writes a new bundle in `OUT`. It never writes into a folder
+that already has files, and it never changes the graph.
+
+| Logseq                                | Tessela                                              |
+| ------------------------------------- | ---------------------------------------------------- |
+| `journals/2026_10_27.md`              | `journals/2026-10-27.md`, `type: journal`            |
+| `pages/Foo Bar.md`                    | `foo-bar.md`, `type: concept`, `title: "Foo Bar"`    |
+| `pages/A___B.md`, `A%2FB.md`          | `a/b.md` (a namespace is a folder)                   |
+| Top-level bullet                      | A paragraph                                          |
+| Nested bullets                        | A list right under that paragraph (§3)               |
+| `[[Foo Bar]]`, `#[[Foo Bar]]`         | `[Foo Bar](/foo-bar.md)`                             |
+| `[label]([[Foo]])`                    | `[label](/foo.md)`                                   |
+| `[[Oct 27th, 2026]]`                  | `[2026-10-27](/journals/2026-10-27.md)`              |
+| `[[alias]]` of a page with `alias::`  | A link to the page that declares the alias           |
+| `#foo`                                | `#foo`                                               |
+| Page properties (header or first bullet) | Frontmatter: `title`, `tags`, `aliases`, other keys |
+| Block property `status:: done`        | `#status/done` on the last line of the block         |
+| Block property `author:: [[Jane]]`    | `[author](/author.md): [Jane](/jane.md)`             |
+| Block property `tags:: a, b`          | `#a #b`                                              |
+| `((uuid))` reference, `{{embed ((uuid))}}` | The referenced block's text, inlined once       |
+| `{{embed [[Page]]}}`                  | A link to the page                                   |
+| `id::`, `collapsed::`, `heading::`, `logseq.*`, `:LOGBOOK:` drawers | Dropped            |
+| `TODO`, `LATER`, `NOW`, `DOING`, `WAITING` | `[ ]` before the text                           |
+| `DONE`; `CANCELED`                    | `[x]` before the text; `[x] ~~text~~`                |
+| `[#A]` priority                       | `#priority/a`                                        |
+| `SCHEDULED: <2026-10-28 Wed>`         | `SCHEDULED: 2026-10-28` (a date a range query finds) |
+| `- ## Heading` bullet                 | `**Heading**` (see below)                            |
+| `![x](../assets/x.png)`               | `![x](/assets/x.png)`, with `assets/` copied         |
 
 Block properties become references, so the key itself is a concept: a page such
 as `status.md` or `author.md` can describe what the property means, and
-`#status/done` lives under it. Values that are already links keep their target.
+`#status/done` lives under it, so a query for `status` finds every value. A value
+is written as a tag only when it is a single word; anything else, such as a URL or
+a sentence, is written as `[key](/key.md): value`. Values that are already links
+keep their target. Frontmatter keys that would clash with Tessela's own (`type`,
+`title`, `date`, `tags`, `aliases`) are kept as `logseq-<key>`.
 
 Block references and embeds are inlined at import time with the text the
 referenced block had then. After import there is no live link between the copies.
+A reference to a block that cannot be found is replaced by
+`(unresolved block reference)` and counted in the report.
+
+Headings are the one place where Logseq and Tessela differ in meaning: in Tessela a
+heading scopes everything below it (§3), while a Logseq heading bullet is only
+formatting. Importing it as a heading would hand its refs to every later paragraph,
+so it is written as bold text instead.
 
 Because path refs include ancestors (§3), a nested bullet still shows up under
 its parent's tag after import.
+
+Names. A page is written at the slug of its title: lowercase, words joined by `-`,
+other punctuation dropped. `index` and `log` are reserved by OKF, so pages with
+those names get `-page` added. Two pages with the same slug get `-2`, `-3`, and
+the report lists them. Links are written with the same slugs, so they stay
+connected.
+
+Not imported, and listed in the report: `.org` pages, whiteboards, and files that
+are not valid UTF-8. Logseq macros such as `{{query ...}}` are copied as they are
+and counted. Journal links are recognised in Logseq's default title format
+(`Oct 27th, 2026`) and in ISO form.
