@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { listPages, readPage, relativeInside, resolveInside, writePage } from "../src/main/files";
+import { listPages, readPage, relativeInside, resolveImage, resolveInside, writePage } from "../src/main/files";
 import { findTessela, queryArgv } from "../src/main/tessela";
 
 async function bundle(): Promise<string> {
@@ -20,6 +20,13 @@ describe("files", () => {
   it("lists concept pages but not reserved or hidden files", async () => {
     const root = await bundle();
     expect((await listPages(root)).map((p) => p.id)).toEqual(["journals/2026-10-27"]);
+  });
+
+  it("shows pictures of the bundle and nothing else", () => {
+    expect(resolveImage("/tmp/b", "assets/a b.PNG")).toBe(path.resolve("/tmp/b/assets/a b.PNG"));
+    for (const bad of ["../a.png", "/etc/a.png", ".hidden/a.png", "notes.md", "a.png/../../x.txt", "a\0.png", ""]) {
+      expect(() => resolveImage("/tmp/b", bad), bad).toThrow();
+    }
   });
 
   it("refuses paths outside the bundle", () => {

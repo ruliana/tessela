@@ -28,7 +28,7 @@ import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
 import { slugFirst, suggest } from "../shared/complete";
-import { conceptAt, linkTargetId } from "../shared/links";
+import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
 import { queryableMarks, refreshDecorations } from "./decorations";
@@ -173,13 +173,38 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
   const preview = new Compartment();
   let previewOn = opts.livePreview === true;
 
+  /** Scrolls to the heading that `#anchor` points to, and puts the cursor there. */
+  const goToAnchor = (anchor: string): void => {
+    const lines: number[] = [];
+    syntaxTree(view.state).iterate({
+      enter: (node) => {
+        if (/^(ATX|Setext)Heading\d$/.test(node.name)) lines.push(view.state.doc.lineAt(node.from).number);
+      },
+    });
+    const texts = lines.map((n) => headingText(view.state.doc.line(n).text));
+    const found = findAnchor(texts, anchor);
+    const line = found < 0 ? undefined : lines[found];
+    if (line === undefined) return;
+    const at = view.state.doc.line(line).from;
+    view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "start", yMargin: 16 }) });
+  };
+
+  /** Pictures in the notes folder load through the app; pictures on the web load from there. */
+  const imageUrl = (dest: string): string | null => {
+    if (/^https:\/\//i.test(dest)) return dest;
+    const local = localTarget(dest, opts.pageDir());
+    if (local === null) return null;
+    return `tessela-file://notes/${local.split("/").map(encodeURIComponent).join("/")}`;
+  };
+
   /** A concept page opens in the editor, a web or mail address in the system's own program. */
   const openDest = (dest: string): void => {
+    if (dest.startsWith("#")) return goToAnchor(dest.slice(1));
     const id = linkTargetId(dest, opts.pageDir());
     if (id) opts.onOpenConcept(id);
     else if (/^(https?:|mailto:)/i.test(dest)) opts.onOpenExternal(dest);
   };
-  const previewExtension = () => livePreview({ openLink: openDest });
+  const previewExtension = () => livePreview({ openLink: openDest, imageUrl });
   const view = new EditorView({
     parent,
     state: EditorState.create({

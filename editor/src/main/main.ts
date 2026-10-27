@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, net, protocol, shell } from "electron";
+import { pathToFileURL } from "node:url";
 
 import type { Diagnostic, Hit, OpenFileResult, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
-import { listPages, readPage, relativeInside, resolveInside, watchBundle, writePage } from "./files";
+import { listPages, readPage, relativeInside, resolveImage, resolveInside, watchBundle, writePage } from "./files";
 import { findTessela, lintArgv, queryArgv, runJson, vocabArgv } from "./tessela";
 
 let bundle: string | null = null;
@@ -140,7 +141,22 @@ function createWindow(): void {
   void win.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
+// Pictures in the notes folder are shown through this address, so the window never reads files itself.
+protocol.registerSchemesAsPrivileged([{ scheme: "tessela-file", privileges: { standard: true, secure: true } }]);
+
+function serveImages(): void {
+  protocol.handle("tessela-file", (request) => {
+    try {
+      const rel = decodeURIComponent(new URL(request.url).pathname).replace(/^\//, "");
+      return net.fetch(pathToFileURL(resolveImage(needBundle(), rel)).toString());
+    } catch {
+      return new Response("not found", { status: 404 });
+    }
+  });
+}
+
 void app.whenReady().then(() => {
+  serveImages();
   useBundle(loadBundle());
   registerIpc();
   createWindow();

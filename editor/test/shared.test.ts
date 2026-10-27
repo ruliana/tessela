@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Diagnostic, VocabEntry } from "../src/shared/api";
 import { slugFirst, suggest } from "../src/shared/complete";
-import { conceptAt, linkTargetId, refsInLine } from "../src/shared/links";
+import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget, refsInLine } from "../src/shared/links";
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
 import { conceptPath, isJournalPath, localDay, newPagePath, newPageText } from "../src/shared/pages";
@@ -175,5 +175,39 @@ describe("newPagePath", () => {
     for (const bad of ["", "   ", "/", ".md", "../escape", "a/../b", ".hidden/x", "folder/.secret"]) {
       expect(newPagePath(bad)).toBeNull();
     }
+  });
+});
+
+describe("anchors", () => {
+  it("takes the text of a heading line", () => {
+    expect(headingText("## The **big** [idea](/x.md) ##")).toBe("The big idea");
+    expect(headingText("# Title")).toBe("Title");
+  });
+
+  it("makes anchors the way GitHub does", () => {
+    expect(anchorOf("The Big Idea!")).toBe("the-big-idea");
+    expect(anchorOf("Não é fácil (1/2)")).toBe("não-é-fácil-12");
+  });
+
+  it("finds the heading an anchor points to", () => {
+    const headings = ["Intro", "Details", "Details", "Más"];
+    expect(findAnchor(headings, "intro")).toBe(0);
+    expect(findAnchor(headings, "Details")).toBe(1);
+    expect(findAnchor(headings, "details-1")).toBe(2);
+    expect(findAnchor(headings, "m%C3%A1s")).toBe(3);
+    expect(findAnchor(headings, "missing")).toBe(-1);
+  });
+});
+
+describe("localTarget", () => {
+  it("resolves against the page folder, or the notes folder for a leading slash", () => {
+    expect(localTarget("../assets/a.png", "project/notes")).toBe("project/assets/a.png");
+    expect(localTarget("/assets/a b.png", "project")).toBe("assets/a b.png");
+    expect(localTarget("./a.png?x=1", "journals")).toBe("journals/a.png");
+  });
+
+  it("leaves addresses on the web alone", () => {
+    expect(localTarget("https://example.com/a.png", "")).toBeNull();
+    expect(localTarget("#top", "")).toBeNull();
   });
 });
