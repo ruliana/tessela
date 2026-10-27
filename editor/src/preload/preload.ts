@@ -1,0 +1,21 @@
+import { contextBridge, ipcRenderer } from "electron";
+
+import type { Api } from "../shared/api";
+
+const api: Api = {
+  bundle: () => ipcRenderer.invoke("bundle"),
+  chooseBundle: () => ipcRenderer.invoke("chooseBundle"),
+  listPages: () => ipcRenderer.invoke("listPages"),
+  vocab: () => ipcRenderer.invoke("vocab"),
+  query: (args) => ipcRenderer.invoke("query", args),
+  readPage: (path) => ipcRenderer.invoke("readPage", path),
+  writePage: (path, text, expected) => ipcRenderer.invoke("writePage", path, text, expected),
+  todayPath: () => ipcRenderer.invoke("todayPath"),
+  onChanged(listener) {
+    const handler = (_event: unknown, paths: string[]) => listener(paths);
+    ipcRenderer.on("changed", handler);
+    return () => ipcRenderer.removeListener("changed", handler);
+  },
+};
+
+contextBridge.exposeInMainWorld("tessela", api);
