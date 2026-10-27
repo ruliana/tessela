@@ -96,8 +96,12 @@ files or changes the graph. The full mapping is in spec §12.
 ```
 cargo build                       # the editor calls the `tessela` binary
 cd editor && npm install && npm run build
-npm start -- --bundle ~/notes     # or open one from the welcome screen
+npm start -- --bundle ~/notes     # or choose the notes folder from the welcome screen
 ```
+
+The folder you open is the root: pages, links and tags are all relative to it. Its
+name and path sit at the top of the sidebar; click it (or Ctrl+Shift+O) to switch.
+Ctrl+N makes a new page and Ctrl+O opens a Markdown file.
 
 Opens on the latest journal days, saves as you type, shows backlinks, searches the
 text of your notes, lists what `tessela lint` finds, suggests existing tags, and

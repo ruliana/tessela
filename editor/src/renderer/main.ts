@@ -3,7 +3,7 @@
 import "./style.css";
 
 import type { Diagnostic, Hit, PageEntry, VocabEntry } from "../shared/api";
-import { conceptPath, isJournalPath, pageId } from "../shared/pages";
+import { conceptPath, isJournalPath, newPagePath, newPageText, pageId } from "../shared/pages";
 import { summary, visibleProblems } from "../shared/problems";
 import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
@@ -53,11 +53,24 @@ const app = document.getElementById("app") as HTMLElement;
 
 // ---- start -----------------------------------------------------------------
 
+let stopListening: (() => void) | undefined;
+
+/** Opens the window on the current notes folder; also used again after the folder changed. */
 async function start(): Promise<void> {
+  stopListening?.();
+  stopListening = undefined;
+  if (cards.length > 0) await closeCards();
+  pages = [];
+  vocab = [];
+  problems = [];
+  written = null;
+  filter = "";
+  view = null;
+  problemsOpen = false;
   const bundle = await api.bundle();
   if (!bundle) return welcome();
   buildShell(bundle);
-  api.onChanged((paths) => void onChanged(paths));
+  stopListening = api.onChanged((paths) => void onChanged(paths));
   await refreshIndex();
   await showJournals();
 }
@@ -71,7 +84,12 @@ function welcome(message?: string): void {
         "div",
         {},
         el("h1", {}, "Tessela"),
-        el("p", {}, "Open a folder of Markdown notes (an OKF bundle) to start."),
+        el(
+          "p",
+          {},
+          "Choose the folder that holds your notes. It is the root of your knowledge base: " +
+            "every page, link and tag is found from there, and nothing outside it is seen.",
+        ),
         message ? el("p", { class: "error" }, message) : "",
         el(
           "button",
@@ -79,10 +97,10 @@ function welcome(message?: string): void {
             class: "primary",
             id: "open-bundle",
             onclick: async () => {
-              if (await api.chooseBundle()) location.reload();
+              if (await api.chooseBundle()) await start();
             },
           },
-          "Open a bundle…",
+          "Choose notes folder…",
         ),
       ),
     ),
@@ -100,9 +118,31 @@ let problemsOpen = false;
 let stackEl: HTMLElement;
 let backlinksEl: HTMLElement;
 let previewButton: HTMLElement | undefined;
+let noticeEl: HTMLElement;
+let newPageEl: HTMLElement;
+let newPageInput: HTMLInputElement;
+let newPageError: HTMLElement;
 
 function buildShell(bundle: string): void {
   let searchTimer: number | undefined;
+  newPageError = el("p", { class: "error", id: "new-page-error", hidden: true });
+  newPageInput = el("input", {
+    class: "search",
+    id: "new-page-name",
+    placeholder: "Name, e.g. project/idea",
+    onkeydown: (e: KeyboardEvent) => {
+      if (e.key === "Escape") hideNewPage();
+      else if (e.key === "Enter") void createPage();
+    },
+  });
+  newPageEl = el(
+    "div",
+    { class: "new-page", id: "new-page-form", hidden: true },
+    newPageInput,
+    el("small", {}, "Use / for folders. Enter creates the page, Esc cancels."),
+    newPageError,
+  );
+  noticeEl = el("div", { class: "notice", id: "notice", hidden: true });
   const search = el("input", {
     class: "search",
     id: "search",
@@ -147,7 +187,13 @@ function buildShell(bundle: string): void {
   const sidebar = el(
     "aside",
     { class: "sidebar" },
-    el("div", { class: "brand" }, "Tessela", el("small", { title: bundle }, bundle.split("/").pop() ?? bundle)),
+    el("div", { class: "brand" }, "Tessela"),
+    el(
+      "button",
+      { class: "root", id: "root", title: `${bundle}\nThe root of your notes. Click to choose another folder.`, onclick: () => void changeRoot() },
+      el("span", { class: "root-name" }, bundle.split(/[\\/]/).filter(Boolean).pop() ?? bundle),
+      el("span", { class: "root-path" }, bundle),
+    ),
     el(
       "div",
       { class: "buttons" },
@@ -155,6 +201,14 @@ function buildShell(bundle: string): void {
       el("button", { class: "secondary", id: "journals-view", onclick: () => void showJournals() }, "Journals"),
       previewButton,
     ),
+    el(
+      "div",
+      { class: "buttons" },
+      el("button", { class: "secondary", id: "new-page", title: "New page (Ctrl+N)", onclick: () => showNewPage() }, "New page"),
+      el("button", { class: "secondary", id: "open-file", title: "Open a file (Ctrl+O)", onclick: () => void openFile() }, "Open file…"),
+    ),
+    newPageEl,
+    noticeEl,
     search,
     resultsEl,
     el("div", { class: "lists" }, journalsEl, listEl),
@@ -279,6 +333,90 @@ function renderProblems(): void {
     ),
   );
 }
+
+// ---- root, new page, open file ---------------------------------------------
+
+async function changeRoot(): Promise<void> {
+  const before = await api.bundle();
+  const chosen = await api.chooseBundle();
+  if (chosen && chosen !== before) await start();
+}
+
+function showNotice(text: string, action?: { label: string; run: () => void }): void {
+  noticeEl.hidden = false;
+  noticeEl.replaceChildren(
+    el("p", {}, text),
+    ...(action ? [el("button", { class: "secondary", id: "notice-action", onclick: action.run }, action.label)] : []),
+    el("button", { class: "secondary", id: "notice-close", onclick: hideNotice }, "Dismiss"),
+  );
+}
+
+function hideNotice(): void {
+  noticeEl.hidden = true;
+  noticeEl.replaceChildren();
+}
+
+function showNewPage(): void {
+  hideNotice();
+  newPageEl.hidden = false;
+  newPageError.hidden = true;
+  newPageInput.value = "";
+  newPageInput.focus();
+}
+
+function hideNewPage(): void {
+  newPageEl.hidden = true;
+  newPageInput.value = "";
+}
+
+/** Creates the page typed in the "New page" box (its file at once) and opens it. */
+async function createPage(): Promise<void> {
+  const name = newPageInput.value;
+  const path = newPagePath(name);
+  if (!path) {
+    newPageError.hidden = false;
+    newPageError.textContent = "Give the page a name that is not empty and does not start with a dot.";
+    return;
+  }
+  const title = name.trim().replace(/\.md$/i, "").split("/").pop()?.trim();
+  try {
+    // A page that already exists is a conflict: the existing one is simply opened.
+    await api.writePage(path, newPageText(path, title), null);
+  } catch (e) {
+    newPageError.hidden = false;
+    newPageError.textContent = `Could not create the page: ${e instanceof Error ? e.message : String(e)}`;
+    return;
+  }
+  hideNewPage();
+  await refreshIndex();
+  await showPage(path);
+}
+
+/** Asks for a Markdown file; one inside the root opens as a page. */
+async function openFile(): Promise<void> {
+  const result = await api.openFile();
+  if (result.kind === "page") {
+    hideNotice();
+    await showPage(result.path);
+  } else if (result.kind === "outside") {
+    showNotice(`That file is outside the notes folder, so its links and backlinks would not work. Use ${result.folder} as the root instead?`, {
+      label: "Use that folder",
+      run: () => void api.useFolder(result.folder).then(start),
+    });
+  } else if (result.kind === "unsupported") {
+    showNotice(result.reason);
+  }
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || !document.getElementById("new-page")) return;
+  const key = e.key.toLowerCase();
+  if (key === "n" && !e.shiftKey) showNewPage();
+  else if (key === "o" && e.shiftKey) void changeRoot();
+  else if (key === "o") void openFile();
+  else return;
+  e.preventDefault();
+});
 
 // ---- views -----------------------------------------------------------------
 

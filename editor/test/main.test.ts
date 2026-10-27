@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { listPages, readPage, resolveInside, writePage } from "../src/main/files";
+import { listPages, readPage, relativeInside, resolveInside, writePage } from "../src/main/files";
 import { findTessela, queryArgv } from "../src/main/tessela";
 
 async function bundle(): Promise<string> {
@@ -26,6 +26,14 @@ describe("files", () => {
     for (const bad of ["../x.md", "/etc/passwd.md", "a/../../x.md", ".git/x.md", "x.txt", ""]) {
       expect(() => resolveInside("/tmp/b", bad)).toThrow();
     }
+  });
+
+  it("tells whether a file is inside the bundle, and where", () => {
+    expect(relativeInside("/tmp/b", "/tmp/b/project/a.md")).toBe("project/a.md");
+    expect(relativeInside("/tmp/b", "/tmp/b/a.md")).toBe("a.md");
+    expect(relativeInside("/tmp/b", "/tmp/other/a.md")).toBeNull();
+    expect(relativeInside("/tmp/b", "/tmp/b-sibling/a.md")).toBeNull();
+    expect(relativeInside("/tmp/b", "/tmp/b")).toBeNull();
   });
 
   it("offers a template for a page that has no file, and writes it on first save", async () => {

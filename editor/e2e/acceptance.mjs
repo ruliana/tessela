@@ -10,5 +10,6 @@ import "./acceptance/format.mjs";
 import "./acceptance/menus.mjs";
 import "./acceptance/syntax.mjs";
 import "./acceptance/preview.mjs";
+import "./acceptance/files.mjs";
 
 await runAll();
