@@ -170,3 +170,20 @@ fn vocabulary_counts_and_flags() {
     let rs = entries.iter().find(|e| e.concept == "rs").unwrap();
     assert_eq!((rs.mentions, rs.use_instead.as_deref()), (0, Some("rust")));
 }
+
+#[test]
+fn a_concept_also_matches_the_ones_nested_under_it() {
+    let dir = std::env::temp_dir().join(format!("tessela-nested-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("a.md"),
+        "---\ntype: concept\n---\n\nOne #project/tessela\n\nTwo #project\n\nThree #projector\n\nFour #other/project\n",
+    )
+    .unwrap();
+    let b = Bundle::load(&dir).unwrap();
+    let hits = refs(&["#project"]).run(&b);
+    assert_eq!(texts(&hits), ["One #project/tessela", "Two #project"]);
+    let deeper = refs(&["project/tessela"]).run(&b);
+    assert_eq!(texts(&deeper), ["One #project/tessela"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

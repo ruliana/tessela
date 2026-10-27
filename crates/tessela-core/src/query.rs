@@ -10,6 +10,7 @@ use crate::refs::normalize_concept;
 #[derive(Debug, Default, Clone)]
 pub struct Query {
     /// Concepts the block must mention. Names are normalized (`#Foo Bar` is `foo-bar`).
+    /// A concept also matches the ones below it: `project` matches `project/tessela`.
     pub refs: Vec<String>,
     /// Match blocks that mention any of `refs` instead of all of them.
     pub any: bool,
@@ -59,9 +60,9 @@ impl Query {
                 };
                 let refs_ok = wanted.is_empty()
                     || if self.any {
-                        wanted.iter().any(|w| have.contains(w))
+                        wanted.iter().any(|w| mentions_concept(have, w))
                     } else {
-                        wanted.iter().all(|w| have.contains(w))
+                        wanted.iter().all(|w| mentions_concept(have, w))
                     };
                 if !refs_ok
                     || text
@@ -115,6 +116,15 @@ impl Query {
         }
         true
     }
+}
+
+/// Whether `refs` has the concept or one nested under it (`project/tessela` is under `project`).
+fn mentions_concept(refs: &[String], concept: &str) -> bool {
+    refs.iter().any(|r| {
+        r == concept
+            || r.strip_prefix(concept)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
 }
 
 /// The day a page belongs to: a journal's `date`, falling back to its file name.
