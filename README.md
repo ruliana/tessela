@@ -119,6 +119,13 @@ for Apple silicon and Intel): run it from the Actions tab, or push a tag such as
 macOS app is not signed with an Apple certificate, so the first time, open it with
 right-click, Open, or run `xattr -dr com.apple.quarantine /Applications/Tessela.app`.
 
+## Releases
+
+Pushing a tag like `v0.1.0` builds the `tessela` command line tool for Linux
+(x86-64, static) and macOS (Apple silicon and Intel) and attaches
+`tessela-<tag>-<target>.tar.gz` files, with checksums, to the GitHub release.
+The workflow can also be run by hand from the Actions tab for an existing tag.
+
 ## Development
 
 ```
