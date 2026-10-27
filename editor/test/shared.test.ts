@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Diagnostic, VocabEntry } from "../src/shared/api";
-import { suggest } from "../src/shared/complete";
+import { slugFirst, suggest } from "../src/shared/complete";
 import { conceptAt, linkTargetId, refsInLine } from "../src/shared/links";
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
@@ -139,5 +139,27 @@ describe("search", () => {
     expect(out.length).toBeLessThan(160);
     expect(out.startsWith("…")).toBe(true);
     expect(excerpt("short text", "x")).toBe("short text");
+  });
+});
+
+describe("slugFirst", () => {
+  const items = [
+    { concept: "rust", detail: "3 mentions" },
+    { concept: "some-text", detail: "1 mention" },
+  ];
+
+  it("offers the slug of the link text first when it is new", () => {
+    expect(slugFirst(items, "Other Words").map((s) => s.concept)).toEqual(["other-words", "rust", "some-text"]);
+    expect(slugFirst(items, "Other Words")[0]?.detail).toBe("new page");
+  });
+
+  it("moves an existing concept to the top instead of listing it twice", () => {
+    expect(slugFirst(items, "Some text").map((s) => s.concept)).toEqual(["some-text", "rust"]);
+    expect(slugFirst(items, "Some text")[0]?.detail).toBe("1 mention");
+  });
+
+  it("leaves the list alone when there is no text, or when what was typed rules the slug out", () => {
+    expect(slugFirst(items, "  ")).toBe(items);
+    expect(slugFirst(items, "Other Words", "ru")).toBe(items);
   });
 });

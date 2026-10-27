@@ -27,7 +27,7 @@ import {
 import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
-import { suggest } from "../shared/complete";
+import { slugFirst, suggest } from "../shared/complete";
 import { conceptAt } from "../shared/links";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
@@ -100,12 +100,26 @@ function smartLinkCommand(view: EditorView): boolean {
   return true;
 }
 
-function options(vocab: VocabEntry[], query: string, apply: (concept: string) => string): Completion[] {
-  return suggest(vocab, query).map((s) => ({
+function options(
+  vocab: VocabEntry[],
+  query: string,
+  apply: (concept: string) => string,
+  linkText?: string,
+): Completion[] {
+  const found = suggest(vocab, query);
+  return (linkText === undefined ? found : slugFirst(found, linkText, query)).map((s) => ({
     label: s.concept,
     detail: s.detail,
     apply: apply(s.concept),
   }));
+}
+
+/** The text of the link whose target starts at `at` (the `]` before it), if the `[` is on the line. */
+function linkTextBefore(state: EditorState, at: number): string | undefined {
+  const line = state.doc.lineAt(at);
+  const before = line.text.slice(0, at - line.from);
+  const open = before.lastIndexOf("[");
+  return open < 0 ? undefined : before.slice(open + 1);
 }
 
 function completions(vocab: () => VocabEntry[]) {
@@ -116,7 +130,7 @@ function completions(vocab: () => VocabEntry[]) {
       return {
         from: link.from + 2,
         filter: false,
-        options: options(vocab(), typed, (c) => `/${c}.md`),
+        options: options(vocab(), typed, (c) => `/${c}.md`, linkTextBefore(context.state, link.from)),
       };
     }
     const tag = context.matchBefore(/#[\p{L}\p{N}_/-]*/u);
