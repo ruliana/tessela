@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { addDays, datesInLine, formatDate, formatDateTime } from "../src/shared/dates";
 import { type TextEdit, pasteLink, surround, toggleMark, toggleTask } from "../src/shared/format";
 import { matchSlash, slashItems } from "../src/shared/slash";
+import { frontmatterTags, inlineTokens } from "../src/shared/tokens";
 
 function apply(doc: string, e: TextEdit): string {
   const text = doc.slice(0, e.from) + e.insert + doc.slice(e.to);
@@ -125,5 +126,41 @@ describe("slash menu", () => {
     expect(code.text.slice(0, code.cursor)).toBe("```\n");
     const today = items.find((i) => i.label === "Today")!;
     expect(today.text).toBe("2026-10-27");
+  });
+});
+
+describe("inlineTokens", () => {
+  it("finds tags, concept links, file links and dates", () => {
+    const line = "See #project/tessela and [Foo](/foo.md), [paper](./p.pdf) on 2026-10-27 [web](https://x.org)";
+    expect(inlineTokens(line, "").map((t) => [line.slice(t.from, t.to), t.kind, t.id])).toEqual([
+      ["#project/tessela", "tag", "project/tessela"],
+      ["[Foo](/foo.md)", "concept", "foo"],
+      ["[paper](./p.pdf)", "file", undefined],
+      ["2026-10-27", "date", undefined],
+    ]);
+  });
+
+  it("finds a date in a link label too", () => {
+    const line = "[2026-10-27](/journals/2026-10-27.md)";
+    expect(inlineTokens(line, "").map((t) => t.kind)).toEqual(["concept", "date", "date"]);
+  });
+});
+
+describe("frontmatterTags", () => {
+  const show = (lines: string[]) => {
+    const found = frontmatterTags(lines, lines.length - 1);
+    return [...found.entries()].map(([line, ts]) => ts.map((t) => lines[line]!.slice(t.from, t.to) + "=" + t.id)).flat();
+  };
+
+  it("finds tags in a flow list", () => {
+    expect(show(["---", "type: concept", "tags: [foo, \"Bar Baz\", qux]", "---"])).toEqual(["foo=foo", "\"Bar Baz\"=bar-baz", "qux=qux"]);
+  });
+
+  it("finds tags in a block list and stops at the next key", () => {
+    expect(show(["---", "tags:", "  - foo", "  - bar", "title: x", "  - not-a-tag", "---"])).toEqual(["foo=foo", "bar=bar"]);
+  });
+
+  it("finds a single tag", () => {
+    expect(show(["---", "tags: solo", "---"])).toEqual(["solo=solo"]);
   });
 });

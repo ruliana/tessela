@@ -16,6 +16,8 @@ const SEARCH_DELAY_MS = 250;
 let pages: PageEntry[] = [];
 let vocab: VocabEntry[] = [];
 let problems: Diagnostic[] = [];
+/** Concepts that have a page; null while the vocabulary is unknown, so nothing is called unwritten. */
+let written: Set<string> | null = null;
 let filter = "";
 
 /** What the middle of the window shows: one page, or the latest journal days stacked. */
@@ -176,8 +178,10 @@ async function refreshIndex(): Promise<void> {
     api.vocab().catch(() => []),
     api.lint().then(visibleProblems, () => []),
   ]);
+  written = vocab.length === 0 ? null : new Set(vocab.filter((v) => v.has_page).map((v) => v.concept));
   renderLists();
   renderProblems();
+  for (const c of cards) c.refresh();
 }
 
 // ---- search ------------------------------------------------------------------
@@ -247,6 +251,7 @@ function cardDeps() {
   return {
     api,
     vocab: () => vocab,
+    written: () => written,
     onSaved: () => {
       void refreshIndex();
       void renderBacklinks();
