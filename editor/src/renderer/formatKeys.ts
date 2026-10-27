@@ -6,7 +6,7 @@ import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { EditorSelection, EditorState, Prec, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 
-import { type TextEdit, pasteLink, surround, toggleMark, toggleTask } from "../shared/format";
+import { type TextEdit, isWebUrl, pasteLink, surround, toggleMark, toggleTask } from "../shared/format";
 
 function dispatchEdit(view: EditorView, e: TextEdit): void {
   view.dispatch({
@@ -28,7 +28,8 @@ function tick(view: EditorView): boolean {
   const { head } = view.state.selection.main;
   const line = view.state.doc.lineAt(head);
   const edit = toggleTask(line.text);
-  if (!edit) return false;
+  // Nothing to tick on a heading or a quote; the key must not fall through to "insert blank line".
+  if (!edit) return true;
   view.dispatch({
     changes: { from: line.from, to: line.to, insert: edit.text },
     selection: { anchor: head + edit.dcol },
@@ -59,18 +60,25 @@ export const formatting: Extension = [
     dispatchEdit(view, surround(view.state.doc.toString(), from, to, text));
     return true;
   }),
-  EditorView.domEventHandlers({
-    paste(event, view) {
-      const { from, to } = view.state.selection.main;
-      const link = pasteLink(view.state.sliceDoc(from, to), event.clipboardData?.getData("text/plain") ?? "");
-      if (!link) return false;
-      event.preventDefault();
-      view.dispatch({
-        changes: { from, to, insert: link },
-        selection: { anchor: from + link.length },
-        userEvent: "input.paste",
-      });
-      return true;
-    },
-  }),
+  // Before the Markdown language's own paste handler, which would link several lines.
+  Prec.highest(
+    EditorView.domEventHandlers({
+      paste(event, view) {
+        const { from, to } = view.state.selection.main;
+        const selected = view.state.sliceDoc(from, to);
+        const pasted = event.clipboardData?.getData("text/plain") ?? "";
+        // The Markdown language also links a pasted URL, over several lines too; here a URL
+        // over several lines just replaces them, like any other paste.
+        const text = pasteLink(selected, pasted) ?? (selected.includes("\n") && isWebUrl(pasted) ? pasted.trim() : null);
+        if (!text) return false;
+        event.preventDefault();
+        view.dispatch({
+          changes: { from, to, insert: text },
+          selection: { anchor: from + text.length },
+          userEvent: "input.paste",
+        });
+        return true;
+      },
+    }),
+  ),
 ];
