@@ -61,10 +61,10 @@ enum Command {
         /// Only this page ID, or a folder when it ends with `/`
         #[arg(long)]
         page: Option<String>,
-        /// First day to include (YYYY-MM-DD); only journals have a day
+        /// First day to include (YYYY-MM-DD): journal days and dates written in blocks
         #[arg(long)]
         from: Option<String>,
-        /// Last day to include (YYYY-MM-DD); only journals have a day
+        /// Last day to include (YYYY-MM-DD): journal days and dates written in blocks
         #[arg(long)]
         to: Option<String>,
         /// Show at most this many blocks

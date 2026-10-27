@@ -37,14 +37,15 @@ tessela query . --ref rust                       # blocks that mention #rust
 tessela query . -r rust -r tessela               # ... both (use --any for either)
 tessela query . -r tessela --own                 # only the block's own refs
 tessela query . --text linter --type journal     # text and page type
-tessela query . --from 2026-10-01 --to 2026-10-31 --json
+tessela query . --from 2026-10-01 --to 2026-10-31 --json  # journal days and mentioned dates
 tessela query . --page project/ --limit 20       # one page, or a folder with `/`
 ```
 
 A block matches a concept when it, one of its parent list items, or a heading
 above it mentions it (spec §3); `--own` turns that off. A concept also matches
-the ones nested under it, so `--ref project` finds `#project/tessela`. Date filters only keep
-journals. Every hit has a `handle` that stays the same until the block's text
+the ones nested under it, so `--ref project` finds `#project/tessela`. A date range
+(`--from`, `--to`) keeps the blocks on journal days in the range and any block,
+on any page, whose text contains a date in the range. Every hit has a `handle` that stays the same until the block's text
 changes, plus its page, line, heading path, refs and parent handle. Text output
 is for people; `--json` is for agents and the editor.
 

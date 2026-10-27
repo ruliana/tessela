@@ -1,5 +1,8 @@
 //! Retrieval: find the blocks that mention concepts, contain text, or sit in a date range.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde::Serialize;
 
 use crate::bundle::Bundle;
@@ -22,9 +25,10 @@ pub struct Query {
     pub kind: Option<String>,
     /// A page ID, or a folder prefix when it ends with `/`.
     pub page: Option<String>,
-    /// First day to include, `YYYY-MM-DD`. Pages without a date are left out.
+    /// First day to include, `YYYY-MM-DD`. A block is in range when its journal page
+    /// is, or when its text contains a date in range.
     pub from: Option<String>,
-    /// Last day to include, `YYYY-MM-DD`. Pages without a date are left out.
+    /// Last day to include, `YYYY-MM-DD`. See `from`.
     pub to: Option<String>,
 }
 
@@ -39,6 +43,8 @@ pub struct Hit {
     pub text: String,
     pub refs: Vec<String>,
     pub path_refs: Vec<String>,
+    /// The dates (`YYYY-MM-DD`) written in the block text, in order.
+    pub dates: Vec<String>,
     /// Handle of the enclosing list item, if any.
     pub parent: Option<String>,
 }
@@ -47,12 +53,18 @@ impl Query {
     pub fn run(&self, bundle: &Bundle) -> Vec<Hit> {
         let wanted: Vec<String> = self.refs.iter().map(|r| normalize_concept(r)).collect();
         let text = self.text.as_ref().map(|t| t.to_lowercase());
+        let by_date = self.from.is_some() || self.to.is_some();
         let mut hits = Vec::new();
         for page in &bundle.pages {
             if !self.page_matches(page) {
                 continue;
             }
+            let page_in_range = by_date && page_date(page).is_some_and(|d| self.in_range(&d));
             for block in &page.blocks {
+                let dates = dates_in(&block.text);
+                if by_date && !page_in_range && !dates.iter().any(|d| self.in_range(d)) {
+                    continue;
+                }
                 let have = if self.own {
                     &block.refs
                 } else {
@@ -81,6 +93,7 @@ impl Query {
                     text: block.text.clone(),
                     refs: block.refs.clone(),
                     path_refs: block.path_refs.clone(),
+                    dates,
                     parent: block.parent.map(|p| page.blocks[p].handle.clone()),
                 });
             }
@@ -104,18 +117,30 @@ impl Query {
                 return false;
             }
         }
-        if self.from.is_some() || self.to.is_some() {
-            let Some(date) = page_date(page) else {
-                return false;
-            };
-            if self.from.as_deref().is_some_and(|f| date.as_str() < f)
-                || self.to.as_deref().is_some_and(|t| date.as_str() > t)
-            {
-                return false;
-            }
-        }
         true
     }
+
+    fn in_range(&self, date: &str) -> bool {
+        self.from.as_deref().is_none_or(|f| date >= f)
+            && self.to.as_deref().is_none_or(|t| date <= t)
+    }
+}
+
+/// The dates (`YYYY-MM-DD`) written in a text, including the day of a datetime.
+pub fn dates_in(text: &str) -> Vec<String> {
+    static DATE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?:^|[^\d])(\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))(?:[^\d]|$)")
+            .unwrap()
+    });
+    // Matches are found one at a time so that two dates separated by one character are both seen.
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(caps) = DATE.captures(rest) {
+        let m = caps.get(1).unwrap();
+        found.push(m.as_str().to_string());
+        rest = &rest[m.end()..];
+    }
+    found
 }
 
 /// Whether `refs` has the concept or one nested under it (`project/tessela` is under `project`).

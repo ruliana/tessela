@@ -115,7 +115,7 @@ fn text_type_and_page_filters() {
 }
 
 #[test]
-fn date_range_only_includes_journals_in_range() {
+fn date_range_selects_journal_days() {
     let b = bundle();
     let from = Query {
         from: Some("2026-10-27".into()),
@@ -186,4 +186,97 @@ fn a_concept_also_matches_the_ones_nested_under_it() {
     let deeper = refs(&["project/tessela"]).run(&b);
     assert_eq!(texts(&deeper), ["One #project/tessela"]);
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+fn temp_bundle(name: &str, files: &[(&str, &str)]) -> (Bundle, PathBuf) {
+    let dir = std::env::temp_dir().join(format!("tessela-{name}-{}", std::process::id()));
+    for (path, content) in files {
+        let file = dir.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, content).unwrap();
+    }
+    (Bundle::load(&dir).unwrap(), dir)
+}
+
+fn range(from: Option<&str>, to: Option<&str>) -> Query {
+    Query {
+        from: from.map(str::to_string),
+        to: to.map(str::to_string),
+        ..Query::default()
+    }
+}
+
+#[test]
+fn blocks_that_mention_a_date_in_range_match_on_any_page() {
+    let (b, dir) = temp_bundle(
+        "dates-in-text",
+        &[
+            (
+                "a.md",
+                "---\ntype: concept\n---\n\nMeeting on 2026-10-27 14:30:00-03:00\n\nOld note from 2026-01-01\n\nNo date here\n",
+            ),
+            (
+                "journals/2026-01-05.md",
+                "---\ntype: journal\ndate: \"2026-01-05\"\n---\n\nFollow up on 2026-10-28\n\nPlain entry\n",
+            ),
+            (
+                "journals/2026-10-27.md",
+                "---\ntype: journal\ndate: \"2026-10-27\"\n---\n\nEntry without dates\n",
+            ),
+        ],
+    );
+    let hits = range(Some("2026-10-27"), Some("2026-10-28")).run(&b);
+    // A mentioned date matches on any page; a journal day matches all of its blocks.
+    assert_eq!(
+        texts(&hits),
+        [
+            "Meeting on 2026-10-27 14:30:00-03:00",
+            "Follow up on 2026-10-28",
+            "Entry without dates"
+        ]
+    );
+    assert_eq!(hits[0].dates, ["2026-10-27"]);
+
+    let early = range(None, Some("2026-01-31")).run(&b);
+    assert_eq!(
+        texts(&early),
+        [
+            "Old note from 2026-01-01",
+            "Follow up on 2026-10-28",
+            "Plain entry"
+        ]
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn date_filters_combine_with_the_other_filters() {
+    let (b, dir) = temp_bundle(
+        "dates-combined",
+        &[(
+            "a.md",
+            "---\ntype: concept\n---\n\nCall #client on 2026-10-27\n\nEmail #other on 2026-10-27\n\nCall #client on 2026-11-02\n",
+        )],
+    );
+    let q = Query {
+        refs: vec!["client".into()],
+        ..range(Some("2026-10-27"), Some("2026-10-31"))
+    };
+    assert_eq!(texts(&q.run(&b)), ["Call #client on 2026-10-27"]);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn only_valid_standalone_dates_count() {
+    use tessela_core::query::dates_in;
+    assert_eq!(
+        dates_in("2026-10-27 and 2026-10-28"),
+        ["2026-10-27", "2026-10-28"]
+    );
+    assert_eq!(dates_in("at 2026-10-27T14:30"), ["2026-10-27"]);
+    assert_eq!(
+        dates_in("[2026-10-27](/journals/2026-10-27.md)"),
+        ["2026-10-27", "2026-10-27"]
+    );
+    assert!(dates_in("2026-13-01 and 2026-10-32 and 12026-10-27 and 2026-10-271").is_empty());
 }

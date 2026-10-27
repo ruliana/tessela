@@ -200,7 +200,8 @@ human-readable output and a `--json` output, which the editor and agents use.
   Rules are pluggable, so semantic rules can be added later.
 - `tessela query`: retrieval of blocks by refs (all of them, or any), text, page
   type, page or folder, and date range. Refs match path refs unless `--own` is
-  given (§3). Date filters keep only journals. A concept also matches the ones
+  given (§3). A date range keeps the blocks on journal days in the range and any
+  block, on any page, whose text contains a date in the range (§7). A concept also matches the ones
   nested under it: `#project` matches `#project/tessela`, but not `#projector`.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
