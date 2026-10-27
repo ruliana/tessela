@@ -57,7 +57,12 @@ function useBundle(dir: string | null): void {
     } catch {
       // Remembering the bundle is a convenience.
     }
-    stopWatching = watchBundle(dir, (paths) => win?.webContents.send("changed", paths));
+    try {
+      stopWatching = watchBundle(dir, (paths) => win?.webContents.send("changed", paths));
+    } catch (err) {
+      // Without a watcher the editor still works, it just misses outside changes.
+      console.warn(`cannot watch ${dir}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }
 
