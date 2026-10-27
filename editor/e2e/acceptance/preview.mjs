@@ -167,3 +167,121 @@ suite("Live preview", null, (test) => {
     await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
   });
 });
+
+const withTable = [
+  "Intro paragraph.",
+  "",
+  "| Name | Count | Note |",
+  "| :--- | ---: | :---: |",
+  "| alpha | 1 | **big** and `code` |",
+  "| beta | 22 | [site](https://example.com/t) |",
+  "",
+  "After the table.",
+].join("\n");
+
+const withLinks = [
+  "Web [site](https://example.com/page) here.",
+  "",
+  "Concept [project](/project/tessela.md) there.",
+  "",
+  "Last paragraph.",
+].join("\n");
+
+/** Replaces the system's opener, so the test can see what was asked to open. */
+async function stubOpener(s) {
+  await s.app.evaluate(({ shell }) => {
+    globalThis.__opened = [];
+    shell.openExternal = async (url) => void globalThis.__opened.push(url);
+  });
+}
+const opened = (s) => s.app.evaluate(() => globalThis.__opened);
+
+suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype: project\n---\n\nThe project.\n" }), (test) => {
+  test("a table is drawn as a table", async (s) => {
+    await stubOpener(s);
+    await s.openWith("tables", withTable);
+    await s.win.click("#preview-toggle");
+    await s.win.waitForSelector(".cm-lp-table");
+    assert.deepEqual(await s.texts(".cm-lp-table th"), ["Name", "Count", "Note"]);
+    assert.deepEqual(await s.texts(".cm-lp-table tbody tr:first-child td"), ["alpha", "1", "big and code"]);
+    assert.ok(!(await s.doc()).includes("| alpha"), "the rows are not shown as text");
+  });
+
+  test("columns follow the alignment, and cells show their formatting", async (s) => {
+    const align = await s.win.$$eval(".cm-lp-table th", (ths) => ths.map((t) => getComputedStyle(t).textAlign));
+    assert.deepEqual(align, ["left", "right", "center"]);
+    assert.equal(await s.win.locator(".cm-lp-table strong").textContent(), "big");
+    assert.equal(await s.win.locator(".cm-lp-table code").textContent(), "code");
+  });
+
+  test("clicking the table shows it as text, with the cursor in that row", async (s) => {
+    await s.win.click(".cm-lp-table td:has-text('beta')");
+    await s.win.waitForFunction(() => !document.querySelector(".cm-lp-table"));
+    const doc = await s.doc();
+    assert.ok(doc.includes("| alpha | 1 | **big** and `code` |"), doc);
+    assert.ok(doc.includes("| :--- | ---: | :---: |"), doc);
+    await s.key("Home");
+    await s.type("| gamma | 3 | x |\n");
+    assert.ok((await s.doc()).includes("| gamma | 3 | x |"));
+  });
+
+  test("leaving the table draws it again, and the file keeps the Markdown", async (s) => {
+    await s.win.click(".cm-line:has-text('After the table')");
+    await s.win.waitForSelector(".cm-lp-table");
+    assert.deepEqual(await s.texts(".cm-lp-table tbody tr:nth-child(2) td"), ["gamma", "3", "x"]);
+    const body = await s.savedBody("tables");
+    assert.ok(body.includes("| Name | Count | Note |\n| :--- | ---: | :---: |\n| alpha | 1 | **big** and `code` |\n| gamma | 3 | x |\n| beta |"), body);
+  });
+
+  test("a link in a table opens the address", async (s) => {
+    await s.win.click(".cm-lp-table a");
+    assert.deepEqual(await opened(s), ["https://example.com/t"]);
+    // The table is still drawn: following a link is not editing.
+    assert.equal(await s.win.locator(".cm-lp-table").count(), 1);
+  });
+
+  test("with the preview off, the table is plain text", async (s) => {
+    await s.win.click("#preview-toggle");
+    await s.win.waitForFunction(() => !document.querySelector(".cm-lp-table"));
+    assert.ok((await s.doc()).includes("| :--- | ---: | :---: |"));
+  });
+
+  test("a link drawn as text opens with a plain click", async (s) => {
+    await s.openWith("links", withLinks);
+    await s.win.click("#preview-toggle");
+    await s.win.waitForSelector(".cm-lp-link");
+    await s.win.click(".cm-lp-link:has-text('site')");
+    assert.deepEqual((await opened(s)).slice(1), ["https://example.com/page"]);
+  });
+
+  test("a link to a concept opens its page", async (s) => {
+    await s.win.click(".cm-lp-link:has-text('project')");
+    await s.win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "project/tessela");
+    assert.ok((await s.doc()).includes("The project."));
+    await s.open("links");
+    await s.win.waitForSelector(".cm-lp-link");
+  });
+
+  test("in the block being edited a plain click only places the cursor", async (s) => {
+    await s.win.click(".cm-line:has-text('Web')");
+    await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("](https://example.com/page)")));
+    const before = (await opened(s)).length;
+    await s.win.click(".cm-line:has-text('](https://example.com/page)') >> text=site");
+    assert.equal((await opened(s)).length, before);
+  });
+
+  test("Ctrl+click opens it even then, and also with the preview off", async (s) => {
+    const before = (await opened(s)).length;
+    await s.win.click(".cm-line:has-text('](https://example.com/page)') >> text=site", { modifiers: ["Control"] });
+    assert.equal((await opened(s)).length, before + 1);
+    await s.win.click("#preview-toggle");
+    await s.win.waitForFunction(() => document.querySelector("#preview-toggle")?.getAttribute("aria-pressed") === "false");
+    await s.win.click(".cm-line:has-text('Last paragraph')");
+    const plain = (await opened(s)).length;
+    await s.win.click(".cm-line:has-text('](https://example.com/page)') >> text=site");
+    assert.equal((await opened(s)).length, plain, "a plain click does not follow links");
+    await s.win.click(".cm-line:has-text('](https://example.com/page)') >> text=site", { modifiers: ["Control"] });
+    assert.equal((await opened(s)).length, plain + 1);
+    await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+  });
+});

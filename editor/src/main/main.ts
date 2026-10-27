@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { BrowserWindow, app, dialog, ipcMain } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 
 import type { Diagnostic, Hit, OpenFileResult, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
@@ -115,6 +115,10 @@ function registerIpc(): void {
   ipcMain.handle("writePage", (_e, rel: string, text: string, expected: string | null) =>
     writePage(needBundle(), rel, text, expected),
   );
+  ipcMain.handle("openExternal", async (_event, url: unknown) => {
+    // Only addresses meant for another program: never a file or a custom scheme.
+    if (typeof url === "string" && /^(https?:|mailto:)/i.test(url)) await shell.openExternal(url);
+  });
   ipcMain.handle("todayPath", () => journalPath(localDay(new Date())));
 }
 

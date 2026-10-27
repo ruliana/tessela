@@ -13,7 +13,7 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { languages } from "@codemirror/language-data";
 import { GFM } from "@lezer/markdown";
 import { search, searchKeymap } from "@codemirror/search";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { Annotation, Compartment, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import {
   Decoration,
@@ -28,12 +28,12 @@ import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
 import { slugFirst, suggest } from "../shared/complete";
-import { conceptAt } from "../shared/links";
+import { conceptAt, linkTargetId } from "../shared/links";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
 import { queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
-import { livePreview } from "./livePreview";
+import { livePreview, renderedLine } from "./livePreview";
 import { slashSource } from "./slash";
 
 export interface EditorOptions {
@@ -47,6 +47,8 @@ export interface EditorOptions {
   onFocus?: () => void;
   /** A tag or concept link was Ctrl/Cmd-clicked. */
   onOpenConcept: (id: string) => void;
+  /** A link to the web or to an e-mail address was clicked. */
+  onOpenExternal: (url: string) => void;
   /** Starts with Markdown rendered outside the block being edited. */
   livePreview?: boolean;
   /** The key for switching the rendering on or off was pressed. */
@@ -107,6 +109,19 @@ function smartLinkCommand(view: EditorView): boolean {
   return true;
 }
 
+/** Where the link under `pos` points: `[text](target)` or a bare address. */
+function linkDestAt(state: EditorState, pos: number): string | null {
+  for (let node = syntaxTree(state).resolveInner(pos, 0) as { name: string; from: number; to: number; parent: unknown } | null; node; ) {
+    if (node.name === "Link") {
+      const url = (node as unknown as { getChild(name: string): { from: number; to: number } | null }).getChild("URL");
+      return url ? state.sliceDoc(url.from, url.to) : null;
+    }
+    if (node.name === "URL" || node.name === "Autolink") return state.sliceDoc(node.from, node.to).replace(/^<|>$/g, "");
+    node = node.parent as typeof node;
+  }
+  return null;
+}
+
 function options(
   vocab: VocabEntry[],
   query: string,
@@ -156,6 +171,15 @@ function completions(vocab: () => VocabEntry[]) {
 
 export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHandle {
   const preview = new Compartment();
+  let previewOn = opts.livePreview === true;
+
+  /** A concept page opens in the editor, a web or mail address in the system's own program. */
+  const openDest = (dest: string): void => {
+    const id = linkTargetId(dest, opts.pageDir());
+    if (id) opts.onOpenConcept(id);
+    else if (/^(https?:|mailto:)/i.test(dest)) opts.onOpenExternal(dest);
+  };
+  const previewExtension = () => livePreview({ openLink: openDest });
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -170,7 +194,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
-        preview.of(opts.livePreview ? livePreview() : []),
+        preview.of(previewOn ? previewExtension() : []),
         blockKeymap,
         formatting,
         search({ top: true }),
@@ -193,10 +217,19 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
             return false;
           },
           mousedown(event, v) {
-            if (!(event.ctrlKey || event.metaKey)) return false;
+            const modifier = event.ctrlKey || event.metaKey;
+            if (!modifier && !previewOn) return false;
             const pos = v.posAtCoords({ x: event.clientX, y: event.clientY });
             if (pos === null) return false;
             const line = v.state.doc.lineAt(pos);
+            // A link drawn as text opens with a plain click; one shown as Markdown is being edited.
+            const dest = modifier || renderedLine(v, line.number) ? linkDestAt(v.state, pos) : null;
+            if (dest !== null) {
+              event.preventDefault();
+              openDest(dest);
+              return true;
+            }
+            if (!modifier) return false;
             const hit = conceptAt(line.text, pos - line.from, opts.pageDir());
             if (!hit) return false;
             event.preventDefault();
@@ -234,6 +267,9 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
     },
     focus: () => view.focus(),
     refresh: () => view.dispatch({ effects: refreshDecorations.of(null) }),
-    setLivePreview: (on) => view.dispatch({ effects: preview.reconfigure(on ? livePreview() : []) }),
+    setLivePreview(on) {
+      previewOn = on;
+      view.dispatch({ effects: preview.reconfigure(on ? previewExtension() : []) });
+    },
   };
 }
