@@ -198,9 +198,12 @@ human-readable output and a `--json` output, which the editor and agents use.
 
 - `tessela lint`: OKF conformance plus Tessela rules (dates, tags, vocabulary).
   Rules are pluggable, so semantic rules can be added later.
-- `tessela query`: fast retrieval of blocks and pages by refs, text, type, date
-  range and page.
-- `tessela vocab`: the tags and concepts that exist, with counts and the
+- `tessela query`: retrieval of blocks by refs (all of them, or any), text, page
+  type, page or folder, and date range. Refs match path refs unless `--own` is
+  given (§3). Date filters keep only journals. Refs are exact: `#project` does
+  not match `#project/tessela`.
+- `tessela vocab`: the tags and concepts that exist (pages, tags, links and
+  `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
 
 ## 11. Editor

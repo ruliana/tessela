@@ -30,6 +30,37 @@ implements the `Rule` trait, so more can be added without touching the others.
 | `tessela/vocabulary`        | warning  | Deprecated terms and aliases from `vocabulary.md`        |
 | `tessela/unwritten-concept` | info     | Concepts mentioned but without a page yet                |
 
+### Query
+
+```
+tessela query . --ref rust                       # blocks that mention #rust
+tessela query . -r rust -r tessela               # ... both (use --any for either)
+tessela query . -r tessela --own                 # only the block's own refs
+tessela query . --text linter --type journal     # text and page type
+tessela query . --from 2026-10-01 --to 2026-10-31 --json
+tessela query . --page project/ --limit 20       # one page, or a folder with `/`
+```
+
+A block matches a concept when it, one of its parent list items, or a heading
+above it mentions it (spec §3); `--own` turns that off. Date filters only keep
+journals. Every hit has a `handle` that stays the same until the block's text
+changes, plus its page, line, heading path, refs and parent handle. Text output
+is for people; `--json` is for agents and the editor.
+
+### Vocabulary
+
+```
+tessela vocab .                    # concepts by number of mentions
+tessela vocab . --unwritten        # mentioned, but no page yet
+tessela vocab . --prefix project/  # one namespace
+tessela vocab . --min-count 3 --json
+```
+
+Lists every concept that has a page, is mentioned by a tag or link, or is
+declared in `vocabulary.md`, with its mention count, how many pages mention it,
+whether it has a page, and any alias or deprecation from `vocabulary.md`. Use it
+to pick an existing term instead of inventing a new one.
+
 ## Development
 
 ```
