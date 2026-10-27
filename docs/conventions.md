@@ -36,6 +36,8 @@ A page is an OKF concept file: UTF-8 Markdown with YAML frontmatter.
   for daily pages. Other OKF types (`howto`, `reference`, `decision`, ...) are fine.
 - `title`, `tags`, `timestamp` and the other OKF recommended fields are used as
   OKF defines them. Frontmatter `tags` apply to the page, not to each block.
+  Tags and concept links written in other frontmatter text (a `description`, for
+  example) are references of the page too.
 - Unknown frontmatter keys are preserved on every write.
 - Line endings are LF. Files end with a single newline.
 
@@ -50,8 +52,9 @@ structure of the page body; nothing about them is stored in the file.
 | List item, at any depth                | Yes (its own content, not its children)   |
 | Top-level code fence, table, quote     | Yes                                       |
 | Code fence, table, quote inside an item | Part of that item's block                |
-| Heading                                | No; its refs apply to the blocks below it |
-| Frontmatter                            | No; it belongs to the page                |
+| Paragraph after a nested list, inside an item | A block of its own, a child of that item |
+| Heading                                | Not a block, but a backlink holder (§5); its refs apply to the blocks below it |
+| Frontmatter                            | Not a block; it belongs to the page and can be a backlink (§5) |
 
 Each block in the index carries:
 
@@ -117,12 +120,25 @@ A concept name becomes a file name by lowercasing it and replacing runs of
 whitespace with `-`. Letters outside ASCII are kept. "Machine Learning" becomes
 `machine-learning.md`. The page's `title` keeps the original spelling.
 
-## 5. Aggregation
+## 5. Aggregation and backlinks
 
-Logseq's "linked references" are a query, not file content. "Every block that
-references `foo`" comes from `tessela query --refs foo`. The editor shows those
+Logseq's "linked references" are a query, not file content. "Everything that
+references `foo`" comes from `tessela query --ref foo`. The editor shows those
 results under the page `foo`, or as the whole page when `foo.md` does not exist
 yet. Nothing is written back to disk, so aggregation never causes git churn.
+
+Anything that can hold a reference is found, so the result is a full set of
+backlinks. A hit is one of:
+
+- a **block** that mentions the concept, itself or through a parent list item or
+  a heading above it (§3);
+- a **heading** that mentions it. The blocks under the heading are hits too,
+  since they inherit its refs; a client can tell them apart by the hit's kind;
+- a **page** that mentions it in its frontmatter: `tags`, or tags and concept
+  links in other frontmatter text (§2).
+
+Headings and pages only exist to hold references, so they are returned only when
+a concept is asked for.
 
 ## 6. Journals
 
@@ -198,9 +214,17 @@ human-readable output and a `--json` output, which the editor and agents use.
 
 - `tessela lint`: OKF conformance plus Tessela rules (dates, tags, vocabulary).
   Rules are pluggable, so semantic rules can be added later.
-- `tessela query`: fast retrieval of blocks and pages by refs, text, type, date
-  range and page.
-- `tessela vocab`: the tags and concepts that exist, with counts and the
+- `tessela query`: the backlinks engine. Asking for a concept returns everything
+  that mentions it, as hits of three kinds: `block`, `heading` (a heading that
+  mentions it; the blocks under it match too) and `page` (frontmatter `tags`, or
+  tags and links in other frontmatter text). Headings and pages are returned only
+  when a concept is asked for. Other filters: text, page type, page or folder, and
+  date range. Refs match path refs unless `--own` is given (§3). A date range
+  keeps what is on journal days in the range and anything, on any page, whose
+  text contains a date in the range (§7). A concept also matches the ones nested
+  under it: `#project` matches `#project/tessela`, but not `#projector`.
+- `tessela vocab`: the tags and concepts that exist (pages, tags, links and
+  `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
 
 ## 11. Editor

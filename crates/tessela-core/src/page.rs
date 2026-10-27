@@ -3,7 +3,7 @@
 use serde_yaml_ng::{Mapping, Value};
 
 use crate::blocks::{Block, Heading, parse_body};
-use crate::refs::normalize_concept;
+use crate::refs::{extract_refs, normalize_concept};
 
 #[derive(Debug)]
 pub struct Page {
@@ -14,6 +14,9 @@ pub struct Page {
     pub has_frontmatter: bool,
     pub frontmatter: Mapping,
     pub frontmatter_error: Option<String>,
+    /// Concepts the page itself mentions: frontmatter `tags`, plus the tags and
+    /// concept links written in other frontmatter text.
+    pub refs: Vec<String>,
     pub blocks: Vec<Block>,
     pub headings: Vec<Heading>,
 }
@@ -27,6 +30,7 @@ impl Page {
             has_frontmatter: false,
             frontmatter: Mapping::new(),
             frontmatter_error: None,
+            refs: Vec::new(),
             blocks: Vec::new(),
             headings: Vec::new(),
         };
@@ -50,6 +54,7 @@ impl Page {
                 (&text[body_offset..], body_offset)
             }
         };
+        page.refs = page.frontmatter_refs();
         let base_line = 1 + text[..body_offset].matches('\n').count();
         let parsed = parse_body(body, base_line, &page.id);
         page.blocks = parsed.blocks;
@@ -70,6 +75,25 @@ impl Page {
         self.get_str("type").filter(|t| !t.trim().is_empty())
     }
 
+    fn frontmatter_refs(&self) -> Vec<String> {
+        let page_dir = self.id.rsplit_once('/').map_or("", |(dir, _)| dir);
+        let mut refs = self.frontmatter_tags();
+        let mut strings = Vec::new();
+        for (key, value) in &self.frontmatter {
+            if key.as_str() != Some("tags") {
+                collect_strings(value, &mut strings);
+            }
+        }
+        for text in strings {
+            for r in extract_refs(&text, page_dir) {
+                if !refs.contains(&r) {
+                    refs.push(r);
+                }
+            }
+        }
+        refs
+    }
+
     /// Frontmatter `tags`, normalized to concept IDs.
     pub fn frontmatter_tags(&self) -> Vec<String> {
         let Some(Value::Sequence(tags)) = self.get("tags") else {
@@ -80,6 +104,15 @@ impl Page {
             .map(normalize_concept)
             .filter(|t| !t.is_empty())
             .collect()
+    }
+}
+
+fn collect_strings(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::String(s) => out.push(s.clone()),
+        Value::Sequence(items) => items.iter().for_each(|v| collect_strings(v, out)),
+        Value::Mapping(m) => m.values().for_each(|v| collect_strings(v, out)),
+        _ => {}
     }
 }
 
@@ -150,6 +183,15 @@ mod tests {
     #[test]
     fn empty_type_is_not_a_type() {
         assert_eq!(Page::parse("a.md", "---\ntype: \"\"\n---\n").kind(), None);
+    }
+
+    #[test]
+    fn page_refs_come_from_tags_and_frontmatter_text() {
+        let p = Page::parse(
+            "a/b.md",
+            "---\ntype: concept\ntags: [Foo]\ndescription: \"About #bar and [baz](/baz.md), see https://x.org/#top\"\nsources: [\"https://x.org/a.md\"]\n---\n",
+        );
+        assert_eq!(p.refs, ["foo", "bar", "baz"]);
     }
 
     #[test]

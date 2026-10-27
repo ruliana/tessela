@@ -296,7 +296,7 @@ pub fn read_vocabulary(bundle: &Bundle) -> HashMap<String, Term> {
 /// Every concept a page mentions, with the line of the mention.
 pub fn mentions(page: &Page) -> Vec<(String, Option<usize>)> {
     let mut found = Vec::new();
-    found.extend(page.frontmatter_tags().into_iter().map(|t| (t, Some(1))));
+    found.extend(page.refs.iter().map(|t| (t.clone(), Some(1))));
     for h in &page.headings {
         found.extend(h.refs.iter().map(|r| (r.clone(), Some(h.line))));
     }
