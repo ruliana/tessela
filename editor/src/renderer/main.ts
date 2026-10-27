@@ -19,6 +19,28 @@ let problems: Diagnostic[] = [];
 /** Concepts that have a page; null while the vocabulary is unknown, so nothing is called unwritten. */
 let written: Set<string> | null = null;
 let filter = "";
+const PREVIEW_KEY = "tessela.livePreview";
+/** Markdown shown rendered outside the block being edited; remembered between runs. */
+let livePreview = readPreview();
+
+function readPreview(): boolean {
+  try {
+    return localStorage.getItem(PREVIEW_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function togglePreview(): void {
+  livePreview = !livePreview;
+  try {
+    localStorage.setItem(PREVIEW_KEY, livePreview ? "1" : "0");
+  } catch {
+    // The choice just is not remembered.
+  }
+  for (const c of cards) c.setLivePreview(livePreview);
+  previewButton?.setAttribute("aria-pressed", String(livePreview));
+}
 
 /** What the middle of the window shows: one page, or the latest journal days stacked. */
 type View = { kind: "page"; path: string } | { kind: "journals"; count: number };
@@ -95,6 +117,7 @@ let problemsToggle: HTMLButtonElement;
 let problemsOpen = false;
 let stackEl: HTMLElement;
 let backlinksEl: HTMLElement;
+let previewButton: HTMLElement | undefined;
 let noticeEl: HTMLElement;
 let newPageEl: HTMLElement;
 let newPageInput: HTMLInputElement;
@@ -150,6 +173,17 @@ function buildShell(bundle: string): void {
   resultsEl = el("div", { class: "results", id: "results", hidden: true });
   problemsEl = el("ul", { class: "problems", id: "problems", hidden: true });
   problemsToggle = el("button", { class: "problems-toggle", id: "problems-toggle", onclick: toggleProblems });
+  previewButton = el(
+    "button",
+    {
+      class: "secondary",
+      id: "preview-toggle",
+      title: "Show Markdown rendered, raw only where you are typing (Ctrl/Cmd+Alt+M)",
+      onclick: togglePreview,
+    },
+    "Rendered",
+  );
+  previewButton.setAttribute("aria-pressed", String(livePreview));
   const sidebar = el(
     "aside",
     { class: "sidebar" },
@@ -165,6 +199,7 @@ function buildShell(bundle: string): void {
       { class: "buttons" },
       el("button", { class: "primary", id: "today", onclick: () => void showJournals(true) }, "Today"),
       el("button", { class: "secondary", id: "journals-view", onclick: () => void showJournals() }, "Journals"),
+      previewButton,
     ),
     el(
       "div",
@@ -403,6 +438,8 @@ function cardDeps() {
     },
     onOpenPage: (path: string) => void showPage(path),
     onOpenConcept: (id: string) => void showPage(conceptPath(id)),
+    livePreview: () => livePreview,
+    onTogglePreview: togglePreview,
   };
 }
 

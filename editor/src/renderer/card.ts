@@ -21,6 +21,9 @@ export interface CardDeps {
   /** The title was clicked. */
   onOpenPage: (path: string) => void;
   onOpenConcept: (id: string) => void;
+  /** Whether Markdown is shown rendered outside the block being edited. */
+  livePreview: () => boolean;
+  onTogglePreview: () => void;
 }
 
 export interface Card {
@@ -33,6 +36,7 @@ export interface Card {
   focus(line?: number): void;
   /** Colours again, after the vocabulary changed. */
   refresh(): void;
+  setLivePreview(on: boolean): void;
   destroy(): void;
 }
 
@@ -75,6 +79,8 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     onChange: onEdit,
     onFocus: () => deps.onActive(path),
     onOpenConcept: deps.onOpenConcept,
+    livePreview: deps.livePreview(),
+    onTogglePreview: deps.onTogglePreview,
   });
 
   function setStatus(state: "saved" | "dirty" | "conflict", text: string): void {
@@ -169,6 +175,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       editor.focus();
     },
     refresh: () => editor.refresh(),
+    setLivePreview: (on) => editor.setLivePreview(on),
     destroy() {
       gone = true;
       window.clearTimeout(saveTimer);
