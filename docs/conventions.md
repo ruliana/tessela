@@ -268,6 +268,12 @@ writes the Markdown files itself.
   (`query --text`); Enter creates the page named by what was typed.
 - The sidebar lists what `tessela lint` reports as errors or warnings (not the
   informational "unwritten concept" findings), each one a jump to its file and line.
+- What the tools can find is coloured, so it is clear what is queryable: tags
+  (also the `tags` of the front matter), links to concepts, links to other files,
+  and dates and datetimes (only real ones, as in §7). A tag or concept link whose
+  concept has no page yet is shown dashed and italic. Tags and dates inside code are
+  not coloured, since `#include` is not a tag. Front matter is highlighted as YAML,
+  and fenced code blocks in the language they name.
 - `#` and `](` suggest existing concepts from the vocabulary. Ctrl/Cmd-click on a tag
   or a concept link opens its page, which is created from a template when new.
 

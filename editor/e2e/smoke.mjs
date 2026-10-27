@@ -14,6 +14,10 @@ writeFileSync(
   "---\ntype: project\n---\n\nThe editor project.\n",
 );
 writeFileSync(join(bundle, "broken.md"), "no frontmatter here, searchable-needle\n");
+writeFileSync(
+  join(bundle, "hl.md"),
+  "---\ntype: concept\ntags: [project/tessela, nowhere]\n---\n\nSee #project/tessela, #missing and 2026-10-27 `#nottag`.\n\n```js\nconst x = 1; // #nottag\n```\n",
+);
 const day = new Date();
 const today = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
 writeFileSync(
@@ -143,6 +147,23 @@ const body = bodyOf("fmt.md");
 assert.ok(body.includes("***format** and more*"), body);
 assert.ok(body.includes(`due ${dayText}`), body);
 assert.match(body, /- \[ \] write the thing/);
+
+// What the tools can find is coloured: tags (also in the front matter), dates, concepts
+// without a page. Code is not.
+await win.fill("#search", "hl");
+await win.press("#search", "Enter");
+await win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "hl");
+await win.waitForSelector(".cm-codeblock");
+const texts = (sel) => win.$$eval(sel, (els) => els.map((e) => e.textContent));
+await win.waitForFunction(() => document.querySelectorAll(".cm-tag").length >= 4);
+assert.deepEqual(await texts(".cm-tag"), ["project/tessela", "nowhere", "#project/tessela", "#missing"]);
+assert.deepEqual(await texts(".cm-date"), ["2026-10-27"]);
+assert.deepEqual(await texts(".cm-tag.cm-unwritten"), ["nowhere", "#missing"]);
+// The code block is highlighted as code: its keyword has a colour of its own.
+await win.waitForFunction(() => {
+  const line = [...document.querySelectorAll(".cm-codeblock")].find((l) => l.textContent.includes("const x"));
+  return line && [...line.querySelectorAll("span")].some((s) => getComputedStyle(s).color !== getComputedStyle(line).color);
+});
 
 // A change made by another program shows up without a reload.
 await win.click("#pages button:has-text('project/tessela')");

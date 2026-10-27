@@ -10,6 +10,19 @@
   --heading: #1d1d1b;
   --link: #2b5fa8;
   --code: #8a3b2a;
+  --tag: #7a4aa8;
+  --tag-bg: #efe6f7;
+  --date: #a0560b;
+  --file: #4a7a2f;
+  --codebg: #efede8;
+  --syn-keyword: #a0398f;
+  --syn-string: #3a7a2a;
+  --syn-number: #b8590e;
+  --syn-comment: #8b8a84;
+  --syn-fn: #2b5fa8;
+  --syn-type: #0f7a7a;
+  --syn-prop: #8a3b2a;
+  --syn-op: #6b6a66;
   --warn: #a0560b;
   --warn-bg: #fbeedd;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -28,6 +41,19 @@
     --heading: #f1efe9;
     --link: #8db4ec;
     --code: #e3a08f;
+    --tag: #c9a2ee;
+    --tag-bg: #35293f;
+    --date: #e8b36b;
+    --file: #9bcf7e;
+    --codebg: #262826;
+    --syn-keyword: #d88ccb;
+    --syn-string: #9fd48a;
+    --syn-number: #f0a56a;
+    --syn-comment: #8b8a84;
+    --syn-fn: #8db4ec;
+    --syn-type: #6fcfcf;
+    --syn-prop: #e3a08f;
+    --syn-op: #9a9890;
     --warn: #e8b36b;
     --warn-bg: #3a2e1d;
   }
@@ -85,7 +111,12 @@ h2 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform
 .editor .cm-cursor { border-left-color: var(--text); }
 .editor .cm-focused { outline: none; }
 .editor .cm-selectionBackground, .editor .cm-focused .cm-selectionBackground { background: var(--accent-soft) !important; }
-.cm-ref { color: var(--link); }
+.cm-tag { color: var(--tag); background: var(--tag-bg); border-radius: 3px; padding: 0 2px; }
+.cm-concept { text-decoration: underline; text-decoration-color: var(--link); text-underline-offset: 2px; }
+.cm-unwritten { text-decoration: underline dashed; text-decoration-color: var(--muted); text-underline-offset: 2px; font-style: italic; }
+.cm-date { color: var(--date); font-variant-numeric: tabular-nums; }
+.cm-file { text-decoration: underline dotted; text-decoration-color: var(--file); text-underline-offset: 2px; }
+.cm-codeblock { background: var(--codebg); font-family: var(--mono); font-size: 13.5px; }
 .cm-tooltip.cm-tooltip-autocomplete { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; font: 13px var(--sans); }
 .cm-tooltip-autocomplete ul li[aria-selected] { background: var(--accent-soft); color: var(--text); }
 .cm-completionDetail { color: var(--muted); margin-left: 8px; font-style: normal; }

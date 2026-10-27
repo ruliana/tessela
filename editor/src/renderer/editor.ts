@@ -9,6 +9,9 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { yamlFrontmatter } from "@codemirror/lang-yaml";
+import { languages } from "@codemirror/language-data";
+import { GFM } from "@lezer/markdown";
 import { search, searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
@@ -25,9 +28,10 @@ import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
 import { suggest } from "../shared/complete";
-import { conceptAt, refsInLine } from "../shared/links";
+import { conceptAt } from "../shared/links";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
+import { queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { slashSource } from "./slash";
 
@@ -35,6 +39,8 @@ export interface EditorOptions {
   vocab: () => VocabEntry[];
   /** Folder of the open page, for resolving relative links. */
   pageDir: () => string;
+  /** Concepts that have a page; null when that is not known. */
+  written: () => Set<string> | null;
   onChange: (text: string) => void;
   /** The editor got the keyboard focus. */
   onFocus?: () => void;
@@ -47,21 +53,39 @@ export interface EditorHandle {
   /** Replaces the whole text without counting it as an edit by the user. */
   setText(text: string, line?: number): void;
   focus(): void;
+  /** Colours again, after the vocabulary changed. */
+  refresh(): void;
 }
 
 const programmatic = Annotation.define<boolean>();
 
 const highlight = HighlightStyle.define([
-  { tag: t.heading, color: "var(--heading)", fontWeight: "700" },
+  { tag: t.heading1, color: "var(--heading)", fontWeight: "700", fontSize: "1.5em" },
+  { tag: t.heading2, color: "var(--heading)", fontWeight: "700", fontSize: "1.3em" },
+  { tag: t.heading3, color: "var(--heading)", fontWeight: "700", fontSize: "1.15em" },
+  { tag: [t.heading4, t.heading5, t.heading6], color: "var(--heading)", fontWeight: "700" },
   { tag: t.strong, fontWeight: "700" },
   { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through" },
+  { tag: t.strikethrough, textDecoration: "line-through", color: "var(--muted)" },
   { tag: t.link, color: "var(--link)" },
   { tag: t.url, color: "var(--muted)" },
   { tag: t.monospace, fontFamily: "var(--mono)", color: "var(--code)" },
   { tag: t.quote, color: "var(--muted)" },
   { tag: t.processingInstruction, color: "var(--muted)" },
+  { tag: t.contentSeparator, color: "var(--muted)" },
+  { tag: t.atom, color: "var(--accent)", fontWeight: "600" },
+  // Code, in fenced blocks and in the front matter.
+  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword, t.modifier, t.self], color: "var(--syn-keyword)" },
+  { tag: [t.string, t.special(t.string), t.regexp, t.escape, t.inserted], color: "var(--syn-string)" },
+  { tag: [t.number, t.bool, t.null, t.literal], color: "var(--syn-number)" },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syn-comment)", fontStyle: "italic" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName), t.definition(t.variableName)], color: "var(--syn-fn)" },
+  { tag: [t.typeName, t.className, t.namespace, t.tagName], color: "var(--syn-type)" },
+  { tag: [t.propertyName, t.attributeName, t.labelName], color: "var(--syn-prop)" },
+  { tag: [t.operator, t.punctuation, t.separator, t.bracket], color: "var(--syn-op)" },
+  { tag: t.deleted, color: "var(--warn)" },
   { tag: t.meta, color: "var(--muted)" },
+  { tag: t.invalid, color: "var(--warn)", textDecoration: "underline wavy" },
 ]);
 
 function smartLinkCommand(view: EditorView): boolean {
@@ -109,36 +133,6 @@ function completions(vocab: () => VocabEntry[]) {
   };
 }
 
-/** Marks tags and concept links, so it is clear what is a reference. */
-function refMarks(pageDir: () => string): Extension {
-  const mark = Decoration.mark({ class: "cm-ref" });
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      constructor(view: EditorView) {
-        this.decorations = this.build(view);
-      }
-      update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged) this.decorations = this.build(update.view);
-      }
-      build(view: EditorView): DecorationSet {
-        const ranges = [];
-        for (const { from, to } of view.visibleRanges) {
-          for (let pos = from; pos <= to; ) {
-            const line = view.state.doc.lineAt(pos);
-            for (const ref of refsInLine(line.text, pageDir())) {
-              ranges.push(mark.range(line.from + ref.from, line.from + ref.to));
-            }
-            pos = line.to + 1;
-          }
-        }
-        return Decoration.set(ranges, true);
-      }
-    },
-    { decorations: (v) => v.decorations },
-  );
-}
-
 export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHandle {
   const view = new EditorView({
     parent,
@@ -148,10 +142,12 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         history(),
         drawSelection(),
         EditorView.lineWrapping,
-        markdown(),
+        // YAML front matter, then Markdown (with tables and task lists) and code in the
+        // languages that fenced blocks name.
+        yamlFrontmatter({ content: markdown({ codeLanguages: languages, extensions: GFM }) }),
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab), slashSource], icons: false }),
-        refMarks(opts.pageDir),
+        queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
         blockKeymap,
         formatting,
         search({ top: true }),
@@ -210,5 +206,6 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
       }
     },
     focus: () => view.focus(),
+    refresh: () => view.dispatch({ effects: refreshDecorations.of(null) }),
   };
 }

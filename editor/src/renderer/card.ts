@@ -12,6 +12,8 @@ const SAVE_DELAY_MS = 700;
 export interface CardDeps {
   api: Api;
   vocab: () => VocabEntry[];
+  /** Concepts that have a page; null when the vocabulary is not known. */
+  written: () => Set<string> | null;
   /** The text reached the disk. */
   onSaved: (path: string) => void;
   /** The user started working in this card. */
@@ -29,6 +31,8 @@ export interface Card {
   /** Tells the card that these pages changed on disk. */
   diskChanged(paths: string[]): Promise<void>;
   focus(line?: number): void;
+  /** Colours again, after the vocabulary changed. */
+  refresh(): void;
   destroy(): void;
 }
 
@@ -67,6 +71,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
   const editor: EditorHandle = createEditor(host, {
     vocab: deps.vocab,
     pageDir: () => dirOf(path),
+    written: deps.written,
     onChange: onEdit,
     onFocus: () => deps.onActive(path),
     onOpenConcept: deps.onOpenConcept,
@@ -163,6 +168,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       if (line !== undefined) editor.setText(editor.text(), line);
       editor.focus();
     },
+    refresh: () => editor.refresh(),
     destroy() {
       gone = true;
       window.clearTimeout(saveTimer);
