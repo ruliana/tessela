@@ -8,6 +8,7 @@ const api: Api = {
   listPages: () => ipcRenderer.invoke("listPages"),
   vocab: () => ipcRenderer.invoke("vocab"),
   query: (args) => ipcRenderer.invoke("query", args),
+  lint: () => ipcRenderer.invoke("lint"),
   readPage: (path) => ipcRenderer.invoke("readPage", path),
   writePage: (path, text, expected) => ipcRenderer.invoke("writePage", path, text, expected),
   todayPath: () => ipcRenderer.invoke("todayPath"),

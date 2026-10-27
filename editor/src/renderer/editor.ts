@@ -32,6 +32,8 @@ export interface EditorOptions {
   /** Folder of the open page, for resolving relative links. */
   pageDir: () => string;
   onChange: (text: string) => void;
+  /** The editor got the keyboard focus. */
+  onFocus?: () => void;
   /** A tag or concept link was Ctrl/Cmd-clicked. */
   onOpenConcept: (id: string) => void;
 }
@@ -155,6 +157,10 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         ),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.domEventHandlers({
+          focus() {
+            opts.onFocus?.();
+            return false;
+          },
           mousedown(event, v) {
             if (!(event.ctrlKey || event.metaKey)) return false;
             const pos = v.posAtCoords({ x: event.clientX, y: event.clientY });

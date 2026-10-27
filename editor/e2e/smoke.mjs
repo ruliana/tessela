@@ -13,6 +13,7 @@ writeFileSync(
   join(bundle, "project/tessela.md"),
   "---\ntype: project\n---\n\nThe editor project.\n",
 );
+writeFileSync(join(bundle, "broken.md"), "no frontmatter here, searchable-needle\n");
 const day = new Date();
 const today = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
 writeFileSync(
@@ -21,13 +22,23 @@ writeFileSync(
 );
 
 const root = resolve(import.meta.dirname, "..");
-process.env.TESSELA_BIN ??= resolve(root, "../target/debug/tessela");
-const app = await electron.launch({
-  args: [join(root, "dist/main.cjs"), "--no-sandbox", `--bundle=${bundle}`],
-  env: { ...process.env },
-});
+// E2E_PACKAGED=release/linux-unpacked/tessela runs the packaged app, which must find the
+// tessela tool it carries (so TESSELA_BIN is not set for it).
+const packaged = process.env.E2E_PACKAGED;
+if (!packaged) process.env.TESSELA_BIN ??= resolve(root, "../target/debug/tessela");
+else delete process.env.TESSELA_BIN;
+const app = await electron.launch(
+  packaged
+    ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } }
+    : { args: [join(root, "dist/main.cjs"), "--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } },
+);
 const win = await app.firstWindow();
 await win.waitForSelector(".cm-content");
+
+// Opens on the journals: today first, then the earlier day, each in its own editor.
+await win.waitForFunction(() => document.querySelectorAll(".card").length === 2);
+assert.match(await win.textContent("#stack"), /2020-01-01/);
+assert.match(await win.textContent("#stack"), /Worked on #project\/tessela today/);
 
 // Opens on today's journal; typing autosaves to disk.
 await win.click(".cm-content");
@@ -45,6 +56,26 @@ await win.keyboard.press("Control+l");
 await win.keyboard.type("/project/tessela.md");
 await win.waitForFunction(() => document.querySelector(".status")?.textContent === "Saved");
 assert.match(readFileSync(journal, "utf8"), /\[see\]\(\/project\/tessela\.md\)/);
+
+// The journal on an earlier day is its own editor and saves on its own.
+await win.click("#journals-view");
+await win.waitForFunction(() => document.querySelectorAll(".card").length === 2);
+await win.click(".card:nth-child(2) .cm-content");
+await win.keyboard.press("Control+End");
+await win.keyboard.type(" and more");
+await win.waitForFunction(() => document.querySelectorAll(".status")[1]?.textContent === "Saved");
+assert.match(readFileSync(join(bundle, "journals/2020-01-01.md"), "utf8"), /today\.\n and more/);
+
+// Searching finds text inside pages; the sidebar also shows what lint found.
+await win.fill("#search", "searchable-needle");
+await win.waitForSelector("#results .hit");
+assert.match(await win.textContent("#results"), /broken/);
+await win.fill("#search", "");
+await win.click("#problems-toggle");
+await win.waitForSelector("#problems .problem.error");
+assert.match(await win.textContent("#problems"), /broken\.md/);
+await win.click("#problems .problem.error");
+await win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "broken");
 
 // The project page lists the journal block that mentions it.
 await win.click("#pages button:has-text('project/tessela')");

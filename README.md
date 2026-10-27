@@ -99,9 +99,18 @@ cd editor && npm install && npm run build
 npm start -- --bundle ~/notes     # or open one from the welcome screen
 ```
 
-Opens on today's journal, saves as you type, shows backlinks, suggests existing
-tags, and turns a selection into a link with Ctrl+L (Super+L on macOS). Details are
-in spec §11. `npm test` runs the unit tests and `npm run e2e` drives a real window.
+Opens on the latest journal days, saves as you type, shows backlinks, searches the
+text of your notes, lists what `tessela lint` finds, suggests existing tags, and
+turns a selection into a link with Ctrl+L (Super+L on macOS). Details are in spec
+§11. `npm test` runs the unit tests and `npm run e2e` drives a real window.
+
+To build an app that carries its own `tessela` binary:
+
+```
+cd editor
+npm run package        # installer for this OS in editor/release/
+npm run package:dir    # just the unpacked app, for trying it
+```
 
 ## Development
 
