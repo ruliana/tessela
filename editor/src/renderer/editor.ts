@@ -26,6 +26,7 @@ import type { VocabEntry } from "../shared/api";
 import { suggest } from "../shared/complete";
 import { conceptAt, refsInLine } from "../shared/links";
 import { smartLink } from "../shared/smartLink";
+import { blockKeymap } from "./blockKeys";
 
 export interface EditorOptions {
   vocab: () => VocabEntry[];
@@ -148,6 +149,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab)], icons: false }),
         refMarks(opts.pageDir),
+        blockKeymap,
         Prec.highest(
           keymap.of([
             { key: "Mod-l", run: smartLinkCommand },

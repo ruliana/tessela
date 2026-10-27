@@ -90,7 +90,34 @@ await new Promise((r) => setTimeout(r, 1500));
 assert.match(await win.textContent(".cm-content"), /type: project/);
 assert.match(readFileSync(join(bundle, "project/tessela.md"), "utf8"), /type: project/);
 
+// Tab starts a list and nests it, Shift+Tab undoes that, Alt+Up moves a block.
+const saved = () => win.waitForFunction(() => document.querySelector(".status")?.textContent === "Saved");
+const bodyOf = (file) => readFileSync(join(bundle, file), "utf8").replace(/^---\n[\s\S]*?\n---\n\n?/, "");
+await win.fill("#search", "blocks");
+await win.press("#search", "Enter");
+await win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "blocks");
+await win.click(".cm-content");
+await win.keyboard.press("Control+End");
+await win.keyboard.type("Para one");
+await win.keyboard.press("Tab");
+await win.keyboard.press("Enter");
+await win.keyboard.type("child");
+await win.keyboard.press("Tab");
+await saved();
+assert.equal(bodyOf("blocks.md"), "- Para one\n  - child");
+await win.keyboard.press("Enter");
+await win.keyboard.type("second");
+await win.keyboard.press("Shift+Tab");
+await win.keyboard.press("Alt+ArrowUp");
+await saved();
+assert.equal(bodyOf("blocks.md"), "- second\n- Para one\n  - child");
+await win.keyboard.press("Shift+Tab");
+await saved();
+assert.equal(bodyOf("blocks.md"), "second\n\n- Para one\n  - child");
+
 // A change made by another program shows up without a reload.
+await win.click("#pages button:has-text('project/tessela')");
+await win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "project/tessela");
 writeFileSync(
   join(bundle, "project/tessela.md"),
   "---\ntype: project\n---\n\nChanged outside.\n",
