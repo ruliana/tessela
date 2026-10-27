@@ -4,7 +4,8 @@ A personal knowledge manager for humans and agents.
 
 Notes are plain Markdown in an [Open Knowledge Format](https://okf.md/) bundle,
 synced with git. Rust tools lint, query and list the vocabulary of that bundle,
-and an Electron editor uses the same tools behind the scenes.
+and import a Logseq graph. An Electron editor will use the same tools behind the
+scenes.
 
 - [Conventions](docs/conventions.md): what Tessela adds on top of OKF.
 
@@ -75,6 +76,20 @@ Lists every concept that has a page, is mentioned by a tag or link, or is
 declared in `vocabulary.md`, with its mention count, how many pages mention it,
 whether it has a page, and any alias or deprecation from `vocabulary.md`. Use it
 to pick an existing term instead of inventing a new one.
+
+### Import from Logseq
+
+```
+tessela import-logseq ~/logseq-graph ~/notes    # writes a new bundle in ~/notes
+tessela lint ~/notes                            # then check it
+```
+
+Reads a Logseq graph and writes a Tessela bundle: pages and namespaces become
+files, journals become `journals/YYYY-MM-DD.md`, top-level bullets become
+paragraphs with their sub-bullets as a list beneath, `[[links]]` and properties
+become tags and links, and block references are inlined. It prints a report of
+what it converted and what it skipped, and never writes into a folder that has
+files or changes the graph. The full mapping is in spec §12.
 
 ## Development
 
