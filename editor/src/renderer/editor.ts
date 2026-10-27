@@ -10,7 +10,7 @@ import {
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { Annotation, EditorState, Prec, type Extension } from "@codemirror/state";
+import { Annotation, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -187,7 +187,8 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
       const keep = Math.min(view.state.selection.main.head, text.length);
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: text },
-        annotations: programmatic.of(true),
+        // Loading a page is not something to undo: undoing it would blank the page.
+        annotations: [programmatic.of(true), Transaction.addToHistory.of(false)],
         selection: { anchor: keep },
       });
       if (line !== undefined) {
@@ -196,7 +197,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         view.dispatch({
           selection: { anchor: target.from },
           effects: EditorView.scrollIntoView(target.from, { y: "center" }),
-          annotations: programmatic.of(true),
+          annotations: [programmatic.of(true), Transaction.addToHistory.of(false)],
         });
       }
     },
