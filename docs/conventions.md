@@ -250,11 +250,13 @@ human-readable output and a `--json` output, which the editor and agents use.
 
 An Electron editor (in `editor/`, TypeScript, CodeMirror 6) that uses the same
 tools as everyone else: it runs `tessela query --json` and `tessela vocab --json`
-(the binary comes from `$TESSELA_BIN`, then `target/{release,debug}`, then `PATH`),
-and reads and writes the Markdown files itself.
+and `tessela lint --json` (the binary comes from `$TESSELA_BIN`, then the one
+packaged with the app, then `target/{release,debug}`, then `PATH`), and reads and
+writes the Markdown files itself.
 
-- It opens a bundle (`--bundle PATH`, or the last one used) on today's journal.
-  The journal file is only created on the first edit.
+- It opens a bundle (`--bundle PATH`, or the last one used) on the journals: today
+  and the latest earlier days stacked, each one editable, with "Older days" for more.
+  A journal file is only created on the first edit.
 - Edits are saved after a short pause. A write is atomic (temporary file, then
   rename) and refused when the file on disk is not the one the editor last read;
   the editor then offers to load the disk version or to overwrite it.
@@ -262,6 +264,10 @@ and reads and writes the Markdown files itself.
   there are unsaved edits, which count as a conflict.
 - The right panel shows the backlinks of the open page (`query --ref PAGE`; for a
   journal, also anything that mentions its date), grouped by page.
+- The search box filters page names and also searches the text of the notes
+  (`query --text`); Enter creates the page named by what was typed.
+- The sidebar lists what `tessela lint` reports as errors or warnings (not the
+  informational "unwritten concept" findings), each one a jump to its file and line.
 - `#` and `](` suggest existing concepts from the vocabulary. Ctrl/Cmd-click on a tag
   or a concept link opens its page, which is created from a template when new.
 

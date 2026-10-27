@@ -6,7 +6,7 @@ import { BrowserWindow, app, dialog, ipcMain } from "electron";
 import type { Diagnostic, Hit, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
 import { listPages, readPage, watchBundle, writePage } from "./files";
-import { lintArgv, queryArgv, runJson, vocabArgv } from "./tessela";
+import { findTessela, lintArgv, queryArgv, runJson, vocabArgv } from "./tessela";
 
 let bundle: string | null = null;
 let stopWatching: (() => void) | undefined;
@@ -36,14 +36,14 @@ function loadBundle(): string | null {
   }
 }
 
-/** The tessela binary: $TESSELA_BIN, a build next to the editor, or the one on PATH. */
 function tesselaBin(): string {
-  if (process.env.TESSELA_BIN) return process.env.TESSELA_BIN;
-  for (const profile of ["release", "debug"]) {
-    const built = path.resolve(app.getAppPath(), "..", "target", profile, "tessela");
-    if (existsSync(built)) return built;
-  }
-  return "tessela";
+  return findTessela({
+    env: process.env.TESSELA_BIN,
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    exists: existsSync,
+  });
 }
 
 function useBundle(dir: string | null): void {

@@ -22,11 +22,16 @@ writeFileSync(
 );
 
 const root = resolve(import.meta.dirname, "..");
-process.env.TESSELA_BIN ??= resolve(root, "../target/debug/tessela");
-const app = await electron.launch({
-  args: [join(root, "dist/main.cjs"), "--no-sandbox", `--bundle=${bundle}`],
-  env: { ...process.env },
-});
+// E2E_PACKAGED=release/linux-unpacked/tessela runs the packaged app, which must find the
+// tessela tool it carries (so TESSELA_BIN is not set for it).
+const packaged = process.env.E2E_PACKAGED;
+if (!packaged) process.env.TESSELA_BIN ??= resolve(root, "../target/debug/tessela");
+else delete process.env.TESSELA_BIN;
+const app = await electron.launch(
+  packaged
+    ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } }
+    : { args: [join(root, "dist/main.cjs"), "--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } },
+);
 const win = await app.firstWindow();
 await win.waitForSelector(".cm-content");
 

@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { listPages, readPage, resolveInside, writePage } from "../src/main/files";
-import { queryArgv } from "../src/main/tessela";
+import { findTessela, queryArgv } from "../src/main/tessela";
 
 async function bundle(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "tessela-test-"));
@@ -66,5 +66,26 @@ describe("queryArgv", () => {
       "query", "/b", "--json", "--ref", "a", "--ref", "b", "--any", "--text", "x",
       "--from", "2026-01-01", "--to", "2026-01-31", "--limit", "5",
     ]);
+  });
+});
+
+describe("findTessela", () => {
+  const base = { env: undefined, resourcesPath: undefined, appPath: "/src/editor", platform: "linux" as const };
+  const have = (...files: string[]) => (f: string) => files.includes(f);
+
+  it("prefers $TESSELA_BIN", () => {
+    expect(findTessela({ ...base, env: "/x/tessela", exists: have() })).toBe("/x/tessela");
+  });
+
+  it("uses the tool packaged with the app", () => {
+    const l = { ...base, resourcesPath: "/app/resources", exists: have("/app/resources/bin/tessela", "/src/target/release/tessela") };
+    expect(findTessela(l)).toBe("/app/resources/bin/tessela");
+    const win = { ...l, platform: "win32" as const, exists: have("/app/resources/bin/tessela.exe") };
+    expect(findTessela(win)).toBe("/app/resources/bin/tessela.exe");
+  });
+
+  it("falls back to a build next to the editor, then PATH", () => {
+    expect(findTessela({ ...base, exists: have("/src/target/debug/tessela") })).toBe("/src/target/debug/tessela");
+    expect(findTessela({ ...base, exists: have() })).toBe("tessela");
   });
 });
