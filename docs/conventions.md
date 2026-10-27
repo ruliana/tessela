@@ -67,6 +67,25 @@ Each block in the index carries:
   child bullet shows up under its parent's tag, as in Logseq, and a paragraph
   shows up under a tag in the heading above it. An "own refs only" option exists.
 
+### Outlines: a paragraph with a list beneath it
+
+A list that starts on the line right after a paragraph, with no blank line
+between them, belongs to that paragraph. Its top-level items are children of the
+paragraph, so they inherit its refs, just like children of a list item. A blank
+line between them keeps them apart. This is the shape of an outline: each
+top-level point is a paragraph, and its sub-points are the list beneath it.
+
+```markdown
+Idea about #tessela
+- detail about indexing #rust
+  - and a note on it
+
+Another thought
+```
+
+Here both list items match `#tessela`; "Another thought" does not. Only a
+paragraph owns a list this way, not a heading or another list.
+
 ### Block handles
 
 Tools need to point at a block ("edit this one") without storing IDs in files. A

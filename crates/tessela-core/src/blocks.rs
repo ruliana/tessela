@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use serde::Serialize;
 
 use crate::refs::extract_refs;
@@ -61,6 +61,11 @@ struct Parse<'a> {
     out: ParsedBody,
     heading_stack: Vec<usize>,
     items: Vec<OpenItem>,
+    /// The last top-level paragraph, with the offset where its text ends. A list that
+    /// starts on the very next line belongs to it.
+    top_paragraph: Option<(usize, usize)>,
+    /// The paragraph that owns the top-level list being read.
+    attach: Option<usize>,
 }
 
 pub fn parse_body(body: &str, base_line: usize, page_id: &str) -> ParsedBody {
@@ -73,6 +78,8 @@ pub fn parse_body(body: &str, base_line: usize, page_id: &str) -> ParsedBody {
         out: ParsedBody::default(),
         heading_stack: Vec::new(),
         items: Vec::new(),
+        top_paragraph: None,
+        attach: None,
     };
     p.run();
     p.finish_handles();
@@ -97,11 +104,21 @@ impl Parse<'_> {
             match event {
                 Event::Start(Tag::Heading { level, .. }) => {
                     self.heading(level as u8, range);
+                    self.top_paragraph = None;
                     skip = 1;
                 }
                 Event::Start(Tag::Item) => self.start_item(range),
-                Event::Start(Tag::List(_)) => self.finalize_open_item(range.start),
-                Event::End(pulldown_cmark::TagEnd::Item) => {
+                Event::Start(Tag::List(_)) => {
+                    self.finalize_open_item(range.start);
+                    if self.items.is_empty() {
+                        self.attach = self.paragraph_above(range.start);
+                    }
+                }
+                Event::End(TagEnd::List(_)) if self.items.is_empty() => {
+                    self.attach = None;
+                    self.top_paragraph = None;
+                }
+                Event::End(TagEnd::Item) => {
                     if let Some(item) = self.items.last()
                         && !item.finalized
                     {
@@ -111,13 +128,13 @@ impl Parse<'_> {
                     self.items.pop();
                 }
                 Event::Start(
-                    Tag::Paragraph
+                    tag @ (Tag::Paragraph
                     | Tag::BlockQuote(_)
                     | Tag::Table(_)
                     | Tag::HtmlBlock
-                    | Tag::CodeBlock(_),
+                    | Tag::CodeBlock(_)),
                 ) => {
-                    self.content_block(range);
+                    self.content_block(range, matches!(tag, Tag::Paragraph));
                     skip = 1;
                 }
                 _ => {}
@@ -181,9 +198,15 @@ impl Parse<'_> {
     /// A paragraph, quote, table, code block or HTML block. At the top level it is a
     /// block of its own. Inside a list item it is part of the item's text, unless it
     /// comes after a nested list: then it is a block under that item.
-    fn content_block(&mut self, range: Range<usize>) {
+    fn content_block(&mut self, range: Range<usize>, is_paragraph: bool) {
         match self.items.last().map(|i| (i.block, i.finalized)) {
-            None => self.top_level_block(range),
+            None => {
+                self.top_level_block(range.clone());
+                self.top_paragraph = is_paragraph.then(|| {
+                    let end = range.start + self.body[range].trim_end().len();
+                    (self.out.blocks.len() - 1, end)
+                });
+            }
             Some((parent, true)) => self.trailing_block(parent, range),
             Some((_, false)) => {}
         }
@@ -204,8 +227,16 @@ impl Parse<'_> {
         self.push_block(None, text, self.line_of(range.start), refs);
     }
 
+    /// The top-level paragraph that a list starting at `list_start` belongs to: the one
+    /// whose text ends on the line right above it, with no blank line between.
+    fn paragraph_above(&self, list_start: usize) -> Option<usize> {
+        let (block, end) = self.top_paragraph?;
+        let gap = self.body.get(end..list_start)?;
+        (gap.matches('\n').count() == 1 && gap.trim().is_empty()).then_some(block)
+    }
+
     fn start_item(&mut self, range: Range<usize>) {
-        let parent = self.items.last().map(|i| i.block);
+        let parent = self.items.last().map(|i| i.block).or(self.attach);
         // The block is filled in once the item's own text (before any nested list) is known.
         self.push_block(parent, String::new(), self.line_of(range.start), Vec::new());
         self.items.push(OpenItem {
@@ -416,5 +447,40 @@ mod tests {
         assert_eq!(p.blocks[2].parent, Some(0));
         assert_eq!(p.blocks[2].path_refs, ["a", "c"]);
         assert_eq!(p.blocks[3].parent, None);
+    }
+
+    #[test]
+    fn a_list_right_under_a_paragraph_belongs_to_it() {
+        let p = parse("Idea #a\n- child #b\n  - grandchild\n- sibling\n\nOther\n");
+        let parents: Vec<_> = p.blocks.iter().map(|b| b.parent).collect();
+        assert_eq!(parents, [None, Some(0), Some(1), Some(0), None]);
+        assert_eq!(p.blocks[1].path_refs, ["a", "b"]);
+        assert_eq!(p.blocks[2].path_refs, ["a", "b"]);
+        assert_eq!(p.blocks[3].path_refs, ["a"]);
+        assert!(p.blocks[4].path_refs.is_empty());
+    }
+
+    #[test]
+    fn a_blank_line_keeps_the_list_apart_from_the_paragraph() {
+        let p = parse("Idea #a\n\n- item\n");
+        assert_eq!(p.blocks[1].parent, None);
+        assert!(p.blocks[1].path_refs.is_empty());
+    }
+
+    #[test]
+    fn only_a_paragraph_owns_a_list_not_a_heading_or_another_list() {
+        let p = parse("## Head #a\n- item\n");
+        assert_eq!(p.blocks[0].parent, None);
+        let p = parse("- one #a\n\nText\n\n- two\n");
+        assert_eq!(p.blocks[2].parent, None);
+        assert!(p.blocks[2].path_refs.is_empty());
+    }
+
+    #[test]
+    fn a_paragraph_owns_only_the_list_that_follows_it() {
+        let p = parse("First #a\n- under first\n\nSecond\n- under second\n");
+        assert_eq!(p.blocks[1].parent, Some(0));
+        assert_eq!(p.blocks[3].parent, Some(2));
+        assert_eq!(p.blocks[3].path_refs, Vec::<String>::new());
     }
 }
