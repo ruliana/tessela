@@ -72,9 +72,23 @@ export type WriteResult =
   | { ok: true; hash: string }
   | { ok: false; reason: "conflict"; diskHash: string | null };
 
+/** What choosing a Markdown file on disk led to. */
+export type OpenFileResult =
+  | { kind: "canceled" }
+  | { kind: "page"; path: string }
+  /** The file is not under the bundle folder; `folder` is the one that holds it. */
+  | { kind: "outside"; folder: string }
+  /** The file is inside the bundle but is not a page the editor can open. */
+  | { kind: "unsupported"; reason: string };
+
 export interface Api {
   bundle(): Promise<string | null>;
+  /** Asks for the notes folder (the bundle root) and switches to it. Returns the folder now in use. */
   chooseBundle(): Promise<string | null>;
+  /** Asks for a Markdown file; the caller opens it when it is `kind: "page"`. */
+  openFile(): Promise<OpenFileResult>;
+  /** Makes `folder` the notes folder, e.g. after `openFile` found a file outside the current one. */
+  useFolder(folder: string): Promise<string | null>;
   listPages(): Promise<PageEntry[]>;
   vocab(): Promise<VocabEntry[]>;
   query(args: QueryArgs): Promise<Hit[]>;

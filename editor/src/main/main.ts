@@ -3,9 +3,9 @@ import path from "node:path";
 
 import { BrowserWindow, app, dialog, ipcMain } from "electron";
 
-import type { Diagnostic, Hit, QueryArgs, VocabEntry } from "../shared/api";
+import type { Diagnostic, Hit, OpenFileResult, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
-import { listPages, readPage, watchBundle, writePage } from "./files";
+import { listPages, readPage, relativeInside, resolveInside, watchBundle, writePage } from "./files";
 import { findTessela, lintArgv, queryArgv, runJson, vocabArgv } from "./tessela";
 
 let bundle: string | null = null;
@@ -69,13 +69,39 @@ function registerIpc(): void {
   ipcMain.handle("bundle", () => bundle);
   ipcMain.handle("chooseBundle", async () => {
     const result = await dialog.showOpenDialog({
-      title: "Open a Tessela bundle",
+      title: "Choose the notes folder",
+      buttonLabel: "Use this folder",
+      defaultPath: bundle ?? undefined,
       properties: ["openDirectory", "createDirectory"],
     });
     const chosen = result.filePaths[0];
     if (result.canceled || !chosen) return bundle;
     useBundle(chosen);
     return chosen;
+  });
+  ipcMain.handle("openFile", async (): Promise<OpenFileResult> => {
+    const root = needBundle();
+    const result = await dialog.showOpenDialog({
+      title: "Open a Markdown file",
+      defaultPath: root,
+      properties: ["openFile"],
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    const chosen = result.filePaths[0];
+    if (result.canceled || !chosen) return { kind: "canceled" };
+    const rel = relativeInside(root, chosen);
+    if (rel === null) return { kind: "outside", folder: path.dirname(chosen) };
+    try {
+      resolveInside(root, rel);
+    } catch {
+      return { kind: "unsupported", reason: "Only .md files outside hidden folders can be opened." };
+    }
+    return { kind: "page", path: rel };
+  });
+  ipcMain.handle("useFolder", (_e, folder: string) => {
+    if (!path.isAbsolute(folder) || !existsSync(folder)) throw new Error(`not a folder: ${folder}`);
+    useBundle(folder);
+    return folder;
   });
   ipcMain.handle("listPages", () => listPages(needBundle()));
   ipcMain.handle("vocab", () => runJson<VocabEntry[]>(tesselaBin(), vocabArgv(needBundle())));

@@ -5,6 +5,8 @@ import type { Api } from "../shared/api";
 const api: Api = {
   bundle: () => ipcRenderer.invoke("bundle"),
   chooseBundle: () => ipcRenderer.invoke("chooseBundle"),
+  openFile: () => ipcRenderer.invoke("openFile"),
+  useFolder: (folder) => ipcRenderer.invoke("useFolder", folder),
   listPages: () => ipcRenderer.invoke("listPages"),
   vocab: () => ipcRenderer.invoke("vocab"),
   query: (args) => ipcRenderer.invoke("query", args),

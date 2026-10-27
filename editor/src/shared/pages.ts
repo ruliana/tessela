@@ -30,6 +30,18 @@ export function conceptPath(name: string): string {
   return `${parts.join("/")}.md`;
 }
 
+/**
+ * The path for a page typed by name in the "New page" box, or null when the name cannot be a
+ * page: nothing typed, or a part that is `.`/`..` or hidden. A trailing `.md` is not doubled.
+ */
+export function newPagePath(input: string): string | null {
+  const name = input.trim().replace(/\.md$/i, "");
+  const path = conceptPath(name);
+  if (path === ".md") return null;
+  if (path.split("/").some((part) => part.startsWith("."))) return null;
+  return path;
+}
+
 function yamlString(s: string): string {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
