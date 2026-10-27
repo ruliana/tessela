@@ -14,7 +14,7 @@ import { languages } from "@codemirror/language-data";
 import { GFM } from "@lezer/markdown";
 import { search, searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { Annotation, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -33,6 +33,7 @@ import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
 import { queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
+import { livePreview } from "./livePreview";
 import { slashSource } from "./slash";
 
 export interface EditorOptions {
@@ -46,6 +47,10 @@ export interface EditorOptions {
   onFocus?: () => void;
   /** A tag or concept link was Ctrl/Cmd-clicked. */
   onOpenConcept: (id: string) => void;
+  /** Starts with Markdown rendered outside the block being edited. */
+  livePreview?: boolean;
+  /** The key for switching the rendering on or off was pressed. */
+  onTogglePreview?: () => void;
 }
 
 export interface EditorHandle {
@@ -55,6 +60,8 @@ export interface EditorHandle {
   focus(): void;
   /** Colours again, after the vocabulary changed. */
   refresh(): void;
+  /** Shows Markdown rendered, raw only where the cursor is (or raw everywhere when off). */
+  setLivePreview(on: boolean): void;
 }
 
 const programmatic = Annotation.define<boolean>();
@@ -148,6 +155,7 @@ function completions(vocab: () => VocabEntry[]) {
 }
 
 export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHandle {
+  const preview = new Compartment();
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -162,6 +170,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
+        preview.of(opts.livePreview ? livePreview() : []),
         blockKeymap,
         formatting,
         search({ top: true }),
@@ -171,6 +180,10 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
             { key: "Mod-l", run: smartLinkCommand },
             // The Super key on Linux and Windows.
             { key: "Meta-l", run: smartLinkCommand },
+            {
+              key: "Mod-Alt-m",
+              run: () => (opts.onTogglePreview?.(), true),
+            },
           ]),
         ),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -221,5 +234,6 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
     },
     focus: () => view.focus(),
     refresh: () => view.dispatch({ effects: refreshDecorations.of(null) }),
+    setLivePreview: (on) => view.dispatch({ effects: preview.reconfigure(on ? livePreview() : []) }),
   };
 }

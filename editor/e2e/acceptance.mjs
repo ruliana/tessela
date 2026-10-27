@@ -9,5 +9,6 @@ import "./acceptance/blocks.mjs";
 import "./acceptance/format.mjs";
 import "./acceptance/menus.mjs";
 import "./acceptance/syntax.mjs";
+import "./acceptance/preview.mjs";
 
 await runAll();
