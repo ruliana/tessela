@@ -9,6 +9,7 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { search, searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import {
@@ -27,6 +28,8 @@ import { suggest } from "../shared/complete";
 import { conceptAt, refsInLine } from "../shared/links";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
+import { formatting } from "./formatKeys";
+import { slashSource } from "./slash";
 
 export interface EditorOptions {
   vocab: () => VocabEntry[];
@@ -147,9 +150,12 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         EditorView.lineWrapping,
         markdown(),
         syntaxHighlighting(highlight),
-        autocompletion({ override: [completions(opts.vocab)], icons: false }),
+        autocompletion({ override: [completions(opts.vocab), slashSource], icons: false }),
         refMarks(opts.pageDir),
         blockKeymap,
+        formatting,
+        search({ top: true }),
+        Prec.highest(keymap.of(searchKeymap)),
         Prec.highest(
           keymap.of([
             { key: "Mod-l", run: smartLinkCommand },

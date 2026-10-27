@@ -115,6 +115,35 @@ await win.keyboard.press("Shift+Tab");
 await saved();
 assert.equal(bodyOf("blocks.md"), "second\n\n- Para one\n  - child");
 
+// Formatting: Ctrl+B marks a word, typing `*` over a selection surrounds it, `/` inserts
+// today's date, and Ctrl+Enter ticks a task.
+await win.fill("#search", "fmt");
+await win.press("#search", "Enter");
+await win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "fmt");
+await win.click(".cm-content");
+await win.keyboard.press("Control+End");
+await win.keyboard.type("format");
+await win.keyboard.press("Control+b");
+await win.keyboard.press("End");
+await win.keyboard.type(" and more");
+await win.keyboard.press("Shift+Home");
+await win.keyboard.type("*");
+await win.keyboard.press("End");
+await win.keyboard.press("Enter");
+await win.keyboard.type("due /tod");
+await win.waitForSelector(".cm-tooltip-autocomplete");
+await win.keyboard.press("Enter");
+await win.keyboard.press("Enter");
+await win.keyboard.type("write the thing");
+await win.keyboard.press("Control+Enter");
+await saved();
+const day2 = new Date();
+const dayText = `${day2.getFullYear()}-${String(day2.getMonth() + 1).padStart(2, "0")}-${String(day2.getDate()).padStart(2, "0")}`;
+const body = bodyOf("fmt.md");
+assert.ok(body.includes("***format** and more*"), body);
+assert.ok(body.includes(`due ${dayText}`), body);
+assert.match(body, /- \[ \] write the thing/);
+
 // A change made by another program shows up without a reload.
 await win.click("#pages button:has-text('project/tessela')");
 await win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "project/tessela");
