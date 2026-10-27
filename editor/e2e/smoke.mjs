@@ -83,6 +83,13 @@ await win.waitForSelector("#backlinks .hit");
 assert.match(await win.textContent("#backlinks"), /Worked on #project\/tessela today/);
 assert.match(await win.textContent("#backlinks"), /see/);
 
+// Undo right after opening a page must not blank it (or save an empty file over it).
+await win.click(".cm-content");
+await win.keyboard.press("Control+z");
+await new Promise((r) => setTimeout(r, 1500));
+assert.match(await win.textContent(".cm-content"), /type: project/);
+assert.match(readFileSync(join(bundle, "project/tessela.md"), "utf8"), /type: project/);
+
 // A change made by another program shows up without a reload.
 writeFileSync(
   join(bundle, "project/tessela.md"),
