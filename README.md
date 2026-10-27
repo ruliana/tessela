@@ -112,6 +112,13 @@ npm run package        # installer for this OS in editor/release/
 npm run package:dir    # just the unpacked app, for trying it
 ```
 
+That gives an AppImage and a deb on Linux and a dmg on macOS. The
+[Release workflow](.github/workflows/release-editor.yml) builds all of them (Linux, and macOS
+for Apple silicon and Intel): run it from the Actions tab, or push a tag such as
+`v0.1.0` (matching `editor/package.json`) to attach them to a GitHub release. The
+macOS app is not signed with an Apple certificate, so the first time, open it with
+right-click, Open, or run `xattr -dr com.apple.quarantine /Applications/Tessela.app`.
+
 ## Releases
 
 Pushing a tag like `v0.1.0` builds the `tessela` command line tool for Linux

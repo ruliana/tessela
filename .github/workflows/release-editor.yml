@@ -1,0 +1,85 @@
+name: Release editor
+
+# The standalone CLI binaries are built by release-cli.yml, which attaches to the same
+# release; whichever workflow runs first creates it.
+#
+# Builds the editor installers: AppImage and deb for Linux, dmg for macOS (Apple
+# silicon and Intel). Run it by hand to get the installers as workflow artifacts, or
+# push a tag like `v0.1.0` to attach them to a GitHub release. The tag must match the
+# version in editor/package.json.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-22.04
+          - name: macos-arm64
+            os: macos-14
+          - name: macos-x64
+            os: macos-15-intel
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: editor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # Builds the tessela binary, bundles it into the app and runs electron-builder.
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.name }}
+          path: |
+            editor/release/*.AppImage
+            editor/release/*.deb
+            editor/release/*.dmg
+          if-no-files-found: error
+
+  publish:
+    name: attach to the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the app version
+        run: |
+          version="$(node -p "require('./editor/package.json').version")"
+          test "${GITHUB_REF_NAME}" = "v${version}" || {
+            echo "tag ${GITHUB_REF_NAME} does not match editor/package.json version ${version}" >&2
+            exit 1
+          }
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: installers
+      - name: Create the release if it does not exist, then upload the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --generate-notes \
+            || gh release view "$TAG" >/dev/null   # the other workflow created it first
+          gh release upload "$TAG" installers/* --clobber

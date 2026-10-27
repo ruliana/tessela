@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "npm run build && node e2e/smoke.mjs",
-    "package": "npm run build && node scripts/prepare-bin.mjs && electron-builder",
+    "package": "npm run build && node scripts/prepare-bin.mjs && electron-builder --publish never",
     "package:dir": "npm run build && node scripts/prepare-bin.mjs && electron-builder --dir"
   },
   "devDependencies": {
@@ -35,7 +35,10 @@
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
   },
-  "author": "Tessela",
+  "author": {
+    "name": "Tessela",
+    "email": "noreply@tessela.invalid"
+  },
   "build": {
     "appId": "md.tessela.editor",
     "productName": "Tessela",
@@ -57,18 +60,23 @@
         "AppImage",
         "deb"
       ],
-      "category": "Office"
+      "category": "Office",
+      "executableName": "tessela-editor",
+      "maintainer": "Tessela <noreply@tessela.invalid>"
     },
     "mac": {
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "identity": "-"
     },
-    "win": {
-      "target": [
-        "nsis"
-      ]
+    "artifactName": "tessela-editor-${version}-${os}-${arch}.${ext}",
+    "publish": {
+      "provider": "github",
+      "owner": "ruliana",
+      "repo": "tessela"
     }
-  }
+  },
+  "homepage": "https://github.com/ruliana/tessela"
 }
