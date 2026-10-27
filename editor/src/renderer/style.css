@@ -121,3 +121,11 @@ h2 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform
 .problems-toggle { text-align: left; background: none; border: 0; border-top: 1px solid var(--border); padding: 8px 2px 2px; cursor: pointer; color: var(--warn); font-size: 13px; }
 .problems-toggle[data-clean="true"] { color: var(--muted); }
 .sidebar { overflow: hidden; }
+
+.cm-panels { background: var(--panel); color: var(--text); border-color: var(--border); font: 13px var(--sans); }
+.cm-panels .cm-textfield { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+.cm-panels button { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 8px; color: var(--text); cursor: pointer; }
+.cm-panels button:hover { border-color: var(--accent); }
+.cm-panels label { color: var(--muted); }
+.cm-searchMatch { background: var(--accent-soft); outline: 1px solid var(--accent); }
+.cm-searchMatch-selected { background: var(--accent); color: var(--bg); }

@@ -271,6 +271,26 @@ writes the Markdown files itself.
 - `#` and `](` suggest existing concepts from the vocabulary. Ctrl/Cmd-click on a tag
   or a concept link opens its page, which is created from a template when new.
 
+### Editing keys
+
+| Keys                          | What it does                                                          |
+| ----------------------------- | --------------------------------------------------------------------- |
+| Tab                           | Paragraph becomes a list item; an item nests under the one before it   |
+| Shift+Tab                     | Nested item moves out; a top-level item becomes a paragraph again      |
+| Alt+Up / Alt+Down             | Move the block, with what it owns, past its neighbour                  |
+| Esc, then Shift+Up / Shift+Down | Select the block at the cursor (Esc again: its parent), then more blocks |
+| Ctrl+B, Ctrl+I, Ctrl+E        | Bold, italic, code (the word at the cursor when nothing is selected)   |
+| Ctrl+Shift+X                  | Strikethrough                                                         |
+| `*` `_` `~` `(` `[` `{` `"` `` ` `` | Typed over a selection, surround it; brackets close themselves   |
+| Paste a URL over a selection  | Makes a link of the selection                                         |
+| Ctrl+Enter                    | Tick or untick a task; makes a task of an item or a paragraph         |
+| `/`                           | Menu: headings, lists, tasks, quote, code, table, dates, link, tag     |
+| Ctrl+F                        | Find in the page                                                      |
+
+On macOS, Ctrl above is Cmd. Tab, Shift+Tab and Alt+Up/Down keep their usual
+behaviour inside front matter and fenced code. Blocks are the ones of §3: a
+paragraph owns the list directly under it, and an item owns the items nested in it.
+
 ### Smart link: Ctrl+L (Super+L on macOS)
 
 | Selection                                   | Result                  | Cursor            |
