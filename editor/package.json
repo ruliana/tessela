@@ -71,7 +71,7 @@
       "category": "public.app-category.productivity",
       "identity": "-"
     },
-    "artifactName": "Tessela-${version}-${os}-${arch}.${ext}",
+    "artifactName": "tessela-editor-${version}-${os}-${arch}.${ext}",
     "publish": {
       "provider": "github",
       "owner": "ruliana",

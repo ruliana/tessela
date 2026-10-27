@@ -1,5 +1,8 @@
-name: Release
+name: Release editor
 
+# The standalone CLI binaries are built by release-cli.yml, which attaches to the same
+# release; whichever workflow runs first creates it.
+#
 # Builds the editor installers: AppImage and deb for Linux, dmg for macOS (Apple
 # silicon and Intel). Run it by hand to get the installers as workflow artifacts, or
 # push a tag like `v0.1.0` to attach them to a GitHub release. The tag must match the
@@ -71,7 +74,12 @@ jobs:
           pattern: installers-*
           merge-multiple: true
           path: installers
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: installers/*
-          generate_release_notes: true
+      - name: Create the release if it does not exist, then upload the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --generate-notes \
+            || gh release view "$TAG" >/dev/null   # the other workflow created it first
+          gh release upload "$TAG" installers/* --clobber
