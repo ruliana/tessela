@@ -112,6 +112,13 @@ npm run package        # installer for this OS in editor/release/
 npm run package:dir    # just the unpacked app, for trying it
 ```
 
+## Releases
+
+Pushing a tag like `v0.1.0` builds the `tessela` command line tool for Linux
+(x86-64, static) and macOS (Apple silicon and Intel) and attaches
+`tessela-<tag>-<target>.tar.gz` files, with checksums, to the GitHub release.
+The workflow can also be run by hand from the Actions tab for an existing tag.
+
 ## Development
 
 ```
