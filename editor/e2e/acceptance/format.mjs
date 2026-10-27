@@ -196,6 +196,17 @@ suite("Paste a URL over a selection", null, (test) => {
     assert.equal(await s.body(), "https://example.com");
   });
 
+  test("a URL pasted over several lines replaces them, it is not a link", async (s) => {
+    await s.openWith("paste-lines", "");
+    await s.enter("one\ntwo");
+    await s.key("Shift+ArrowUp");
+    await s.key("Shift+Home");
+    await paste(s, "https://example.com");
+    assert.equal(await s.body(), "https://example.com");
+    await s.key("Control+z");
+    assert.equal(await s.body(), "one\ntwo");
+  });
+
   test("other text pasted over a selection replaces it", async (s) => {
     await s.openWith("paste-text", "");
     await s.type("old words");
@@ -243,15 +254,32 @@ suite("Ctrl+Enter tasks", null, (test) => {
     assert.equal(await s.body(), "- [ ] done");
   });
 
-  test("does not make a task of a heading or an empty line", async (s) => {
-    await s.openWith("task-none", "# Title\n\n");
+  test("makes a task of an empty line, with the cursor ready for the text", async (s) => {
+    await s.openWith("task-empty", "Intro\n\n");
     await s.key("Control+Enter");
-    assert.ok(!(await s.body()).includes("[ ]"), await s.body());
+    assert.equal(await s.body(), "Intro\n\n- [ ] ");
+    await s.type("buy milk");
+    assert.equal(await s.body(), "Intro\n\n- [ ] buy milk");
+  });
+
+  test("on an empty line inside a list the task keeps the indent", async (s) => {
+    await s.openWith("task-empty-nested", "- one\n  ");
+    await s.key("Control+Enter");
+    assert.equal(await s.body(), "- one\n  - [ ] ");
+  });
+
+  test("does nothing on a heading: no task, no new line", async (s) => {
+    await s.openWith("task-heading", "# Title\n\ntext");
     await s.key("ArrowUp");
     await s.key("ArrowUp");
     await s.key("Control+Enter");
-    assert.ok(!(await s.body()).includes("[ ]"), await s.body());
-    assert.ok((await s.body()).startsWith("# Title"));
+    assert.equal(await s.body(), "# Title\n\ntext");
+  });
+
+  test("does nothing on a quote", async (s) => {
+    await s.openWith("task-quote", "> quoted");
+    await s.key("Control+Enter");
+    assert.equal(await s.body(), "> quoted");
   });
 
   test("a task reaches the disk", async (s) => {

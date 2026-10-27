@@ -77,7 +77,10 @@ export interface LineEdit {
   dcol: number;
 }
 
-/** Ctrl+Enter: ticks or unticks a task; makes a task of an item or a paragraph. */
+/**
+ * Ctrl+Enter: ticks or unticks a task; makes a task of an item, a paragraph or an empty line.
+ * Headings, quotes and code fences are not tasks: null, and the key does nothing there.
+ */
 export function toggleTask(line: string): LineEdit | null {
   const task = TASK.exec(line);
   if (task) {
@@ -90,16 +93,20 @@ export function toggleTask(line: string): LineEdit | null {
     const at = item[1]!.length;
     return { text: `${line.slice(0, at)}[ ] ${line.slice(at)}`, dcol: 4 };
   }
-  if (line.trim() === "" || /^\s*(#{1,6}\s|>|```|~~~)/.test(line)) return null;
+  if (/^\s*(#{1,6}(\s|$)|>|```|~~~)/.test(line)) return null;
   const indent = /^\s*/.exec(line)![0];
   return { text: `${indent}- [ ] ${line.slice(indent.length)}`, dcol: 6 };
 }
 
 const WEB_URL = /^(?:https?:\/\/|mailto:)\S+$/;
 
+export function isWebUrl(text: string): boolean {
+  return WEB_URL.test(text.trim());
+}
+
 /** Pasting a URL over selected text makes a link of it. */
 export function pasteLink(selected: string, pasted: string): string | null {
   const url = pasted.trim();
-  if (selected === "" || selected.includes("\n") || !WEB_URL.test(url)) return null;
+  if (selected === "" || selected.includes("\n") || !isWebUrl(url)) return null;
   return `[${selected}](${url})`;
 }

@@ -5,6 +5,18 @@ import { front, localDay, suite } from "../harness.mjs";
 
 const popup = (s) => s.texts(".cm-tooltip-autocomplete li");
 
+/**
+ * Waits until the menu has narrowed to `label`. The popup updates a moment after typing, and
+ * CodeMirror ignores Enter for a short while after it opens, so the key is held back a little.
+ */
+async function menu(s, label) {
+  await s.win.waitForFunction(
+    (l) => document.querySelector('.cm-tooltip-autocomplete li[aria-selected="true"]')?.textContent?.startsWith(l),
+    label,
+  );
+  await s.win.waitForTimeout(200);
+}
+
 function bundle() {
   return {
     "project/tessela.md": `${front("project")}The editor project.\n`,
@@ -44,7 +56,7 @@ suite("Slash menu", bundle, (test) => {
     test(`${typed} inserts ${JSON.stringify(inserted)}`, async (s) => {
       await s.openWith(`slash-${typed.slice(1)}`, "");
       await s.type(typed);
-      await s.win.waitForSelector(".cm-tooltip-autocomplete");
+      await menu(s, { "/heading": "Heading 1", "/bullet": "Bullet list", "/numbered": "Numbered list", "/task": "Task", "/quote": "Quote", "/divider": "Divider" }[typed]);
       await s.key("Enter");
       await s.type("x");
       assert.equal(await s.body(), `${inserted}x`);
@@ -54,7 +66,7 @@ suite("Slash menu", bundle, (test) => {
   test("the arrow keys pick another heading level", async (s) => {
     await s.openWith("slash-h2", "");
     await s.type("/head");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Heading 1");
     await s.key("ArrowDown");
     await s.key("Enter");
     await s.type("Title");
@@ -64,7 +76,7 @@ suite("Slash menu", bundle, (test) => {
   test("/code inserts a fenced block with the cursor inside", async (s) => {
     await s.openWith("slash-code", "");
     await s.type("/code");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Code block");
     await s.key("Enter");
     await s.type("let a");
     assert.equal(await s.body(), "```\nlet a\n```");
@@ -73,7 +85,7 @@ suite("Slash menu", bundle, (test) => {
   test("/table inserts a table", async (s) => {
     await s.openWith("slash-table", "");
     await s.type("/table");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Table");
     await s.key("Enter");
     assert.equal(await s.body(), "| Column | Column |\n| --- | --- |\n|  |  |");
   });
@@ -87,7 +99,7 @@ suite("Slash menu", bundle, (test) => {
     for (const [word, n] of [["today", 0], ["tomorrow", 1], ["yesterday", -1]]) {
       await s.openWith(`slash-${word}`, "");
       await s.type(`due /${word}`);
-      await s.win.waitForSelector(".cm-tooltip-autocomplete");
+      await menu(s, word[0].toUpperCase() + word.slice(1));
       await s.key("Enter");
       assert.equal(await s.body(), `due ${day(n)}`, word);
     }
@@ -96,7 +108,7 @@ suite("Slash menu", bundle, (test) => {
   test("/now inserts the date and time with the offset", async (s) => {
     await s.openWith("slash-now", "");
     await s.type("at /now");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Now");
     await s.key("Enter");
     assert.match(await s.body(), /^at \d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
   });
@@ -104,7 +116,7 @@ suite("Slash menu", bundle, (test) => {
   test("/link inserts []() with the cursor in the text", async (s) => {
     await s.openWith("slash-link", "");
     await s.type("see /link");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Link");
     await s.key("Enter");
     await s.type("here");
     assert.equal(await s.body(), "see [here]()");
@@ -113,7 +125,7 @@ suite("Slash menu", bundle, (test) => {
   test("/tag inserts # and offers the existing concepts", async (s) => {
     await s.openWith("slash-tag", "");
     await s.type("about /tag");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Tag");
     await s.key("Enter");
     await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-tooltip-autocomplete li")].some((l) => l.textContent.includes("project/tessela")));
     await s.key("Escape");
@@ -149,7 +161,7 @@ suite("Slash menu", bundle, (test) => {
   test("a heading from the menu reaches the disk", async (s) => {
     await s.openWith("slash-save", "");
     await s.type("/head");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Heading 1");
     await s.key("Enter");
     await s.type("Saved title");
     assert.equal(await s.savedBody("slash-save"), "# Saved title");
@@ -158,7 +170,7 @@ suite("Slash menu", bundle, (test) => {
   test("the menu works after a list marker too", async (s) => {
     await s.openWith("slash-list", "- ");
     await s.type("/task");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "Task");
     await s.key("Enter");
     await s.type("x");
     assert.equal(await s.body(), "- - [ ] x");
@@ -238,7 +250,7 @@ suite("Concept suggestions and Ctrl-click", bundle, (test) => {
   test("# suggests the concepts that exist", async (s) => {
     await s.openWith("sugg-tag", "");
     await s.type("#proj");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "project/tessela");
     assert.ok((await popup(s)).some((i) => i.includes("project/tessela")));
     await s.key("Enter");
     assert.equal(await s.body(), "#project/tessela");
@@ -261,7 +273,7 @@ suite("Concept suggestions and Ctrl-click", bundle, (test) => {
   test("]( suggests pages and fills in the path", async (s) => {
     await s.openWith("sugg-link", "");
     await s.type("[x](proj");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete");
+    await menu(s, "project/tessela");
     await s.key("Enter");
     assert.equal(await s.body(), "[x](/project/tessela.md)");
   });

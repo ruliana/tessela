@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addDays, datesInLine, formatDate, formatDateTime } from "../src/shared/dates";
-import { type TextEdit, pasteLink, surround, toggleMark, toggleTask } from "../src/shared/format";
+import { type TextEdit, isWebUrl, pasteLink, surround, toggleMark, toggleTask } from "../src/shared/format";
 import { matchSlash, slashItems } from "../src/shared/slash";
 import { frontmatterTags, inlineTokens } from "../src/shared/tokens";
 
@@ -66,10 +66,17 @@ describe("toggleTask", () => {
     expect(toggleTask("write")).toEqual({ text: "- [ ] write", dcol: 6 });
   });
 
-  it("leaves blank lines, headings and quotes alone", () => {
-    expect(toggleTask("")).toBeNull();
+  it("makes a task of an empty line, keeping its indent", () => {
+    expect(toggleTask("")).toEqual({ text: "- [ ] ", dcol: 6 });
+    expect(toggleTask("  ")).toEqual({ text: "  - [ ] ", dcol: 6 });
+  });
+
+  it("leaves headings, quotes and fences alone", () => {
     expect(toggleTask("# Title")).toBeNull();
+    expect(toggleTask("##")).toBeNull();
     expect(toggleTask("> quote")).toBeNull();
+    expect(toggleTask("```js")).toBeNull();
+    expect(toggleTask("#tag in a paragraph")).not.toBeNull();
   });
 });
 
@@ -82,6 +89,15 @@ describe("pasteLink", () => {
     expect(pasteLink("", "https://x.org")).toBeNull();
     expect(pasteLink("a", "not a url")).toBeNull();
     expect(pasteLink("a\nb", "https://x.org")).toBeNull();
+  });
+});
+
+describe("isWebUrl", () => {
+  it("accepts http, https and mailto, with whitespace around", () => {
+    expect(isWebUrl(" https://x.org\n")).toBe(true);
+    expect(isWebUrl("mailto:a@b.c")).toBe(true);
+    expect(isWebUrl("x.org")).toBe(false);
+    expect(isWebUrl("https://x.org and more")).toBe(false);
   });
 });
 
