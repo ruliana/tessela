@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
-use tessela_core::{Bundle, Linter, Query, Severity, vocabulary};
+use tessela_core::{Bundle, HitKind, Linter, Query, Severity, vocabulary};
 
 #[derive(Parser)]
 #[command(
@@ -39,7 +39,7 @@ enum Command {
         #[arg(long, value_parser = ["info", "warning", "error"], default_value = "info")]
         min_severity: String,
     },
-    /// Find blocks by the concepts they mention, their text, page or date
+    /// Find backlinks and blocks: by concept, text, page, type or date
     Query {
         #[command(flatten)]
         common: Common,
@@ -202,7 +202,12 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
         print_json(&hits);
     } else {
         for hit in &hits {
-            println!("{}:{}  {}", hit.path, hit.line, hit.handle);
+            let label = match hit.kind {
+                HitKind::Block => "",
+                HitKind::Heading => "  [heading]",
+                HitKind::Page => "  [page]",
+            };
+            println!("{}:{}  {}{label}", hit.path, hit.line, hit.handle);
             if !hit.heading_path.is_empty() {
                 println!("  under: {}", hit.heading_path.join(" > "));
             }
@@ -211,9 +216,9 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
             }
         }
         if hits.len() < total {
-            eprintln!("{} of {total} blocks", hits.len());
+            eprintln!("{} of {total} hits", hits.len());
         } else {
-            eprintln!("{total} blocks");
+            eprintln!("{total} hits");
         }
     }
     ExitCode::SUCCESS

@@ -27,10 +27,18 @@ pub struct Block {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Heading {
+    /// Page ID plus a hash of the heading text, like a block handle (spec §3).
+    pub handle: String,
     pub text: String,
     pub level: u8,
+    /// 1-based line in the file.
     pub line: usize,
+    /// The headings above this one.
+    pub heading_path: Vec<String>,
+    /// Concepts the heading itself mentions.
     pub refs: Vec<String>,
+    /// Own refs plus those of the headings above.
+    pub path_refs: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -103,15 +111,13 @@ impl Parse<'_> {
                     self.items.pop();
                 }
                 Event::Start(
-                    Tag::BlockQuote(_) | Tag::Table(_) | Tag::HtmlBlock | Tag::CodeBlock(_),
+                    Tag::Paragraph
+                    | Tag::BlockQuote(_)
+                    | Tag::Table(_)
+                    | Tag::HtmlBlock
+                    | Tag::CodeBlock(_),
                 ) => {
-                    if self.items.is_empty() {
-                        self.top_level_block(range);
-                    }
-                    skip = 1;
-                }
-                Event::Start(Tag::Paragraph) if self.items.is_empty() => {
-                    self.top_level_block(range);
+                    self.content_block(range);
                     skip = 1;
                 }
                 _ => {}
@@ -154,13 +160,42 @@ impl Parse<'_> {
                 break;
             }
         }
+        let heading_path = self.heading_path();
+        let mut path_refs = self
+            .heading_stack
+            .last()
+            .map_or_else(Vec::new, |&i| self.out.headings[i].path_refs.clone());
+        extend_unique(&mut path_refs, &refs);
         self.out.headings.push(Heading {
+            handle: String::new(),
             line: self.line_of(range.start),
             text,
             level,
+            heading_path,
             refs,
+            path_refs,
         });
         self.heading_stack.push(self.out.headings.len() - 1);
+    }
+
+    /// A paragraph, quote, table, code block or HTML block. At the top level it is a
+    /// block of its own. Inside a list item it is part of the item's text, unless it
+    /// comes after a nested list: then it is a block under that item.
+    fn content_block(&mut self, range: Range<usize>) {
+        match self.items.last().map(|i| (i.block, i.finalized)) {
+            None => self.top_level_block(range),
+            Some((parent, true)) => self.trailing_block(parent, range),
+            Some((_, false)) => {}
+        }
+    }
+
+    fn trailing_block(&mut self, parent: usize, range: Range<usize>) {
+        let text = self.body[range.clone()].trim().to_string();
+        let refs = extract_refs(&text, self.page_dir);
+        let mut path_refs = self.out.blocks[parent].path_refs.clone();
+        extend_unique(&mut path_refs, &refs);
+        self.push_block(Some(parent), text, self.line_of(range.start), refs);
+        self.out.blocks.last_mut().unwrap().path_refs = path_refs;
     }
 
     fn top_level_block(&mut self, range: Range<usize>) {
@@ -221,19 +256,31 @@ impl Parse<'_> {
     /// from the second identical block onwards.
     fn finish_handles(&mut self) {
         let mut seen: HashMap<String, usize> = HashMap::new();
-        for block in &mut self.out.blocks {
-            let normalized = block.text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let mut handle = |page_id: &str, normalized: &str| {
             let hash = blake3::hash(normalized.as_bytes()).to_hex();
             let hash = &hash[..8];
             let n = seen
                 .entry(hash.to_string())
                 .and_modify(|n| *n += 1)
                 .or_insert(1);
-            block.handle = if *n == 1 {
-                format!("{}#{hash}", self.page_id)
+            if *n == 1 {
+                format!("{page_id}#{hash}")
             } else {
-                format!("{}#{hash}.{n}", self.page_id)
-            };
+                format!("{page_id}#{hash}.{n}")
+            }
+        };
+        for block in &mut self.out.blocks {
+            let normalized = block.text.split_whitespace().collect::<Vec<_>>().join(" ");
+            block.handle = handle(self.page_id, &normalized);
+        }
+        // A heading hashes with its `# ` prefix, so it never collides with a block of the same text.
+        for heading in &mut self.out.headings {
+            let normalized = heading
+                .text
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            heading.handle = handle(self.page_id, &format!("# {normalized}"));
         }
     }
 }
@@ -342,5 +389,32 @@ mod tests {
         let p = parse("- [ ] todo #t\n1. first\n");
         assert_eq!(p.blocks[0].text, "todo #t");
         assert_eq!(p.blocks[1].text, "first");
+    }
+
+    #[test]
+    fn headings_have_handles_paths_and_inherited_refs() {
+        let p = parse("# Top #a\n\n## Sub #b\n\n### Deep\n\ntext\n");
+        let sub = &p.headings[1];
+        assert_eq!(sub.heading_path, ["Top #a"]);
+        assert_eq!(sub.refs, ["b"]);
+        assert_eq!(sub.path_refs, ["a", "b"]);
+        assert_eq!(p.headings[2].path_refs, ["a", "b"]);
+        assert!(p.headings[0].handle.starts_with("notes/page#"));
+    }
+
+    #[test]
+    fn heading_and_paragraph_with_the_same_text_get_different_handles() {
+        let p = parse("# Same\n\nSame\n");
+        assert_ne!(p.headings[0].handle, p.blocks[0].handle);
+    }
+
+    #[test]
+    fn a_paragraph_after_a_nested_list_is_a_block_under_the_item() {
+        let p = parse("- parent #a\n\n  - child #b\n\n  closing #c\n\n- next\n");
+        let texts: Vec<_> = p.blocks.iter().map(|b| b.text.as_str()).collect();
+        assert_eq!(texts, ["parent #a", "child #b", "closing #c", "next"]);
+        assert_eq!(p.blocks[2].parent, Some(0));
+        assert_eq!(p.blocks[2].path_refs, ["a", "c"]);
+        assert_eq!(p.blocks[3].parent, None);
     }
 }

@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
+use crate::blocks::{Block, Heading};
 use crate::bundle::Bundle;
 use crate::page::Page;
 use crate::refs::normalize_concept;
@@ -32,18 +33,36 @@ pub struct Query {
     pub to: Option<String>,
 }
 
+/// What kind of thing a hit is. Anything that can hold a reference can be found,
+/// so a query for a concept returns its backlinks wherever they are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HitKind {
+    /// A paragraph or list item.
+    Block,
+    /// A heading that mentions the concept. The blocks below it also match, as they
+    /// inherit its refs, but the heading itself is a backlink too.
+    Heading,
+    /// A page that mentions the concept in its frontmatter (`tags`, or links and tags
+    /// in other frontmatter text). Only returned when the query names a concept.
+    Page,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Hit {
+    pub kind: HitKind,
+    /// Blocks and headings: page ID plus a hash of the text. Pages: the page ID.
     pub handle: String,
     pub page: String,
     pub path: String,
     pub page_type: Option<String>,
     pub line: usize,
     pub heading_path: Vec<String>,
+    /// Blocks: the text. Headings: the heading text. Pages: the title, or the page ID.
     pub text: String,
     pub refs: Vec<String>,
     pub path_refs: Vec<String>,
-    /// The dates (`YYYY-MM-DD`) written in the block text, in order.
+    /// The dates (`YYYY-MM-DD`) written in `text`, in order.
     pub dates: Vec<String>,
     /// Handle of the enclosing list item, if any.
     pub parent: Option<String>,
@@ -60,43 +79,32 @@ impl Query {
                 continue;
             }
             let page_in_range = by_date && page_date(page).is_some_and(|d| self.in_range(&d));
-            for block in &page.blocks {
-                let dates = dates_in(&block.text);
-                if by_date && !page_in_range && !dates.iter().any(|d| self.in_range(d)) {
-                    continue;
-                }
-                let have = if self.own {
-                    &block.refs
-                } else {
-                    &block.path_refs
-                };
+            let accepts = |hit: &Hit| {
+                let have = if self.own { &hit.refs } else { &hit.path_refs };
                 let refs_ok = wanted.is_empty()
                     || if self.any {
                         wanted.iter().any(|w| mentions_concept(have, w))
                     } else {
                         wanted.iter().all(|w| mentions_concept(have, w))
                     };
-                if !refs_ok
-                    || text
+                refs_ok
+                    && text
                         .as_ref()
-                        .is_some_and(|t| !block.text.to_lowercase().contains(t))
-                {
-                    continue;
-                }
-                hits.push(Hit {
-                    handle: block.handle.clone(),
-                    page: page.id.clone(),
-                    path: page.path.clone(),
-                    page_type: page.kind().map(str::to_string),
-                    line: block.line,
-                    heading_path: block.heading_path.clone(),
-                    text: block.text.clone(),
-                    refs: block.refs.clone(),
-                    path_refs: block.path_refs.clone(),
-                    dates,
-                    parent: block.parent.map(|p| page.blocks[p].handle.clone()),
-                });
+                        .is_none_or(|t| hit.text.to_lowercase().contains(t))
+                    && (!by_date || page_in_range || hit.dates.iter().any(|d| self.in_range(d)))
+            };
+
+            let mut found = Vec::new();
+            // Pages and headings only exist to hold references, so they are only
+            // returned when a concept is asked for.
+            if !wanted.is_empty() {
+                found.push(page_hit(page));
+                found.extend(page.headings.iter().map(|h| heading_hit(page, h)));
             }
+            found.extend(page.blocks.iter().map(|b| block_hit(page, b)));
+            // Document order; the page itself first.
+            found.sort_by_key(|h| h.line);
+            hits.extend(found.into_iter().filter(accepts));
         }
         hits
     }
@@ -141,6 +149,58 @@ pub fn dates_in(text: &str) -> Vec<String> {
         rest = &rest[m.end()..];
     }
     found
+}
+
+fn block_hit(page: &Page, block: &Block) -> Hit {
+    Hit {
+        kind: HitKind::Block,
+        handle: block.handle.clone(),
+        page: page.id.clone(),
+        path: page.path.clone(),
+        page_type: page.kind().map(str::to_string),
+        line: block.line,
+        heading_path: block.heading_path.clone(),
+        dates: dates_in(&block.text),
+        text: block.text.clone(),
+        refs: block.refs.clone(),
+        path_refs: block.path_refs.clone(),
+        parent: block.parent.map(|p| page.blocks[p].handle.clone()),
+    }
+}
+
+fn heading_hit(page: &Page, heading: &Heading) -> Hit {
+    Hit {
+        kind: HitKind::Heading,
+        handle: heading.handle.clone(),
+        page: page.id.clone(),
+        path: page.path.clone(),
+        page_type: page.kind().map(str::to_string),
+        line: heading.line,
+        heading_path: heading.heading_path.clone(),
+        dates: dates_in(&heading.text),
+        text: heading.text.clone(),
+        refs: heading.refs.clone(),
+        path_refs: heading.path_refs.clone(),
+        parent: None,
+    }
+}
+
+fn page_hit(page: &Page) -> Hit {
+    let text = page.get_str("title").unwrap_or(&page.id).to_string();
+    Hit {
+        kind: HitKind::Page,
+        handle: page.id.clone(),
+        page: page.id.clone(),
+        path: page.path.clone(),
+        page_type: page.kind().map(str::to_string),
+        line: 1,
+        heading_path: Vec::new(),
+        dates: dates_in(&text),
+        text,
+        refs: page.refs.clone(),
+        path_refs: page.refs.clone(),
+        parent: None,
+    }
 }
 
 /// Whether `refs` has the concept or one nested under it (`project/tessela` is under `project`).

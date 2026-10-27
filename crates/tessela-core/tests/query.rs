@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tessela_core::{Bundle, Hit, Query, vocabulary};
+use tessela_core::{Bundle, Hit, HitKind, Query, vocabulary};
 
 fn bundle() -> Bundle {
     Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/query")).unwrap()
@@ -31,13 +31,14 @@ fn single_ref_matches_own_refs() {
 }
 
 #[test]
-fn children_and_heading_blocks_inherit_refs() {
+fn children_and_blocks_under_a_heading_inherit_refs() {
     let hits = refs(&["tessela"]).run(&bundle());
     assert_eq!(
         texts(&hits),
         [
             "Idea #tessela",
             "detail about indexing #rust",
+            "Work #tessela",
             "Wrote the linter in #rust.",
             "Ask about #okf"
         ]
@@ -46,7 +47,10 @@ fn children_and_heading_blocks_inherit_refs() {
         own: true,
         ..refs(&["tessela"])
     };
-    assert_eq!(texts(&own.run(&bundle())), ["Idea #tessela"]);
+    assert_eq!(
+        texts(&own.run(&bundle())),
+        ["Idea #tessela", "Work #tessela"]
+    );
 }
 
 #[test]
@@ -279,4 +283,98 @@ fn only_valid_standalone_dates_count() {
         ["2026-10-27", "2026-10-27"]
     );
     assert!(dates_in("2026-13-01 and 2026-10-32 and 12026-10-27 and 2026-10-271").is_empty());
+}
+
+#[test]
+fn a_heading_that_mentions_a_concept_is_a_backlink() {
+    let hits = refs(&["tessela"]).run(&bundle());
+    let heading = hits.iter().find(|h| h.kind == HitKind::Heading).unwrap();
+    assert_eq!(heading.text, "Work #tessela");
+    assert_eq!(
+        (heading.path.as_str(), heading.line),
+        ("journals/2026-10-27.md", 7)
+    );
+    assert_eq!(heading.refs, ["tessela"]);
+    assert!(heading.handle.starts_with("journals/2026-10-27#"));
+    assert_eq!(
+        hits.iter().filter(|h| h.kind == HitKind::Heading).count(),
+        1
+    );
+    // The blocks under it are still there, and are told apart by kind.
+    assert_eq!(hits.iter().filter(|h| h.kind == HitKind::Block).count(), 4);
+}
+
+#[test]
+fn a_page_tagged_with_a_concept_is_a_backlink() {
+    let hits = refs(&["language"]).run(&bundle());
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].kind, HitKind::Page);
+    assert_eq!(
+        (hits[0].handle.as_str(), hits[0].text.as_str()),
+        ("rust", "Rust")
+    );
+    assert_eq!(hits[0].refs, ["language"]);
+}
+
+#[test]
+fn pages_and_headings_are_only_returned_when_a_concept_is_asked_for() {
+    let all = Query::default().run(&bundle());
+    assert!(all.iter().all(|h| h.kind == HitKind::Block));
+    let by_text = Query {
+        text: Some("work".into()),
+        ..Query::default()
+    };
+    assert!(by_text.run(&bundle()).is_empty());
+}
+
+#[test]
+fn frontmatter_text_with_links_and_tags_counts_as_a_reference() {
+    let (b, dir) = temp_bundle(
+        "frontmatter-refs",
+        &[
+            (
+                "a.md",
+                "---\ntype: reference\ntitle: Paper\ndescription: \"Related to [Rust](/rust.md) and #okf\"\n---\n\nBody\n",
+            ),
+            ("rust.md", "---\ntype: concept\n---\n"),
+        ],
+    );
+    for concept in ["rust", "okf"] {
+        let hits = refs(&[concept]).run(&b);
+        assert_eq!(hits.len(), 1, "{concept}: {hits:?}");
+        assert_eq!((hits[0].kind, hits[0].page.as_str()), (HitKind::Page, "a"));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_paragraph_after_a_nested_list_is_still_found() {
+    let (b, dir) = temp_bundle(
+        "trailing",
+        &[(
+            "a.md",
+            "---\ntype: concept\n---\n\n- parent #topic\n\n  - child\n\n  closing words with #later\n",
+        )],
+    );
+    let hits = refs(&["later"]).run(&b);
+    assert_eq!(texts(&hits), ["closing words with #later"]);
+    // It belongs to the item, so it also shows up under the item's tag.
+    let under_parent = refs(&["topic"]).run(&b);
+    assert_eq!(
+        texts(&under_parent),
+        ["parent #topic", "child", "closing words with #later"]
+    );
+    assert_eq!(hits[0].parent, Some(under_parent[0].handle.clone()));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn date_filter_applies_to_backlink_hits_too() {
+    let hits = Query {
+        from: Some("2026-10-27".into()),
+        ..refs(&["tessela"])
+    }
+    .run(&bundle());
+    assert!(hits.iter().all(|h| h.page == "journals/2026-10-27"));
+    assert!(hits.iter().any(|h| h.kind == HitKind::Heading));
 }

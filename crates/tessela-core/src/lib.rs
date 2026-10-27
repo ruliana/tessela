@@ -14,5 +14,5 @@ pub use blocks::{Block, Heading};
 pub use bundle::Bundle;
 pub use lint::{Diagnostic, Linter, Rule, Severity};
 pub use page::Page;
-pub use query::{Hit, Query};
+pub use query::{Hit, HitKind, Query};
 pub use vocab::{VocabEntry, vocabulary};

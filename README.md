@@ -41,13 +41,26 @@ tessela query . --from 2026-10-01 --to 2026-10-31 --json  # journal days and men
 tessela query . --page project/ --limit 20       # one page, or a folder with `/`
 ```
 
-A block matches a concept when it, one of its parent list items, or a heading
-above it mentions it (spec §3); `--own` turns that off. A concept also matches
-the ones nested under it, so `--ref project` finds `#project/tessela`. A date range
-(`--from`, `--to`) keeps the blocks on journal days in the range and any block,
-on any page, whose text contains a date in the range. Every hit has a `handle` that stays the same until the block's text
-changes, plus its page, line, heading path, refs and parent handle. Text output
-is for people; `--json` is for agents and the editor.
+`tessela query` is the backlinks engine: ask for a concept and get everything
+that mentions it. A hit has a `kind`:
+
+- `block`: a paragraph or list item. It matches when it, one of its parent list
+  items, or a heading above it mentions the concept (spec §3); `--own` turns that
+  inheritance off.
+- `heading`: a heading that mentions the concept. The blocks under it match as
+  well, since they inherit its refs.
+- `page`: a page that mentions the concept in its frontmatter, through `tags` or
+  through links and `#tags` written in other frontmatter text.
+
+Headings and pages only exist to hold references, so they are returned only when
+the query names a concept with `--ref`.
+
+A concept also matches the ones nested under it, so `--ref project` finds
+`#project/tessela`. A date range (`--from`, `--to`) keeps what is on journal days
+in the range and anything, on any page, whose text contains a date in the range.
+Every hit has a `handle` that stays the same until the text changes, plus its
+page, line, heading path, refs and parent handle. Text output is for people;
+`--json` is for agents and the editor.
 
 ### Vocabulary
 
