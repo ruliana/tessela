@@ -21,6 +21,7 @@ export interface CardDeps {
   /** The title was clicked. */
   onOpenPage: (path: string) => void;
   onOpenConcept: (id: string) => void;
+  onOpenExternal: (url: string) => void;
   /** Whether Markdown is shown rendered outside the block being edited. */
   livePreview: () => boolean;
   onTogglePreview: () => void;
@@ -79,6 +80,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     onChange: onEdit,
     onFocus: () => deps.onActive(path),
     onOpenConcept: deps.onOpenConcept,
+    onOpenExternal: deps.onOpenExternal,
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
   });

@@ -438,6 +438,7 @@ function cardDeps() {
     },
     onOpenPage: (path: string) => void showPage(path),
     onOpenConcept: (id: string) => void showPage(conceptPath(id)),
+    onOpenExternal: (url: string) => void api.openExternal(url),
     livePreview: () => livePreview,
     onTogglePreview: togglePreview,
   };

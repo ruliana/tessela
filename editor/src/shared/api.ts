@@ -96,6 +96,8 @@ export interface Api {
   readPage(path: string): Promise<PageFile>;
   /** Writes only if the file on disk still has `expectedHash` (null: must not exist). */
   writePage(path: string, text: string, expectedHash: string | null): Promise<WriteResult>;
+  /** Opens a web or mail address in the system's own program. Other addresses are ignored. */
+  openExternal(url: string): Promise<void>;
   /** Path of today's journal, in local time. */
   todayPath(): Promise<string>;
   /** Called with the paths (relative) of pages that changed on disk. Returns an unsubscribe. */
