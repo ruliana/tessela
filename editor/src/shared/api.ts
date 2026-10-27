@@ -30,6 +30,17 @@ export interface VocabEntry {
   note: string | null;
 }
 
+export type Severity = "error" | "warning" | "info";
+
+/** One finding of `tessela lint --json`. `path` is relative to the bundle. */
+export interface Diagnostic {
+  rule: string;
+  severity: Severity;
+  path: string;
+  line: number | null;
+  message: string;
+}
+
 export interface QueryArgs {
   refs?: string[];
   any?: boolean;
@@ -67,6 +78,7 @@ export interface Api {
   listPages(): Promise<PageEntry[]>;
   vocab(): Promise<VocabEntry[]>;
   query(args: QueryArgs): Promise<Hit[]>;
+  lint(): Promise<Diagnostic[]>;
   readPage(path: string): Promise<PageFile>;
   /** Writes only if the file on disk still has `expectedHash` (null: must not exist). */
   writePage(path: string, text: string, expectedHash: string | null): Promise<WriteResult>;

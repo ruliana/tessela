@@ -23,10 +23,19 @@ export function vocabArgv(bundle: string): string[] {
   return ["vocab", bundle, "--json"];
 }
 
-export function runJson<T>(bin: string, argv: string[]): Promise<T> {
+export function lintArgv(bundle: string): string[] {
+  return ["lint", bundle, "--json"];
+}
+
+/**
+ * Runs a tool and parses its JSON output. `okCodes` are exit codes that still come with
+ * valid output: `tessela lint` exits with 1 when it finds errors.
+ */
+export function runJson<T>(bin: string, argv: string[], okCodes: number[] = []): Promise<T> {
   return new Promise((resolve, reject) => {
     execFile(bin, argv, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
+      const code = typeof error?.code === "number" ? error.code : undefined;
+      if (error && !(code !== undefined && okCodes.includes(code))) {
         reject(new Error(`${bin} ${argv[0]} failed: ${stderr.trim() || error.message}`));
         return;
       }

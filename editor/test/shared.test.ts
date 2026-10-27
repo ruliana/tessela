@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { VocabEntry } from "../src/shared/api";
+import type { Diagnostic, VocabEntry } from "../src/shared/api";
 import { suggest } from "../src/shared/complete";
 import { conceptAt, linkTargetId, refsInLine } from "../src/shared/links";
+import { summary, visibleProblems } from "../src/shared/problems";
+import { excerpt, searchable } from "../src/shared/search";
 import { conceptPath, isJournalPath, localDay, newPageText } from "../src/shared/pages";
 import { smartLink } from "../src/shared/smartLink";
 
@@ -95,5 +97,47 @@ describe("suggest", () => {
   it("leaves out aliases and says when a page is missing", () => {
     expect(suggest(vocab, "t").map((s) => s.concept)).not.toContain("task");
     expect(suggest(vocab, "todo")[0]?.detail).toBe("2 mentions, no page yet");
+  });
+});
+
+describe("problems", () => {
+  const d = (severity: Diagnostic["severity"], path: string, line: number | null): Diagnostic => ({
+    rule: "x",
+    severity,
+    path,
+    line,
+    message: "m",
+  });
+
+  it("hides info and puts errors first", () => {
+    const list = visibleProblems([d("warning", "a.md", 1), d("info", "z.md", 1), d("error", "b.md", 3), d("error", "b.md", 2)]);
+    expect(list.map((p) => `${p.severity} ${p.path}:${p.line}`)).toEqual([
+      "error b.md:2",
+      "error b.md:3",
+      "warning a.md:1",
+    ]);
+  });
+
+  it("summarizes the counts", () => {
+    expect(summary([])).toBe("No problems");
+    expect(summary([d("error", "a.md", 1), d("warning", "a.md", 1), d("warning", "a.md", 2)])).toBe(
+      "1 error, 2 warnings",
+    );
+  });
+});
+
+describe("search", () => {
+  it("ignores a single character", () => {
+    expect(searchable(" a ")).toBeNull();
+    expect(searchable(" ab ")).toBe("ab");
+  });
+
+  it("cuts a long text around the match", () => {
+    const text = `${"lorem ".repeat(40)}needle ${"ipsum ".repeat(40)}`;
+    const out = excerpt(text, "needle");
+    expect(out).toContain("needle");
+    expect(out.length).toBeLessThan(160);
+    expect(out.startsWith("…")).toBe(true);
+    expect(excerpt("short text", "x")).toBe("short text");
   });
 });

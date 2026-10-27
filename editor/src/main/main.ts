@@ -3,10 +3,10 @@ import path from "node:path";
 
 import { BrowserWindow, app, dialog, ipcMain } from "electron";
 
-import type { Hit, QueryArgs, VocabEntry } from "../shared/api";
+import type { Diagnostic, Hit, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
 import { listPages, readPage, watchBundle, writePage } from "./files";
-import { queryArgv, runJson, vocabArgv } from "./tessela";
+import { lintArgv, queryArgv, runJson, vocabArgv } from "./tessela";
 
 let bundle: string | null = null;
 let stopWatching: (() => void) | undefined;
@@ -81,6 +81,9 @@ function registerIpc(): void {
   ipcMain.handle("vocab", () => runJson<VocabEntry[]>(tesselaBin(), vocabArgv(needBundle())));
   ipcMain.handle("query", (_e, args: QueryArgs) =>
     runJson<Hit[]>(tesselaBin(), queryArgv(needBundle(), args)),
+  );
+  ipcMain.handle("lint", () =>
+    runJson<Diagnostic[]>(tesselaBin(), lintArgv(needBundle()), [1]),
   );
   ipcMain.handle("readPage", (_e, rel: string) => readPage(needBundle(), rel));
   ipcMain.handle("writePage", (_e, rel: string, text: string, expected: string | null) =>

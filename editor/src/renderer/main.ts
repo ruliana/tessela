@@ -1,49 +1,31 @@
-// The window: sidebar, editor and backlinks. All file access goes through `window.tessela`.
+// The window: sidebar, editor(s) and backlinks. All file access goes through `window.tessela`.
 
 import "./style.css";
 
-import type { Hit, PageEntry, VocabEntry } from "../shared/api";
+import type { Diagnostic, Hit, PageEntry, VocabEntry } from "../shared/api";
 import { conceptPath, isJournalPath, pageId } from "../shared/pages";
-import { createEditor, type EditorHandle } from "./editor";
+import { summary, visibleProblems } from "../shared/problems";
+import { excerpt, searchable, textHits } from "../shared/search";
+import { createCard, type Card } from "./card";
+import { el } from "./dom";
 
 const api = window.tessela;
-const SAVE_DELAY_MS = 700;
+const JOURNAL_STEP = 7;
+const SEARCH_DELAY_MS = 250;
 
-interface Current {
-  path: string;
-  /** Hash of the file on disk when we last read or wrote it; null if it has no file yet. */
-  hash: string | null;
-  /** The text we last read from or wrote to disk. */
-  saved: string;
-  conflict: boolean;
-}
-
-let current: Current | null = null;
 let pages: PageEntry[] = [];
 let vocab: VocabEntry[] = [];
+let problems: Diagnostic[] = [];
 let filter = "";
-let editor: EditorHandle | null = null;
-let saveTimer: number | undefined;
-let saving: Promise<void> = Promise.resolve();
+
+/** What the middle of the window shows: one page, or the latest journal days stacked. */
+type View = { kind: "page"; path: string } | { kind: "journals"; count: number };
+let view: View | null = null;
+let cards: Card[] = [];
+/** The card the user is working in; backlinks follow it. */
+let active: Card | null = null;
 
 const app = document.getElementById("app") as HTMLElement;
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {},
-  ...children: (Node | string)[]
-): HTMLElementTagNameMap[K] {
-  const { class: cls, ...rest } = props;
-  const node = Object.assign(document.createElement(tag), rest);
-  if (cls) node.className = cls;
-  node.append(...children);
-  return node;
-}
-
-function dirOf(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i < 0 ? "" : path.slice(0, i);
-}
 
 // ---- start -----------------------------------------------------------------
 
@@ -53,7 +35,7 @@ async function start(): Promise<void> {
   buildShell(bundle);
   api.onChanged((paths) => void onChanged(paths));
   await refreshIndex();
-  await open(await api.todayPath());
+  await showJournals();
 }
 
 function welcome(message?: string): void {
@@ -87,64 +69,66 @@ function welcome(message?: string): void {
 
 let listEl: HTMLElement;
 let journalsEl: HTMLElement;
+let resultsEl: HTMLElement;
+let problemsEl: HTMLElement;
+let problemsToggle: HTMLButtonElement;
+let problemsOpen = false;
+let stackEl: HTMLElement;
 let backlinksEl: HTMLElement;
-let pathEl: HTMLElement;
-let statusEl: HTMLElement;
-let bannerEl: HTMLElement;
 
 function buildShell(bundle: string): void {
+  let searchTimer: number | undefined;
   const search = el("input", {
     class: "search",
     id: "search",
-    placeholder: "Find or create a page…",
+    placeholder: "Search, or create a page…",
     oninput: () => {
       filter = search.value;
       renderLists();
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => void runSearch(), SEARCH_DELAY_MS);
     },
     onkeydown: (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        search.value = filter = "";
+        renderLists();
+        void runSearch();
+        return;
+      }
       if (e.key !== "Enter" || !filter.trim()) return;
       const path = conceptPath(filter.trim());
       search.value = filter = "";
-      void open(path);
+      renderLists();
+      void runSearch();
+      void showPage(path);
     },
   });
   journalsEl = el("ul", { class: "list", id: "journals" });
   listEl = el("ul", { class: "list", id: "pages" });
+  resultsEl = el("div", { class: "results", id: "results", hidden: true });
+  problemsEl = el("ul", { class: "problems", id: "problems", hidden: true });
+  problemsToggle = el("button", { class: "problems-toggle", id: "problems-toggle", onclick: toggleProblems });
   const sidebar = el(
     "aside",
     { class: "sidebar" },
     el("div", { class: "brand" }, "Tessela", el("small", { title: bundle }, bundle.split("/").pop() ?? bundle)),
     el(
-      "button",
-      { class: "primary", id: "today", onclick: async () => open(await api.todayPath()) },
-      "Today",
+      "div",
+      { class: "buttons" },
+      el("button", { class: "primary", id: "today", onclick: () => void showJournals(true) }, "Today"),
+      el("button", { class: "secondary", id: "journals-view", onclick: () => void showJournals() }, "Journals"),
     ),
     search,
-    journalsEl,
-    listEl,
+    resultsEl,
+    el("div", { class: "lists" }, journalsEl, listEl),
+    problemsEl,
+    problemsToggle,
   );
 
-  pathEl = el("span", { class: "path" });
-  statusEl = el("span", { class: "status" });
-  bannerEl = el("div", { class: "banner", hidden: true });
-  const host = el("div", { class: "editor", id: "editor" });
-  const pane = el(
-    "main",
-    { class: "pane" },
-    el("div", { class: "pane-head" }, pathEl, statusEl),
-    bannerEl,
-    host,
-  );
-
+  stackEl = el("div", { class: "stack", id: "stack" });
   backlinksEl = el("aside", { class: "backlinks", id: "backlinks" });
-  app.replaceChildren(el("div", { class: "shell" }, sidebar, pane, backlinksEl));
-
-  editor = createEditor(host, {
-    vocab: () => vocab,
-    pageDir: () => dirOf(current?.path ?? ""),
-    onChange: onEdit,
-    onOpenConcept: (id) => void open(conceptPath(id)),
-  });
+  app.replaceChildren(el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl));
+  renderProblems();
 }
 
 function renderLists(): void {
@@ -152,11 +136,11 @@ function renderLists(): void {
   const item = (label: string, path: string, count?: number, unwritten = false) => {
     const button = el(
       "button",
-      { onclick: () => void open(path) },
+      { onclick: () => void showPage(path) },
       el("span", { class: "name" }, label),
       count === undefined ? "" : el("span", { class: "count" }, String(count)),
     );
-    if (current?.path === path) button.setAttribute("aria-current", "page");
+    if (view?.kind === "page" && view.path === path) button.setAttribute("aria-current", "page");
     return el("li", { class: unwritten ? "unwritten" : "" }, button);
   };
 
@@ -186,113 +170,166 @@ function renderLists(): void {
   );
 }
 
-function setStatus(state: "saved" | "dirty" | "conflict" | "error", text: string): void {
-  statusEl.dataset.state = state;
-  statusEl.textContent = text;
-}
-
 async function refreshIndex(): Promise<void> {
-  [pages, vocab] = await Promise.all([api.listPages(), api.vocab().catch(() => [])]);
+  [pages, vocab, problems] = await Promise.all([
+    api.listPages(),
+    api.vocab().catch(() => []),
+    api.lint().then(visibleProblems, () => []),
+  ]);
   renderLists();
+  renderProblems();
 }
 
-// ---- opening and saving ----------------------------------------------------
+// ---- search ------------------------------------------------------------------
 
-async function open(path: string): Promise<void> {
-  await flush();
-  const file = await api.readPage(path);
-  current = { path, hash: file.hash, saved: file.text, conflict: false };
-  pathEl.textContent = path;
-  bannerEl.hidden = true;
-  editor?.setText(file.text);
-  editor?.focus();
-  setStatus("saved", file.exists ? "Saved" : "New page");
-  renderLists();
-  await renderBacklinks();
-}
+let searchRun = 0;
 
-function onEdit(text: string): void {
-  if (!current) return;
-  if (current.conflict) return setStatus("conflict", "Not saved: file changed on disk");
-  setStatus("dirty", "Editing…");
-  window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => void flush(), SAVE_DELAY_MS);
-}
-
-/** Writes pending changes now. Waits for a save already in flight. */
-function flush(): Promise<void> {
-  window.clearTimeout(saveTimer);
-  saving = saving.then(saveNow);
-  return saving;
-}
-
-async function saveNow(): Promise<void> {
-  const page = current;
-  if (!page || page.conflict || !editor) return;
-  const text = editor.text();
-  if (text === page.saved) return;
-  // A brand-new page that was never typed in is not worth a file.
-  if (page.hash === null && text.trim() === "") return;
-  const result = await api.writePage(page.path, text, page.hash);
-  if (current !== page) return;
-  if (result.ok) {
-    page.hash = result.hash;
-    page.saved = text;
-    setStatus(editor.text() === text ? "saved" : "dirty", editor.text() === text ? "Saved" : "Editing…");
-    void refreshIndex();
-    void renderBacklinks();
-  } else {
-    showConflict(page);
+/** Looks for the typed text inside the notes, next to the filter on page names. */
+async function runSearch(): Promise<void> {
+  const run = ++searchRun;
+  const text = searchable(filter);
+  if (!text) {
+    resultsEl.hidden = true;
+    resultsEl.replaceChildren();
+    return;
   }
-}
-
-function showConflict(page: Current): void {
-  page.conflict = true;
-  setStatus("conflict", "Not saved: file changed on disk");
-  bannerEl.hidden = false;
-  bannerEl.replaceChildren(
-    "This page changed on disk while you were editing it.",
-    el("button", { id: "load-disk", onclick: () => void reloadFromDisk() }, "Load disk version"),
-    el("button", { id: "keep-mine", onclick: () => void keepMine() }, "Keep mine and overwrite"),
+  let hits: Hit[] = [];
+  try {
+    hits = textHits(await api.query({ text, limit: 40 }));
+  } catch {
+    // Searching needs the tessela tool; the page list still works without it.
+  }
+  if (run !== searchRun) return;
+  resultsEl.hidden = false;
+  resultsEl.replaceChildren(
+    el("h2", {}, hits.length === 0 ? "Not in any text" : "In the text"),
+    ...hits.map((hit) =>
+      el(
+        "button",
+        { class: "hit", onclick: () => void openAt(hit) },
+        el("span", { class: "kind" }, pageId(hit.path)),
+        excerpt(hit.text, text),
+      ),
+    ),
   );
 }
 
-async function reloadFromDisk(): Promise<void> {
-  if (!current) return;
-  const file = await api.readPage(current.path);
-  current = { path: current.path, hash: file.hash, saved: file.text, conflict: false };
-  bannerEl.hidden = true;
-  editor?.setText(file.text);
-  setStatus("saved", "Saved");
+// ---- problems --------------------------------------------------------------
+
+function toggleProblems(): void {
+  problemsOpen = !problemsOpen;
+  renderProblems();
+}
+
+function renderProblems(): void {
+  problemsToggle.textContent = `${problemsOpen ? "▾" : "▸"} ${summary(problems)}`;
+  problemsToggle.dataset.clean = String(problems.length === 0);
+  problemsEl.hidden = !problemsOpen || problems.length === 0;
+  problemsEl.replaceChildren(
+    ...problems.map((d) =>
+      el(
+        "li",
+        {},
+        el(
+          "button",
+          { class: `problem ${d.severity}`, title: d.rule, onclick: () => void showPage(d.path, d.line ?? undefined) },
+          el("span", { class: "where" }, `${d.path}${d.line ? `:${d.line}` : ""}`),
+          d.message,
+        ),
+      ),
+    ),
+  );
+}
+
+// ---- views -----------------------------------------------------------------
+
+function cardDeps() {
+  return {
+    api,
+    vocab: () => vocab,
+    onSaved: () => {
+      void refreshIndex();
+      void renderBacklinks();
+    },
+    onActive: (path: string) => {
+      const card = cards.find((c) => c.path === path);
+      if (card && card !== active) {
+        active = card;
+        void renderBacklinks();
+      }
+    },
+    onOpenPage: (path: string) => void showPage(path),
+    onOpenConcept: (id: string) => void showPage(conceptPath(id)),
+  };
+}
+
+async function closeCards(): Promise<void> {
+  await Promise.all(cards.map((c) => c.flush()));
+  for (const c of cards) c.destroy();
+  cards = [];
+  active = null;
+  stackEl.replaceChildren();
+}
+
+async function showPage(path: string, line?: number): Promise<void> {
+  await closeCards();
+  view = { kind: "page", path };
+  const card = createCard(path, cardDeps());
+  cards = [card];
+  active = card;
+  stackEl.replaceChildren(card.root);
+  await card.load();
+  card.focus(line);
+  renderLists();
   await renderBacklinks();
 }
 
-async function keepMine(): Promise<void> {
-  if (!current || !editor) return;
-  const file = await api.readPage(current.path);
-  current.hash = file.hash;
-  current.conflict = false;
-  bannerEl.hidden = true;
-  await flush();
+/** The days to stack: today first (it may have no file yet), then the latest earlier days. */
+function journalDays(count: number, today: string): string[] {
+  const earlier = pages
+    .filter((p) => isJournalPath(p.path))
+    .map((p) => pageId(p.path).replace("journals/", ""))
+    .filter((day) => day !== today)
+    .sort((a, b) => b.localeCompare(a));
+  return [today, ...earlier].slice(0, count);
+}
+
+async function showJournals(focusToday = false): Promise<void> {
+  const today = pageId(await api.todayPath()).replace("journals/", "");
+  const count = view?.kind === "journals" ? view.count : JOURNAL_STEP;
+  await closeCards();
+  view = { kind: "journals", count };
+  const days = journalDays(count, today);
+  const deps = cardDeps();
+  cards = days.map((day) => createCard(`journals/${day}.md`, deps, { compact: true }));
+  const more = el(
+    "button",
+    { class: "more", id: "more-days", onclick: () => void showMoreJournals() },
+    "Older days…",
+  );
+  more.hidden = journalDays(count + 1, today).length <= count;
+  stackEl.replaceChildren(...cards.map((c) => c.root), more);
+  stackEl.scrollTop = 0;
+  await Promise.all(cards.map((c) => c.load()));
+  active = cards[0] ?? null;
+  if (focusToday) active?.focus();
+  renderLists();
+  await renderBacklinks();
+}
+
+async function showMoreJournals(): Promise<void> {
+  if (view?.kind !== "journals") return;
+  view.count += JOURNAL_STEP;
+  await showJournals();
+}
+
+async function openAt(hit: Hit): Promise<void> {
+  await showPage(hit.path, hit.line);
 }
 
 async function onChanged(paths: string[]): Promise<void> {
   void refreshIndex();
-  if (!current) return;
-  if (paths.includes(current.path)) {
-    const file = await api.readPage(current.path);
-    if (file.hash !== current.hash && current && !current.conflict) {
-      const dirty = editor !== null && editor.text() !== current.saved;
-      if (dirty) {
-        showConflict(current);
-      } else {
-        current.hash = file.hash;
-        current.saved = file.text;
-        editor?.setText(file.text);
-        setStatus("saved", "Saved");
-      }
-    }
-  }
+  await Promise.all(cards.map((c) => c.diskChanged(paths)));
   await renderBacklinks();
 }
 
@@ -301,9 +338,9 @@ async function onChanged(paths: string[]): Promise<void> {
 let backlinkRun = 0;
 
 async function renderBacklinks(): Promise<void> {
-  if (!current) return;
+  if (!active) return;
   const run = ++backlinkRun;
-  const path = current.path;
+  const path = active.path;
   const id = pageId(path).toLowerCase();
   const queries = [api.query({ refs: [id], limit: 300 })];
   if (isJournalPath(path)) {
@@ -336,7 +373,7 @@ async function renderBacklinks(): Promise<void> {
     el(
       "section",
       {},
-      el("h3", {}, el("button", { onclick: () => void open(p) }, pageId(p))),
+      el("h3", {}, el("button", { onclick: () => void showPage(p) }, pageId(p))),
       ...list.map((hit) =>
         el(
           "button",
@@ -348,11 +385,6 @@ async function renderBacklinks(): Promise<void> {
     ),
   );
   backlinksEl.replaceChildren(head, ...groups);
-}
-
-async function openAt(hit: Hit): Promise<void> {
-  await open(hit.path);
-  editor?.setText(editor.text(), hit.line);
 }
 
 start().catch((e) => welcome(String(e)));
