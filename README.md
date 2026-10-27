@@ -4,7 +4,7 @@ A personal knowledge manager for humans and agents.
 
 Notes are plain Markdown in an [Open Knowledge Format](https://okf.md/) bundle,
 synced with git. Rust tools lint, query and list the vocabulary of that bundle,
-and import a Logseq graph. An Electron editor will use the same tools behind the
+and import a Logseq graph. An Electron editor uses the same tools behind the
 scenes.
 
 - [Conventions](docs/conventions.md): what Tessela adds on top of OKF.
@@ -90,6 +90,18 @@ paragraphs with their sub-bullets as a list beneath, `[[links]]` and properties
 become tags and links, and block references are inlined. It prints a report of
 what it converted and what it skipped, and never writes into a folder that has
 files or changes the graph. The full mapping is in spec §12.
+
+## Editor
+
+```
+cargo build                       # the editor calls the `tessela` binary
+cd editor && npm install && npm run build
+npm start -- --bundle ~/notes     # or open one from the welcome screen
+```
+
+Opens on today's journal, saves as you type, shows backlinks, suggests existing
+tags, and turns a selection into a link with Ctrl+L (Super+L on macOS). Details are
+in spec §11. `npm test` runs the unit tests and `npm run e2e` drives a real window.
 
 ## Development
 

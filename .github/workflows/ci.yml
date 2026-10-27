@@ -17,3 +17,28 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  editor:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: cargo build -p tessela-cli
+        working-directory: .
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # The end-to-end run opens a real window, so it needs a display and no sandbox
+      # (the runner has no setuid helper).
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libgbm1 libasound2t64
+      - run: xvfb-run -a node e2e/smoke.mjs
