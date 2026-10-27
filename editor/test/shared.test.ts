@@ -5,7 +5,8 @@ import { slugFirst, suggest } from "../src/shared/complete";
 import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget, refsInLine } from "../src/shared/links";
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
-import { conceptPath, isJournalPath, localDay, newPagePath, newPageText } from "../src/shared/pages";
+import { canGoBack, canGoForward, emptyHistory, RECENT_DEFAULT, RECENT_MAX, recentCount, step, touch, visit, type Place } from "../src/shared/nav";
+import { conceptPath, isJournalPath, journalDays, localDay, newPagePath, newPageText } from "../src/shared/pages";
 import { smartLink } from "../src/shared/smartLink";
 
 describe("smartLink", () => {
@@ -209,5 +210,73 @@ describe("localTarget", () => {
   it("leaves addresses on the web alone", () => {
     expect(localTarget("https://example.com/a.png", "")).toBeNull();
     expect(localTarget("#top", "")).toBeNull();
+  });
+});
+
+describe("journalDays", () => {
+  const paths = ["journals/2026-10-25.md", "journals/2026-10-27.md", "journals/2026-10-26.md", "notes.md"];
+
+  it("lists the days newest first, with today even when it has no file", () => {
+    expect(journalDays(paths, "2026-10-28", 10)).toEqual(["2026-10-28", "2026-10-27", "2026-10-26", "2026-10-25"]);
+  });
+
+  it("sorts by date when a day after today exists, instead of putting today first", () => {
+    expect(journalDays([...paths, "journals/2026-11-02.md"], "2026-10-27", 10)).toEqual([
+      "2026-11-02",
+      "2026-10-27",
+      "2026-10-26",
+      "2026-10-25",
+    ]);
+  });
+
+  it("stops at the count, but never before today", () => {
+    expect(journalDays(paths, "2026-10-27", 2)).toEqual(["2026-10-27", "2026-10-26"]);
+    expect(journalDays(["journals/2026-12-01.md", "journals/2026-11-01.md"], "2026-10-27", 1)).toEqual([
+      "2026-12-01",
+      "2026-11-01",
+      "2026-10-27",
+    ]);
+  });
+});
+
+describe("history", () => {
+  const page = (path: string): Place => ({ kind: "page", path });
+
+  it("goes back and forward over the places visited", () => {
+    let h = emptyHistory();
+    for (const p of [{ kind: "journals" } as Place, page("a.md"), page("b.md")]) h = visit(h, p);
+    expect(canGoBack(h)).toBe(true);
+    expect(canGoForward(h)).toBe(false);
+    h = step(h, -1);
+    expect(h.places[h.at]).toEqual(page("a.md"));
+    h = step(step(h, -1), -1);
+    expect(h.places[h.at]).toEqual({ kind: "journals" });
+    expect(canGoBack(h)).toBe(false);
+    expect(step(h, -1)).toBe(h);
+    h = step(h, 1);
+    expect(h.places[h.at]).toEqual(page("a.md"));
+    expect(canGoForward(h)).toBe(true);
+  });
+
+  it("drops what lay ahead when something new is visited, and ignores a repeat", () => {
+    let h = emptyHistory();
+    for (const p of [page("a.md"), page("b.md"), page("c.md")]) h = visit(h, p);
+    h = visit(step(step(h, -1), -1), page("d.md"));
+    expect(h.places).toEqual([page("a.md"), page("d.md")]);
+    expect(visit(h, page("d.md"))).toBe(h);
+  });
+});
+
+describe("recent pages", () => {
+  it("puts the page just used first and keeps it once", () => {
+    expect(touch(["a.md", "b.md", "c.md"], "c.md")).toEqual(["c.md", "a.md", "b.md"]);
+    expect(touch([], "a.md")).toEqual(["a.md"]);
+  });
+
+  it("takes a count from 1 up to the maximum, and falls back to the default", () => {
+    expect(recentCount(3)).toBe(3);
+    expect(recentCount("8")).toBe(8);
+    expect(recentCount(500)).toBe(RECENT_MAX);
+    for (const bad of [0, -2, "x", null, undefined, NaN]) expect(recentCount(bad)).toBe(RECENT_DEFAULT);
   });
 });

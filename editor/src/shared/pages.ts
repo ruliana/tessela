@@ -55,3 +55,19 @@ export function newPageText(path: string, title?: string): string {
   const name = title ?? pageId(path).split("/").pop()?.replace(/-/g, " ") ?? "Untitled";
   return `---\ntype: concept\ntitle: ${yamlString(name)}\n---\n\n`;
 }
+
+/** Newest day first. Days are `YYYY-MM-DD`, so plain string order is date order. */
+export function newestFirst(a: string, b: string): number {
+  return a < b ? 1 : a > b ? -1 : 0;
+}
+
+/**
+ * The days the journals view stacks, most recent first. Today is always among them (it may have
+ * no file yet), and so are any days after it, so the order is by date and not "today, then the rest".
+ */
+export function journalDays(paths: string[], today: string, count: number): string[] {
+  const days = new Set(paths.filter(isJournalPath).map((p) => pageId(p).slice("journals/".length)));
+  days.add(today);
+  const sorted = [...days].sort(newestFirst);
+  return sorted.slice(0, Math.max(count, sorted.indexOf(today) + 1));
+}

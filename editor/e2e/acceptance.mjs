@@ -4,6 +4,7 @@
 
 import { runAll } from "./harness.mjs";
 import "./acceptance/journals.mjs";
+import "./acceptance/navigation.mjs";
 import "./acceptance/search.mjs";
 import "./acceptance/blocks.mjs";
 import "./acceptance/format.mjs";

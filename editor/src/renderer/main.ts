@@ -3,7 +3,18 @@
 import "./style.css";
 
 import type { Diagnostic, Hit, PageEntry, VocabEntry } from "../shared/api";
-import { conceptPath, isJournalPath, newPagePath, newPageText, pageId } from "../shared/pages";
+import {
+  canGoBack,
+  canGoForward,
+  emptyHistory,
+  recentCount,
+  step,
+  touch,
+  visit,
+  type History,
+  type Place,
+} from "../shared/nav";
+import { conceptPath, isJournalPath, journalDays, newestFirst, newPagePath, newPageText, pageId } from "../shared/pages";
 import { summary, visibleProblems } from "../shared/problems";
 import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
@@ -42,6 +53,54 @@ function togglePreview(): void {
   previewButton?.setAttribute("aria-pressed", String(livePreview));
 }
 
+const RECENT_COUNT_KEY = "tessela.recentCount";
+const RECENT_KEY = "tessela.recent";
+/** The notes folder, which the Recent list belongs to. */
+let root = "";
+/** Pages used lately, most recent first. */
+let recent: string[] = [];
+/** How many of them the sidebar shows. */
+let recentShown = readRecentCount();
+/** The places shown so far, for Go back and Go forward. */
+let places: History = emptyHistory();
+
+function readRecentCount(): number {
+  try {
+    return recentCount(localStorage.getItem(RECENT_COUNT_KEY));
+  } catch {
+    return recentCount(undefined);
+  }
+}
+
+function readRecent(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(`${RECENT_KEY}:${root}`) ?? "[]");
+    return Array.isArray(list) ? list.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function remember(path: string): void {
+  recent = touch(recent, path);
+  try {
+    localStorage.setItem(`${RECENT_KEY}:${root}`, JSON.stringify(recent));
+  } catch {
+    // The list just is not remembered between runs.
+  }
+}
+
+function setRecentShown(value: string): void {
+  recentShown = recentCount(value);
+  recentSize.value = String(recentShown);
+  try {
+    localStorage.setItem(RECENT_COUNT_KEY, String(recentShown));
+  } catch {
+    // The choice just is not remembered.
+  }
+  renderLists();
+}
+
 /** What the middle of the window shows: one page, or the latest journal days stacked. */
 type View = { kind: "page"; path: string } | { kind: "journals"; count: number };
 let view: View | null = null;
@@ -66,9 +125,12 @@ async function start(): Promise<void> {
   written = null;
   filter = "";
   view = null;
+  places = emptyHistory();
   problemsOpen = false;
   const bundle = await api.bundle();
   if (!bundle) return welcome();
+  root = bundle;
+  recent = readRecent();
   buildShell(bundle);
   stopListening = api.onChanged((paths) => void onChanged(paths));
   await refreshIndex();
@@ -118,6 +180,11 @@ let problemsOpen = false;
 let stackEl: HTMLElement;
 let backlinksEl: HTMLElement;
 let previewButton: HTMLElement | undefined;
+let recentEl: HTMLElement;
+let recentList: HTMLElement;
+let recentSize: HTMLInputElement;
+let backButton: HTMLButtonElement;
+let forwardButton: HTMLButtonElement;
 let noticeEl: HTMLElement;
 let newPageEl: HTMLElement;
 let newPageInput: HTMLInputElement;
@@ -184,10 +251,29 @@ function buildShell(bundle: string): void {
     "Rendered",
   );
   previewButton.setAttribute("aria-pressed", String(livePreview));
+  const mod = navigator.userAgent.includes("Mac") ? "Cmd" : "Super";
+  backButton = el("button", { class: "nav", id: "go-back", title: `Go back (${mod}+[)`, ariaLabel: "Go back", onclick: () => void go(-1) }, "‹");
+  forwardButton = el("button", { class: "nav", id: "go-forward", title: `Go forward (${mod}+])`, ariaLabel: "Go forward", onclick: () => void go(1) }, "›");
+  recentList = el("ul", { class: "list", id: "recent-list" });
+  recentSize = el("input", {
+    id: "recent-size",
+    type: "number",
+    min: "1",
+    max: "30",
+    value: String(recentShown),
+    title: "How many recent pages to show",
+    onchange: () => setRecentShown(recentSize.value),
+  });
+  recentEl = el(
+    "div",
+    { class: "recent", id: "recent" },
+    el("div", { class: "recent-head" }, el("h2", {}, "Recent"), recentSize),
+    recentList,
+  );
   const sidebar = el(
     "aside",
     { class: "sidebar" },
-    el("div", { class: "brand" }, "Tessela"),
+    el("div", { class: "brand" }, "Tessela", el("span", { class: "navs" }, backButton, forwardButton)),
     el(
       "button",
       { class: "root", id: "root", title: `${bundle}\nThe root of your notes. Click to choose another folder.`, onclick: () => void changeRoot() },
@@ -201,6 +287,7 @@ function buildShell(bundle: string): void {
       el("button", { class: "secondary", id: "journals-view", onclick: () => void showJournals() }, "Journals"),
       previewButton,
     ),
+    recentEl,
     el(
       "div",
       { class: "buttons" },
@@ -220,6 +307,7 @@ function buildShell(bundle: string): void {
   backlinksEl = el("aside", { class: "backlinks", id: "backlinks" });
   app.replaceChildren(el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl));
   renderProblems();
+  renderNav();
 }
 
 function renderLists(): void {
@@ -237,10 +325,15 @@ function renderLists(): void {
 
   const journals = pages
     .filter((p) => isJournalPath(p.path))
-    .sort((a, b) => b.id.localeCompare(a.id))
+    .sort((a, b) => newestFirst(a.id, b.id))
     .filter((p) => !q || p.id.includes(q))
     .slice(0, q ? 50 : 14);
   journalsEl.replaceChildren(...journals.map((p) => item(p.id.replace("journals/", ""), p.path)));
+
+  recentEl.hidden = recent.length === 0;
+  recentList.replaceChildren(
+    ...recent.slice(0, recentShown).map((path) => item(pageId(path).replace(/^journals\//, ""), path)),
+  );
 
   const written = new Set(pages.map((p) => p.id.toLowerCase()));
   const concepts = vocab
@@ -408,6 +501,20 @@ async function openFile(): Promise<void> {
   }
 }
 
+// Super (Cmd on macOS, the Windows/Super key elsewhere) with [ and ]. Captured before the editor
+// sees the key, because Cmd+[ and Cmd+] would otherwise indent in the editor on macOS.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !document.getElementById("go-back")) return;
+    if (e.key !== "[" && e.key !== "]") return;
+    e.preventDefault();
+    e.stopPropagation();
+    void go(e.key === "[" ? -1 : 1);
+  },
+  true,
+);
+
 window.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || !document.getElementById("new-page")) return;
   const key = e.key.toLowerCase();
@@ -455,6 +562,8 @@ async function closeCards(): Promise<void> {
 async function showPage(path: string, line?: number): Promise<void> {
   await closeCards();
   view = { kind: "page", path };
+  arrive({ kind: "page", path });
+  remember(path);
   const card = createCard(path, cardDeps());
   cards = [card];
   active = card;
@@ -465,14 +574,26 @@ async function showPage(path: string, line?: number): Promise<void> {
   await renderBacklinks();
 }
 
-/** The days to stack: today first (it may have no file yet), then the latest earlier days. */
-function journalDays(count: number, today: string): string[] {
-  const earlier = pages
-    .filter((p) => isJournalPath(p.path))
-    .map((p) => pageId(p.path).replace("journals/", ""))
-    .filter((day) => day !== today)
-    .sort((a, b) => b.localeCompare(a));
-  return [today, ...earlier].slice(0, count);
+/** Records the place now shown, unless Go back or Go forward just moved to it. */
+function arrive(place: Place): void {
+  places = visit(places, place);
+  renderNav();
+}
+
+function renderNav(): void {
+  backButton.disabled = !canGoBack(places);
+  forwardButton.disabled = !canGoForward(places);
+}
+
+/** Go back (`by` -1) or Go forward (1) to the place shown before or after this one. */
+async function go(by: -1 | 1): Promise<void> {
+  const next = step(places, by);
+  if (next === places) return;
+  // The history moves first, so showing the place does not add it again.
+  places = next;
+  const place = places.places[places.at];
+  if (place?.kind === "page") await showPage(place.path);
+  else await showJournals();
 }
 
 async function showJournals(focusToday = false): Promise<void> {
@@ -480,7 +601,8 @@ async function showJournals(focusToday = false): Promise<void> {
   const count = view?.kind === "journals" ? view.count : JOURNAL_STEP;
   await closeCards();
   view = { kind: "journals", count };
-  const days = journalDays(count, today);
+  arrive({ kind: "journals" });
+  const days = journalDays(pages.map((p) => p.path), today, count);
   const deps = cardDeps();
   cards = days.map((day) => createCard(`journals/${day}.md`, deps, { compact: true }));
   const more = el(
@@ -488,11 +610,13 @@ async function showJournals(focusToday = false): Promise<void> {
     { class: "more", id: "more-days", onclick: () => void showMoreJournals() },
     "Older days…",
   );
-  more.hidden = journalDays(count + 1, today).length <= count;
+  more.hidden = journalDays(pages.map((p) => p.path), today, count + 1).length <= count;
   stackEl.replaceChildren(...cards.map((c) => c.root), more);
   stackEl.scrollTop = 0;
   await Promise.all(cards.map((c) => c.load()));
-  active = cards[0] ?? null;
+  // Today is the first day unless some days are dated after it.
+  const todayCard = cards[days.indexOf(today)] ?? null;
+  active = focusToday ? todayCard : (cards[0] ?? null);
   if (focusToday) active?.focus();
   renderLists();
   await renderBacklinks();
