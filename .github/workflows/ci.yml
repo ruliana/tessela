@@ -42,6 +42,8 @@ jobs:
       # (the runner has no setuid helper).
       - run: sudo apt-get update && sudo apt-get install -y xvfb libgbm1 libasound2t64
       - run: xvfb-run -a node e2e/smoke.mjs
+      # Every editor feature, key by key, in a real window.
+      - run: xvfb-run -a node e2e/acceptance.mjs
       # The packaged app must find the tessela tool it carries.
       - run: npm run package:dir
       - run: xvfb-run -a env -u TESSELA_BIN E2E_PACKAGED=release/linux-unpacked/tessela-editor node e2e/smoke.mjs

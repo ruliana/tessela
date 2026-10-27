@@ -2,6 +2,7 @@
 // agents pick a term that exists instead of inventing a new one.
 
 import type { VocabEntry } from "./api";
+import { normalizeConcept } from "./links";
 
 export interface Suggestion {
   concept: string;
@@ -24,4 +25,17 @@ export function suggest(vocab: VocabEntry[], query: string, limit = 50): Suggest
   return [...starts.sort(byUse), ...contains.sort(byUse)]
     .slice(0, limit)
     .map((e) => ({ concept: e.concept, detail: detail(e) }));
+}
+
+/**
+ * For a link target: the slug of the link text (`Some text` is `some-text`) comes first, so
+ * linking a phrase to a page of that name takes one key. It is added when no page or term has
+ * that name yet, and moved up when one has; once the typed `query` no longer fits it, it is dropped.
+ */
+export function slugFirst(items: Suggestion[], text: string, query = ""): Suggestion[] {
+  const slug = normalizeConcept(text);
+  if (slug === "" || !slug.startsWith(query.toLowerCase())) return items;
+  const known = items.find((s) => s.concept === slug);
+  const first = known ?? { concept: slug, detail: "new page" };
+  return [first, ...items.filter((s) => s !== known)];
 }
