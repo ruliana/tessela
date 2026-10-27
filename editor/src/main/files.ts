@@ -26,6 +26,21 @@ export function resolveInside(root: string, rel: string): string {
   return full;
 }
 
+const IMAGE_TYPES = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
+
+/** The absolute path of a picture in the bundle, or an error when `rel` is not one that may be shown. */
+export function resolveImage(root: string, rel: string): string {
+  if (rel === "" || rel.includes("\0") || path.isAbsolute(rel) || !IMAGE_TYPES.test(rel)) {
+    throw new Error(`not a picture: ${rel}`);
+  }
+  const full = path.resolve(root, rel);
+  const relative = path.relative(root, full);
+  if (relative.startsWith("..") || path.isAbsolute(relative) || relative.split(path.sep).some((p) => p.startsWith("."))) {
+    throw new Error(`outside the bundle: ${rel}`);
+  }
+  return full;
+}
+
 /**
  * The page path (relative, with `/`) of an absolute file when it lives inside the bundle, or
  * null when it does not. It does not check that the file is a page `resolveInside` accepts.

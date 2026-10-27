@@ -1,7 +1,7 @@
 // Live preview: Markdown shown rendered, raw only in the block being edited.
 
 import assert from "node:assert/strict";
-import { suite } from "../harness.mjs";
+import { suite, write } from "../harness.mjs";
 
 const page = [
   "# Big title",
@@ -187,6 +187,13 @@ const withLinks = [
   "Last paragraph.",
 ].join("\n");
 
+/** The window remembers the choice between runs, so every suite starts from the preview being off. */
+async function startOff(s) {
+  await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+  await s.win.reload();
+  await s.win.waitForSelector(".cm-content");
+}
+
 /** Replaces the system's opener, so the test can see what was asked to open. */
 async function stubOpener(s) {
   await s.app.evaluate(({ shell }) => {
@@ -198,6 +205,7 @@ const opened = (s) => s.app.evaluate(() => globalThis.__opened);
 
 suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype: project\n---\n\nThe project.\n" }), (test) => {
   test("a table is drawn as a table", async (s) => {
+    await startOff(s);
     await stubOpener(s);
     await s.openWith("tables", withTable);
     await s.win.click("#preview-toggle");
@@ -282,6 +290,143 @@ suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype
     assert.equal((await opened(s)).length, plain, "a plain click does not follow links");
     await s.win.click(".cm-line:has-text('](https://example.com/page)') >> text=site", { modifiers: ["Control"] });
     assert.equal((await opened(s)).length, plain + 1);
+    await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+  });
+});
+
+const filler = Array.from({ length: 60 }, (_, i) => `Filler paragraph number ${i + 1}.\n`).join("\n");
+
+const longPage = [
+  "[Go to the second part](#second-heading) and [again](#Second%20Heading) and [nowhere](#missing).",
+  "",
+  "## First heading",
+  "",
+  filler,
+  "## Second heading",
+  "",
+  "Text under the second heading.",
+  "",
+  "[Back to the top](#first-heading)",
+  "",
+  filler,
+].join("\n");
+
+const widePage = [
+  "![the wide picture](assets/wide.svg)",
+  "",
+  "![gone](assets/nothing.png)",
+  "",
+  "| First column | Second column | Third column |",
+  "| --- | --- | --- |",
+  "| A fairly long sentence that has to wrap | Another long sentence that also has to wrap | And a third long sentence for good measure |",
+  "| short | short | short |",
+  "",
+  "End of the page.",
+].join("\n");
+
+const wide = '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400"><rect width="1600" height="400" fill="#2f6f5e"/></svg>';
+
+/** The window, in pixels wide. */
+const resize = (s, width) =>
+  s.app.evaluate(({ BrowserWindow }, w) => BrowserWindow.getAllWindows()[0].setSize(w, 860), width);
+
+suite("Live preview anchors, pictures and width", () => ({ "assets/wide.svg": wide }), (test) => {
+  test("a link to #heading scrolls to that heading", async (s) => {
+    await startOff(s);
+    await s.openWith("long", longPage);
+    await s.key("Control+Home");
+    // The block with the cursor is shown as text, so move the cursor to another one.
+    await s.win.click(".cm-line:has-text('Filler paragraph number 3.')");
+    await s.win.click("#preview-toggle");
+    await s.win.waitForSelector(".cm-lp-link");
+    const top = () =>
+      s.win.evaluate(() => {
+        const line = [...document.querySelectorAll(".cm-line")].find((l) => l.textContent.includes("Second heading"));
+        return line ? Math.round(line.getBoundingClientRect().top) : null;
+      });
+    const before = await top();
+    assert.ok(before === null || before > 860, `the heading starts out of sight (${before})`);
+    await s.win.click(".cm-lp-link:has-text('Go to the second part')");
+    await s.win.waitForFunction(() => {
+      const line = [...document.querySelectorAll(".cm-line")].find((l) => l.textContent.includes("Second heading"));
+      const r = line?.getBoundingClientRect();
+      return r && r.top >= 0 && r.bottom <= window.innerHeight;
+    });
+  });
+
+  test("the heading is where the cursor is, and a link back works too", async (s) => {
+    await s.win.click(".cm-lp-link:has-text('Back to the top')");
+    await s.win.waitForFunction(() => {
+      const line = [...document.querySelectorAll(".cm-line")].find((l) => l.textContent.includes("First heading"));
+      const r = line?.getBoundingClientRect();
+      return r && r.top >= 0 && r.bottom <= window.innerHeight;
+    });
+  });
+
+  test("an anchor in another spelling, or one that does not exist", async (s) => {
+    await s.win.click(".cm-lp-link:has-text('nowhere')");
+    // Nothing happens, and nothing breaks: the next link still works.
+    await s.win.click(".cm-lp-link:has-text('again')");
+    await s.win.waitForFunction(() => {
+      const line = [...document.querySelectorAll(".cm-line")].find((l) => l.textContent.includes("Second heading"));
+      const r = line?.getBoundingClientRect();
+      return r && r.top >= 0 && r.bottom <= window.innerHeight;
+    });
+  });
+
+  test("a picture of the notes folder is shown, and a missing one shows its description", async (s) => {
+    await s.openWith("wide", widePage);
+    // Still on from the test before.
+    await s.win.waitForFunction(() => document.querySelector("#preview-toggle")?.getAttribute("aria-pressed") === "true");
+    await s.win.waitForFunction(() => {
+      const img = document.querySelector(".cm-lp-image");
+      return img && img.naturalWidth > 0;
+    });
+    await s.win.waitForSelector(".cm-lp-missing");
+    assert.equal(await s.win.locator(".cm-lp-missing").textContent(), "gone");
+    assert.equal(await s.win.locator(".cm-lp-image").getAttribute("alt"), "the wide picture");
+  });
+
+  test("the picture is shown as text while its line is being edited", async (s) => {
+    assert.equal(await s.win.locator(".cm-lp-image").count(), 1);
+    await s.win.click(".cm-lp-image");
+    await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("![the wide picture](assets/wide.svg)")));
+    assert.equal(await s.win.locator(".cm-lp-image").count(), 0);
+    await s.win.click(".cm-line:has-text('End of the page')");
+  });
+
+  test("tables and pictures fit the window, with a margin on both sides", async (s) => {
+    for (const width of [1360, 1000, 800]) {
+      await resize(s, width);
+      await s.win.waitForFunction((w) => Math.abs(window.outerWidth - w) < 40, width);
+      const fit = await s.win.evaluate(() => {
+        const content = document.querySelector(".cm-content").getBoundingClientRect();
+        const box = (sel) => document.querySelector(sel).getBoundingClientRect();
+        return ["img.cm-lp-image", ".cm-lp-table"].map((sel) => {
+          const r = box(sel);
+          return { sel, left: r.left - content.left, right: content.right - r.right, width: r.width };
+        });
+      });
+      for (const f of fit) {
+        assert.ok(f.left >= 20 && f.right >= 20, `${f.sel} has margins at ${width}: ${JSON.stringify(fit)}`);
+      }
+    }
+    await resize(s, 1360);
+  });
+
+  test("the cells of a narrow table wrap instead of running out of the window", async (s) => {
+    await resize(s, 800);
+    await s.win.waitForFunction(() => Math.abs(window.outerWidth - 800) < 40);
+    const rows = await s.win.evaluate(() => document.querySelector(".cm-lp-table tbody tr").getBoundingClientRect().height);
+    assert.ok(rows > 40, `the long cells take several lines (${rows}px)`);
+    const page = await s.win.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(page <= 0, `the page does not scroll sideways (${page}px)`);
+    await resize(s, 1360);
+  });
+
+  test("switching it off for the next tests", async (s) => {
+    await s.win.click("#preview-toggle");
+    await s.win.waitForFunction(() => document.querySelector("#preview-toggle")?.getAttribute("aria-pressed") === "false");
     await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
   });
 });

@@ -25,7 +25,44 @@ class Glyph extends WidgetType {
   }
 }
 
+/** Dispatch this when what the decorations depend on (a picture that failed to load) has changed. */
+const imageFailed = StateEffect.define<null>();
+
+/** Addresses of pictures that could not be loaded: they are drawn as their description instead. */
+const failedImages = new Set<string>();
+
+/** A picture drawn in the text. It never gets wider than the text, however narrow the window. */
+class ImageWidget extends WidgetType {
+  constructor(
+    private readonly src: string,
+    private readonly alt: string,
+  ) {
+    super();
+  }
+  override eq(other: ImageWidget): boolean {
+    return other.src === this.src && other.alt === this.alt;
+  }
+  /** A click on the picture puts the cursor there, which shows its Markdown. */
+  override ignoreEvent(): boolean {
+    return false;
+  }
+  override toDOM(view: EditorView): HTMLElement {
+    const img = document.createElement("img");
+    img.className = "cm-lp-image";
+    img.src = this.src;
+    img.alt = this.alt;
+    img.title = this.alt;
+    // A picture that cannot be loaded shows its description instead: the text is redrawn, not the widget patched.
+    img.onerror = () => {
+      failedImages.add(this.src);
+      view.dispatch({ effects: imageFailed.of(null) });
+    };
+    return img;
+  }
+}
+
 const hide = Decoration.replace({});
+const missing = Decoration.mark({ class: "cm-lp-missing" });
 const bullet = Decoration.replace({ widget: new Glyph("•", "cm-lp-bullet") });
 const unchecked = Decoration.replace({ widget: new Glyph("☐", "cm-lp-check") });
 const checked = Decoration.replace({ widget: new Glyph("☑", "cm-lp-check cm-lp-checked") });
@@ -64,7 +101,7 @@ export function renderedLine(view: EditorView, line: number): boolean {
   return !view.hasFocus || !editedLines(view.state).has(line);
 }
 
-function build(view: EditorView): DecorationSet {
+function build(view: EditorView, opts: PreviewOptions): DecorationSet {
   const { state } = view;
   const raw = view.hasFocus ? editedLines(state) : new Set<number>();
   const ranges: Range<Decoration>[] = [];
@@ -108,7 +145,19 @@ function build(view: EditorView): DecorationSet {
           if (HEADING.test(ref.node.parent?.name ?? "")) hideMark(ref.from, ref.to, true);
         } else if (name === "EmphasisMark" || name === "StrikethroughMark") {
           hideMark(ref.from, ref.to);
-        } else if (name === "Link" || name === "Image") {
+        } else if (name === "Image") {
+          const url = ref.node.getChild("URL");
+          const marks = ref.node.getChildren("LinkMark");
+          const src = url ? opts.imageUrl(state.sliceDoc(url.from, url.to)) : null;
+          if (src === null || marks.length < 2) return;
+          const alt = state.sliceDoc(marks[0]!.to, marks[1]!.from);
+          if (failedImages.has(src)) {
+            ranges.push(hide.range(ref.from, marks[0]!.to), missing.range(marks[0]!.to, marks[1]!.from), hide.range(marks[1]!.from, ref.to));
+            return false;
+          }
+          ranges.push(Decoration.replace({ widget: new ImageWidget(src, alt) }).range(ref.from, ref.to));
+          return false;
+        } else if (name === "Link") {
           const open = ref.node.getChild("URL") ? ref.node.getChild("LinkMark") : null;
           const close = open?.nextSibling;
           if (open && close && close.to > open.to) ranges.push(linkText.range(open.to, close.from));
@@ -281,6 +330,8 @@ function tables(openLink: (dest: string) => void): Extension {
 export interface PreviewOptions {
   /** A link drawn in a table was clicked. */
   openLink: (dest: string) => void;
+  /** Where a picture can be loaded from, or null when it cannot be shown. */
+  imageUrl: (dest: string) => string | null;
 }
 
 export function livePreview(opts: PreviewOptions): Extension {
@@ -290,12 +341,13 @@ export function livePreview(opts: PreviewOptions): Extension {
       class {
         decorations: DecorationSet;
         constructor(view: EditorView) {
-          this.decorations = build(view);
+          this.decorations = build(view, opts);
         }
         update(update: ViewUpdate) {
           const tree = syntaxTree(update.startState) !== syntaxTree(update.state);
-          if (update.docChanged || update.selectionSet || update.viewportChanged || update.focusChanged || tree) {
-            this.decorations = build(update.view);
+          const failed = update.transactions.some((tr) => tr.effects.some((e) => e.is(imageFailed)));
+          if (update.docChanged || update.selectionSet || update.viewportChanged || update.focusChanged || tree || failed) {
+            this.decorations = build(update.view, opts);
           }
         }
       },
