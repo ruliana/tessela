@@ -69,11 +69,12 @@ Each block in the index carries:
 Tools need to point at a block ("edit this one") without storing IDs in files. A
 handle is the page ID plus a hash of the block's normalized text (trimmed, with
 inner whitespace collapsed), plus an ordinal when identical blocks repeat in a
-page:
+page. The hash is the first 8 hex characters of the BLAKE3 hash of that text, and
+the `.N` ordinal starts at the second identical block:
 
 ```
-journals/2026-10-27#b3:9f2c41d0
-journals/2026-10-27#b3:9f2c41d0.2
+journals/2026-10-27#9f2c41d0
+journals/2026-10-27#9f2c41d0.2
 ```
 
 Handles appear only in indexes and tool output, never in the Markdown. An edit
@@ -93,7 +94,9 @@ Tags and links share one concept namespace. `#machine-learning` and
   `#project/tessela`. A `/` maps to a folder: `#project/tessela` is the concept at
   `project/tessela.md`.
 - A tag ends at whitespace or punctuation. `#` at line start followed by a space is
-  a heading, not a tag. Tags inside code spans and code fences are ignored.
+  a heading, not a tag. Tags inside code spans and code fences are ignored. A tag
+  must contain a letter, so `#12` is not a tag, and `#` inside a word or URL
+  (`a#b`, `https://x.org/#top`) does not start one.
 - Matching is case-insensitive. Tools write tags in lowercase.
 - Multi-word concepts use a link (below), or a hyphenated tag.
 
@@ -169,13 +172,14 @@ terms:
     use: machine-learning
   todo:
     status: deprecated
-    note: Use #task instead.
+    note: "Use #task instead."
 ---
 ```
 
 - `use` marks an alias. Tools suggest the preferred term, and the linter can
   warn.
 - `status: deprecated` keeps a term listed but warns when it is used.
+- Quote any value that contains `#`, since an unquoted `#` starts a YAML comment.
 
 ## 9. Writing files
 
