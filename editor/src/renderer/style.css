@@ -73,7 +73,15 @@ button { font: inherit; color: inherit; }
 
 h2 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .brand { font-weight: 700; font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
-.brand small { font-weight: 400; color: var(--muted); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.root { display: block; width: 100%; text-align: left; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
+.root:hover { border-color: var(--accent); }
+.root-name { display: block; font-weight: 600; }
+.root-path { display: block; font-size: 11px; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-page { display: flex; flex-direction: column; gap: 4px; }
+.new-page small { color: var(--muted); }
+.new-page .error { margin: 0; font-size: 13px; }
+.notice { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 8px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.notice p { margin: 0; overflow-wrap: anywhere; }
 
 .primary { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
 @media (prefers-color-scheme: dark) { .primary { color: #10231d; } }

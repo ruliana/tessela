@@ -254,7 +254,12 @@ and `tessela lint --json` (the binary comes from `$TESSELA_BIN`, then the one
 packaged with the app, then `target/{release,debug}`, then `PATH`), and reads and
 writes the Markdown files itself.
 
-- It opens a bundle (`--bundle PATH`, or the last one used) on the journals: today
+- The root is the folder it opens: `--bundle PATH`, or the last one used, or the one
+  chosen in the window (the folder button at the top of the sidebar, Ctrl+Shift+O, or
+  the welcome screen when there is none yet). Everything is relative to that folder:
+  page paths, links, tags and what `tessela` is run on. Files outside it are not seen.
+  The sidebar always shows its name and full path.
+- It opens a bundle on the journals: today
   and the latest earlier days stacked, each one editable, with "Older days" for more.
   A journal file is only created on the first edit.
 - Edits are saved after a short pause. A write is atomic (temporary file, then
@@ -264,6 +269,11 @@ writes the Markdown files itself.
   there are unsaved edits, which count as a conflict.
 - The right panel shows the backlinks of the open page (`query --ref PAGE`; for a
   journal, also anything that mentions its date), grouped by page.
+- "New page" (Ctrl+N) asks for a name, where `/` makes folders, and creates the file
+  at once from the page template (typing the name in the search box and pressing Enter
+  also opens the page, but its file only appears on the first edit). "Open file…"
+  (Ctrl+O) picks a Markdown file; one inside the root opens as a page (reserved files
+  like `index.md` too), and one outside it offers its folder as the new root instead.
 - The search box filters page names and also searches the text of the notes
   (`query --text`); Enter creates the page named by what was typed.
 - The sidebar lists what `tessela lint` reports as errors or warnings (not the

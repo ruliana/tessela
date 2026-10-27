@@ -5,7 +5,7 @@ import { slugFirst, suggest } from "../src/shared/complete";
 import { conceptAt, linkTargetId, refsInLine } from "../src/shared/links";
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
-import { conceptPath, isJournalPath, localDay, newPageText } from "../src/shared/pages";
+import { conceptPath, isJournalPath, localDay, newPagePath, newPageText } from "../src/shared/pages";
 import { smartLink } from "../src/shared/smartLink";
 
 describe("smartLink", () => {
@@ -161,5 +161,19 @@ describe("slugFirst", () => {
   it("leaves the list alone when there is no text, or when what was typed rules the slug out", () => {
     expect(slugFirst(items, "  ")).toBe(items);
     expect(slugFirst(items, "Other Words", "ru")).toBe(items);
+  });
+});
+
+describe("newPagePath", () => {
+  it("turns a typed name into a page path, folders included", () => {
+    expect(newPagePath("My Idea")).toBe("my-idea.md");
+    expect(newPagePath("  project/New Thing ")).toBe("project/new-thing.md");
+    expect(newPagePath("notes.md")).toBe("notes.md");
+  });
+
+  it("refuses names that cannot be a page", () => {
+    for (const bad of ["", "   ", "/", ".md", "../escape", "a/../b", ".hidden/x", "folder/.secret"]) {
+      expect(newPagePath(bad)).toBeNull();
+    }
   });
 });

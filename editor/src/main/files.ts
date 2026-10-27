@@ -26,6 +26,16 @@ export function resolveInside(root: string, rel: string): string {
   return full;
 }
 
+/**
+ * The page path (relative, with `/`) of an absolute file when it lives inside the bundle, or
+ * null when it does not. It does not check that the file is a page `resolveInside` accepts.
+ */
+export function relativeInside(root: string, file: string): string | null {
+  const relative = path.relative(root, file);
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  return relative.split(path.sep).join("/");
+}
+
 async function readIfExists(file: string): Promise<string | null> {
   try {
     return await fs.readFile(file, "utf8");
