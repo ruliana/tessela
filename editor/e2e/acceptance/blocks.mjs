@@ -246,3 +246,20 @@ suite("Block move and select", null, (test) => {
     assert.equal(await s.body(), "- one\n\ntwo\n\nthree");
   });
 });
+
+suite("Selection across lines", null, (test) => {
+  test("a selection that continues onto the next line starts where the text does", async (s) => {
+    await s.openWith("select-lines", "First line here\nSecond line here");
+    await s.key("Control+Home");
+    await s.key("Shift+ArrowDown");
+    await s.key("Shift+End");
+    const { text, selection } = await s.win.evaluate(() => {
+      const line = document.querySelectorAll(".cm-line")[1];
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      const rects = [...document.querySelectorAll(".cm-selectionBackground")].map((r) => r.getBoundingClientRect().left);
+      return { text: range.getBoundingClientRect().left, selection: Math.min(...rects) };
+    });
+    assert.ok(Math.abs(selection - text) <= 2, `selection starts at ${selection}, text at ${text}`);
+  });
+});
