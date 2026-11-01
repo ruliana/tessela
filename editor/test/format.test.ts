@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addDays, datesInLine, formatDate, formatDateTime } from "../src/shared/dates";
+import { addDays, dayAt, datesInLine, daysInLine, formatDate, formatDateTime } from "../src/shared/dates";
 import { type TextEdit, isWebUrl, pasteLink, surround, toggleMark, toggleTask } from "../src/shared/format";
 import { matchSlash, slashItems } from "../src/shared/slash";
 import { frontmatterTags, inlineTokens } from "../src/shared/tokens";
@@ -98,6 +98,27 @@ describe("isWebUrl", () => {
     expect(isWebUrl("mailto:a@b.c")).toBe(true);
     expect(isWebUrl("x.org")).toBe(false);
     expect(isWebUrl("https://x.org and more")).toBe(false);
+  });
+});
+
+describe("days to follow", () => {
+  it("gives the day of a date and of a datetime", () => {
+    const line = "Due 2026-10-27 and met 2026-10-28 14:30:00-03:00.";
+    expect(daysInLine(line).map((d) => d.day)).toEqual(["2026-10-27", "2026-10-28"]);
+  });
+
+  it("finds the day under a column, including its ends", () => {
+    const line = "on 2026-10-27 ok";
+    expect(dayAt(line, 3)?.day).toBe("2026-10-27");
+    expect(dayAt(line, 13)?.day).toBe("2026-10-27");
+    expect(dayAt(line, 1)).toBeNull();
+    expect(dayAt(line, 15)).toBeNull();
+  });
+
+  it("leaves out dates that are part of a web address, and numbers that are not dates", () => {
+    expect(daysInLine("see https://example.com/2026-10-27/notes and (https://a.b/2026-10-28)")).toEqual([]);
+    expect(daysInLine("2026-13-01 and 12026-10-27")).toEqual([]);
+    expect(daysInLine("go (2026-10-27)").map((d) => d.day)).toEqual(["2026-10-27"]);
   });
 });
 

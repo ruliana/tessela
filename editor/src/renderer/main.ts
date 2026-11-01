@@ -20,7 +20,7 @@ import {
   type History,
   type Place,
 } from "../shared/nav";
-import { conceptPath, isJournalPath, journalDays, newestFirst, newPagePath, newPageText, pageId } from "../shared/pages";
+import { conceptPath, isJournalPath, journalDays, journalPath, newestFirst, newPagePath, newPageText, pageId } from "../shared/pages";
 import { summary, visibleProblems } from "../shared/problems";
 import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
@@ -940,7 +940,7 @@ async function renderBacklinks(): Promise<void> {
           "button",
           { class: "hit", onclick: () => void openAt(hit) },
           where ? el("span", { class: "where" }, where) : "",
-          el("span", { class: "text" }, ...renderInlineText(hit.text)),
+          el("span", { class: "text" }, ...renderInlineText(hit.text, (day) => void showPage(journalPath(day)))),
         );
       }),
     ),

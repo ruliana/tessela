@@ -12,6 +12,11 @@ export function journalPath(day: string): string {
   return `journals/${day}.md`;
 }
 
+/** The link to a day's journal, the way a Markdown link writes it. */
+export function journalDest(day: string): string {
+  return `/${journalPath(day)}`;
+}
+
 /** `YYYY-MM-DD` in local time. */
 export function localDay(date: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
