@@ -352,12 +352,13 @@ describe("the block parser: edge cases", () => {
   });
 
   it("finds the innermost block at a line", () => {
-    const blocks = parseBlocks(["- a", "  - b", "", "para"]);
+    const blocks = parseBlocks(["- a", "  - b", "", "- c", "", "para"]);
     expect(blockAt(blocks, 1)?.kind).toBe("item");
     expect(blockAt(blocks, 1)?.start).toBe(1);
     expect(blockAt(blocks, 0)?.start).toBe(0);
     expect(blockAt(blocks, 2)?.kind).toBe("list");
-    expect(blockAt(blocks, 3)?.kind).toBe("para");
+    expect(blockAt(blocks, 4)).toBeNull();
+    expect(blockAt(blocks, 5)?.kind).toBe("para");
   });
 
   it("records where the text of an item starts, for children that nest under it", () => {
@@ -455,7 +456,7 @@ describe("the lines of the block being edited", () => {
 
   it("is nothing for a blank line, and the line itself in a fence", () => {
     expect(lines("a\n\nb", 1)).toEqual([]);
-    expect(lines("```\na\n\nb\n```", 2)).toEqual([2]);
+    expect(lines("```\na\n\nb\n```", 3)).toEqual([3]);
   });
 });
 

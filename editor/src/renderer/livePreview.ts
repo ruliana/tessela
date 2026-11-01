@@ -4,10 +4,10 @@
 // saving, searching and the tools see the same Markdown as always.
 
 import { syntaxTree } from "@codemirror/language";
-import { type EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
+import { type EditorState, type Extension, type Range, StateEffect, StateField, type Text } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
-import { frontmatterEnd } from "../shared/blocks";
+import { type Block, editedBlockLines, frontmatterEnd, parseBlocks } from "../shared/blocks";
 import { type Properties, bodyRepeatsTitle, parseProperties, showWhen } from "../shared/properties";
 
 class Glyph extends WidgetType {
@@ -77,24 +77,34 @@ const linkText = Decoration.mark({ class: "cm-lp-link" });
 
 const HEADING = /^ATXHeading[1-6]$/;
 
-/** The lines (1-based) of the blocks that hold the selection: these are shown raw. */
+const parsed = new WeakMap<Text, { lines: string[]; blocks: Block[] }>();
+
+/** The page as shared/blocks.ts reads it, once for each version of the document. */
+function pageBlocks(doc: Text): { lines: string[]; blocks: Block[] } {
+  let page = parsed.get(doc);
+  if (!page) {
+    const lines = doc.toString().split("\n");
+    page = { lines, blocks: parseBlocks(lines) };
+    parsed.set(doc, page);
+  }
+  return page;
+}
+
+/**
+ * The lines (1-based) of the blocks that hold the selection: these are shown raw. What counts as
+ * a block comes from the same parser that Escape and Tab use, so a list item shows its own lines
+ * and a paragraph after a blank line is never part of the item above it.
+ */
 export function editedLines(state: EditorState): Set<number> {
   const lines = new Set<number>();
-  const tree = syntaxTree(state);
-  const addBlock = (pos: number) => {
-    for (let node = tree.resolveInner(pos, 0) as { name: string; from: number; to: number; parent: unknown } | null; node; ) {
-      // A paragraph that spans several lines is one block.
-      if (node.name === "Paragraph") {
-        for (let n = state.doc.lineAt(node.from).number; n <= state.doc.lineAt(node.to).number; n++) lines.add(n);
-        return;
-      }
-      node = node.parent as typeof node;
-    }
-  };
+  const { lines: text, blocks } = pageBlocks(state.doc);
   for (const { from, to } of state.selection.ranges) {
-    for (let n = state.doc.lineAt(from).number; n <= state.doc.lineAt(to).number; n++) lines.add(n);
-    addBlock(from);
-    addBlock(to);
+    const first = state.doc.lineAt(from).number;
+    const last = state.doc.lineAt(to).number;
+    for (let n = first; n <= last; n++) lines.add(n);
+    for (const n of new Set([first, last])) {
+      for (const own of editedBlockLines(text, n - 1, blocks)) lines.add(own + 1);
+    }
   }
   return lines;
 }
