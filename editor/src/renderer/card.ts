@@ -16,6 +16,8 @@ export interface CardDeps {
   written: () => Set<string> | null;
   /** The text reached the disk. */
   onSaved: (path: string) => void;
+  /** The save state of a card changed. */
+  onStatus: () => void;
   /** The user started working in this card. */
   onActive: (path: string) => void;
   /** The title was clicked. */
@@ -37,6 +39,10 @@ export interface Card {
   focus(line?: number): void;
   /** Colours again, after the vocabulary changed. */
   refresh(): void;
+  /** Whether the card is saved, being edited or in conflict, and the words that say so. */
+  statusInfo(): { state: "saved" | "dirty" | "conflict"; text: string };
+  /** The number of words in the page, front matter excluded. */
+  words(): number;
   setLivePreview(on: boolean): void;
   destroy(): void;
 }
@@ -89,6 +95,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
   function setStatus(state: "saved" | "dirty" | "conflict", text: string): void {
     status.dataset.state = state;
     status.textContent = text;
+    deps.onStatus();
   }
 
   function onEdit(): void {
@@ -178,6 +185,11 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       editor.focus();
     },
     refresh: () => editor.refresh(),
+    statusInfo: () => ({ state: (status.dataset.state as "saved" | "dirty" | "conflict") ?? "saved", text: status.textContent ?? "" }),
+    words: () => {
+      const body = editor.text().replace(/^---\n[\s\S]*?\n(---|\.\.\.)[ \t]*(\n|$)/, "");
+      return (body.match(/\S+/g) ?? []).length;
+    },
     setLivePreview: (on) => editor.setLivePreview(on),
     destroy() {
       gone = true;
