@@ -51,3 +51,27 @@ export function datesInLine(line: string): DateAt[] {
   }
   return found;
 }
+
+export interface DayAt extends DateAt {
+  /** The day, `YYYY-MM-DD`: for a datetime, its date part. */
+  day: string;
+}
+
+/**
+ * Dates in a line that can be followed to their journal day: every date except those inside a
+ * web address (`https://example.com/2026-10-27/notes` is a path, not a day).
+ */
+export function daysInLine(line: string): DayAt[] {
+  return datesInLine(line)
+    .filter((d) => {
+      const start = line.lastIndexOf(" ", d.from) + 1;
+      const space = line.indexOf(" ", d.to);
+      return !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(line.slice(start, space < 0 ? line.length : space).replace(/^[([<"']+/, ""));
+    })
+    .map((d) => ({ ...d, day: line.slice(d.from, d.from + 10) }));
+}
+
+/** The day whose date covers `column` in `line`, if any. */
+export function dayAt(line: string, column: number): DayAt | null {
+  return daysInLine(line).find((d) => column >= d.from && column <= d.to) ?? null;
+}

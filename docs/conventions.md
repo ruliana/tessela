@@ -286,6 +286,10 @@ writes the Markdown files itself.
   and fenced code blocks in the language they name.
 - `#` and `](` suggest existing concepts from the vocabulary. Ctrl/Cmd-click on a tag
   or a concept link opens its page, which is created from a template when new.
+- A date (or datetime) leads to that day's journal the same way: Ctrl/Cmd-click where
+  the text is typed, a plain click where it is drawn (rendered text, table cells, the
+  date in a page's properties, the backlink tiles). A day without a file opens empty
+  and gets its file on the first edit. Dates in code or in web addresses are left alone.
 
 ### Editing keys
 

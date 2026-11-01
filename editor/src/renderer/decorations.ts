@@ -13,7 +13,7 @@ export const refreshDecorations = StateEffect.define<null>();
 
 const CODE = new Set(["FencedCode", "CodeBlock", "InlineCode", "CodeText", "CodeInfo", "CodeMark"]);
 
-function inCode(state: EditorState, pos: number): boolean {
+export function inCode(state: EditorState, pos: number): boolean {
   for (let node = syntaxTree(state).resolveInner(pos, 1) as { name: string; parent: unknown } | null; node; ) {
     if (CODE.has(node.name)) return true;
     node = node.parent as typeof node;
