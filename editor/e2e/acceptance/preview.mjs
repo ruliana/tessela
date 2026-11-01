@@ -117,7 +117,7 @@ suite("Live preview", null, (test) => {
     assert.equal((await style("slanted")).style, "italic");
     assert.match((await style("gone")).deco, /line-through/);
     assert.match((await style("code")).family, /mono|Mono|Courier/);
-    assert.notEqual((await style("site")).color, (await style("Last paragraph")).color);
+    assert.match((await style("site")).deco, /underline/);
   });
 
   test("typing in a rendered page changes only the Markdown", async (s) => {

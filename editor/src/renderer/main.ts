@@ -1,5 +1,11 @@
 // The window: sidebar, editor(s) and backlinks. All file access goes through `window.tessela`.
 
+import "@fontsource-variable/newsreader/index.css";
+import "@fontsource-variable/newsreader/wght-italic.css";
+import "@fontsource/ibm-plex-sans/400.css";
+import "@fontsource/ibm-plex-sans/500.css";
+import "@fontsource/ibm-plex-sans/600.css";
+import "@fontsource/ibm-plex-mono/400.css";
 import "./style.css";
 
 import type { Diagnostic, Hit, PageEntry, VocabEntry } from "../shared/api";
@@ -52,6 +58,41 @@ function togglePreview(): void {
   for (const c of cards) c.setLivePreview(livePreview);
   previewButton?.setAttribute("aria-pressed", String(livePreview));
 }
+
+const THEME_KEY = "tessela.theme";
+const TEXT_KEY = "tessela.text";
+type Theme = "system" | "light" | "dark";
+type TextFace = "serif" | "sans";
+const THEMES: Theme[] = ["system", "light", "dark"];
+let theme: Theme = readChoice(THEME_KEY, THEMES, "system");
+let textFace: TextFace = readChoice(TEXT_KEY, ["serif", "sans"], "serif");
+
+function readChoice<T extends string>(key: string, allowed: T[], fallback: T): T {
+  try {
+    const value = localStorage.getItem(key);
+    return allowed.find((a) => a === value) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function store(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // The choice just is not remembered.
+  }
+}
+
+/** Light or dark follows the system unless a choice was made; the text is serif or sans. */
+function applyLook(): void {
+  const root = document.documentElement;
+  if (theme === "system") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", theme);
+  if (textFace === "serif") root.removeAttribute("data-text");
+  else root.setAttribute("data-text", textFace);
+}
+applyLook();
 
 const RECENT_COUNT_KEY = "tessela.recentCount";
 const RECENT_KEY = "tessela.recent";
@@ -189,6 +230,31 @@ let noticeEl: HTMLElement;
 let newPageEl: HTMLElement;
 let newPageInput: HTMLInputElement;
 let newPageError: HTMLElement;
+let themeButton: HTMLElement;
+let textButton: HTMLElement;
+
+const label = (s: string) => s[0]?.toUpperCase() + s.slice(1);
+
+function renderPrefs(): void {
+  themeButton.textContent = `Theme: ${label(theme)}`;
+  themeButton.title = "Light, dark, or follow the system";
+  textButton.textContent = `Text: ${label(textFace)}`;
+  textButton.title = "Write in a serif or a sans-serif typeface";
+}
+
+function cycleTheme(): void {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length] ?? "system";
+  store(THEME_KEY, theme);
+  applyLook();
+  renderPrefs();
+}
+
+function toggleText(): void {
+  textFace = textFace === "serif" ? "sans" : "serif";
+  store(TEXT_KEY, textFace);
+  applyLook();
+  renderPrefs();
+}
 
 function buildShell(bundle: string): void {
   let searchTimer: number | undefined;
@@ -251,6 +317,9 @@ function buildShell(bundle: string): void {
     "Rendered",
   );
   previewButton.setAttribute("aria-pressed", String(livePreview));
+  themeButton = el("button", { class: "pref", id: "theme-toggle", onclick: cycleTheme });
+  textButton = el("button", { class: "pref", id: "text-toggle", onclick: toggleText });
+  renderPrefs();
   const mod = navigator.userAgent.includes("Mac") ? "Cmd" : "Super";
   backButton = el("button", { class: "nav", id: "go-back", title: `Go back (${mod}+[)`, ariaLabel: "Go back", onclick: () => void go(-1) }, "‹");
   forwardButton = el("button", { class: "nav", id: "go-forward", title: `Go forward (${mod}+])`, ariaLabel: "Go forward", onclick: () => void go(1) }, "›");
@@ -301,6 +370,7 @@ function buildShell(bundle: string): void {
     el("div", { class: "lists" }, journalsEl, listEl),
     problemsEl,
     problemsToggle,
+    el("div", { class: "prefs" }, themeButton, textButton),
   );
 
   stackEl = el("div", { class: "stack", id: "stack" });

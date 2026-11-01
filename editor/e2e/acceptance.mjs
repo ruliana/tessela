@@ -12,5 +12,6 @@ import "./acceptance/menus.mjs";
 import "./acceptance/syntax.mjs";
 import "./acceptance/preview.mjs";
 import "./acceptance/files.mjs";
+import "./acceptance/look.mjs";
 
 await runAll();

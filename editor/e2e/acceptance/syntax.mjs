@@ -85,7 +85,7 @@ suite("Syntax highlighting", bundle, (test) => {
     const h1 = await styleOf(s, "Title one");
     const h2 = await styleOf(s, "Title two");
     assert.ok(h1.size > h2.size && h2.size > body.size, JSON.stringify({ h1, h2, body }));
-    assert.ok(h1.weight >= 700 && h2.weight >= 700);
+    assert.ok(h1.weight >= 600 && h2.weight >= 600);
   });
 
   test("bold, italic and strikethrough", async (s) => {
@@ -101,9 +101,9 @@ suite("Syntax highlighting", bundle, (test) => {
     assert.notEqual(code.color, body.color);
   });
 
-  test("links have their own colour, quotes are muted", async (s) => {
+  test("links are underlined, quotes are muted", async (s) => {
     const body = await styleOf(s, "Plain ");
-    assert.notEqual((await styleOf(s, "site")).color, body.color);
+    assert.match((await styleOf(s, "site")).deco, /underline/);
     assert.notEqual((await styleOf(s, "quoted words")).color, body.color);
   });
 
