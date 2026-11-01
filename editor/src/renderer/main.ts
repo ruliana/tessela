@@ -26,6 +26,7 @@ import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
 import { el } from "./dom";
 import { renderInlineText } from "./inline";
+import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
 const JOURNAL_STEP = 7;
@@ -96,6 +97,43 @@ function applyLook(): void {
   else root.setAttribute("data-text", textFace);
 }
 applyLook();
+
+const PANELS_KEY = "tessela.panels";
+/** Which side panels are shown; remembered. Focus mode hides both for a while and is not. */
+let panels = readPanels();
+let focusMode = false;
+let shellEl: HTMLElement | undefined;
+let focusButton: HTMLElement | undefined;
+
+function readPanels(): { sidebar: boolean; backlinks: boolean } {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(PANELS_KEY) ?? "{}");
+    const p = (saved && typeof saved === "object" ? saved : {}) as Record<string, unknown>;
+    return { sidebar: p.sidebar !== false, backlinks: p.backlinks !== false };
+  } catch {
+    return { sidebar: true, backlinks: true };
+  }
+}
+
+function applyLayout(): void {
+  if (!shellEl) return;
+  shellEl.dataset.sidebar = panels.sidebar ? "1" : "0";
+  shellEl.dataset.backlinks = panels.backlinks ? "1" : "0";
+  shellEl.dataset.focus = focusMode ? "1" : "0";
+  focusButton?.setAttribute("aria-pressed", String(focusMode));
+}
+
+function togglePanel(which: "sidebar" | "backlinks"): void {
+  panels[which] = !panels[which];
+  store(PANELS_KEY, JSON.stringify(panels));
+  applyLayout();
+}
+
+function toggleFocus(): void {
+  focusMode = !focusMode;
+  applyLayout();
+  active?.focus();
+}
 
 const RECENT_COUNT_KEY = "tessela.recentCount";
 const RECENT_KEY = "tessela.recent";
@@ -421,6 +459,8 @@ function buildShell(bundle: string): void {
     el("div", { class: "lists" }, journalsSection, conceptsSection),
   );
 
+  focusButton = el("button", { class: "pref", id: "focus-toggle", title: `Hide the panels and dim all but the block you are in (${key}+.)`, onclick: toggleFocus }, "Focus");
+  focusButton.setAttribute("aria-pressed", String(focusMode));
   statusEl = el("span", { class: "strip-status", id: "strip-status" });
   wordsEl = el("span", { class: "strip-words", id: "strip-words" });
   const strip = el(
@@ -431,13 +471,16 @@ function buildShell(bundle: string): void {
     problemsToggle,
     el("span", { class: "sp" }),
     previewButton,
+    focusButton,
     themeButton,
     textButton,
   );
 
   stackEl = el("div", { class: "stack", id: "stack" });
   backlinksEl = el("aside", { class: "backlinks", id: "backlinks" });
-  app.replaceChildren(el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl, strip, problemsEl));
+  shellEl = el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl, strip, problemsEl);
+  app.replaceChildren(shellEl);
+  applyLayout();
   renderStrip();
   renderProblems();
   renderNav();
@@ -661,6 +704,61 @@ window.addEventListener(
     e.preventDefault();
     e.stopPropagation();
     void go(e.key === "[" ? -1 : 1);
+  },
+  true,
+);
+
+const IS_MAC = navigator.userAgent.includes("Mac");
+
+/** The commands of the palette. Each also has its own button or keys. */
+function commandList(): Command[] {
+  const key = IS_MAC ? "⌘" : "Ctrl";
+  return [
+    { id: "today", label: "Go to today", run: () => void showJournals(true) },
+    { id: "journals", label: "Show the journals", run: () => void showJournals() },
+    { id: "new-page", label: "New page", hint: `${key} N`, run: () => showNewPage() },
+    { id: "open-file", label: "Open file…", hint: `${key} O`, run: () => void openFile() },
+    { id: "root", label: "Change the notes folder…", hint: `${key} Shift O`, run: () => void changeRoot() },
+    { id: "preview", label: livePreview ? "Show the Markdown as written" : "Show the Markdown rendered", hint: `${key} Alt M`, run: togglePreview },
+    { id: "focus", label: focusMode ? "Leave focus mode" : "Focus on the current block", hint: `${key} .`, run: toggleFocus },
+    { id: "sidebar", label: panels.sidebar ? "Hide the sidebar" : "Show the sidebar", hint: `${key} \\`, run: () => togglePanel("sidebar") },
+    { id: "backlinks", label: panels.backlinks ? "Hide the backlinks" : "Show the backlinks", hint: `${key} Shift \\`, run: () => togglePanel("backlinks") },
+    { id: "theme", label: `Theme: ${label(theme)}, change`, run: cycleTheme },
+    { id: "text", label: `Text: ${label(textFace)}, change`, run: toggleText },
+    { id: "problems", label: problemsOpen ? "Hide the problems" : "Show the problems", run: toggleProblems },
+  ];
+}
+
+function openPalette(): void {
+  togglePalette({
+    pages: () => pages,
+    vocab: () => vocab,
+    recent: () => recent,
+    commands: commandList,
+    open: (path) => void showPage(path),
+  });
+}
+
+// Captured, so the editor never sees these keys: the palette, and the panels and focus.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key === "Escape" && focusMode && !paletteOpen() && !document.querySelector(".cm-tooltip-autocomplete")) {
+      toggleFocus();
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (!document.getElementById("new-page") || e.altKey) return;
+    const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+    if (!mod) return;
+    if (e.code === "KeyK" && !e.shiftKey) openPalette();
+    else if (paletteOpen()) return;
+    else if (e.code === "Backslash") togglePanel(e.shiftKey ? "backlinks" : "sidebar");
+    else if (e.code === "Period" && !e.shiftKey) toggleFocus();
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
   },
   true,
 );

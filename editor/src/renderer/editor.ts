@@ -33,7 +33,7 @@ import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
 import { queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
-import { livePreview, renderedLine } from "./livePreview";
+import { focusMarks, livePreview, renderedLine } from "./livePreview";
 import { slashSource } from "./slash";
 import { bodyStart } from "../shared/properties";
 
@@ -223,6 +223,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
+        focusMarks(),
         preview.of(previewOn ? previewExtension() : []),
         blockKeymap,
         formatting,
