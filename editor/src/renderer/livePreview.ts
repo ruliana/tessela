@@ -8,6 +8,8 @@ import { type EditorState, type Extension, type Range, StateEffect, StateField }
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
 import { frontmatterEnd } from "../shared/blocks";
+import { daysInLine } from "../shared/dates";
+import { journalDest } from "../shared/pages";
 import { type Properties, bodyRepeatsTitle, parseProperties, showWhen } from "../shared/properties";
 
 class Glyph extends WidgetType {
@@ -205,12 +207,25 @@ function parseTable(lines: string[]): ParsedTable | null {
 
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\*[^*]+\*)|\[([^\]]*)\]\(([^)\s]*)\)/g;
 
+/** Appends plain text; a date in it is a link to its journal day. */
+function appendText(text: string, parent: HTMLElement): void {
+  let last = 0;
+  for (const d of daysInLine(text)) {
+    parent.append(text.slice(last, d.from));
+    const a = Object.assign(document.createElement("a"), { textContent: text.slice(d.from, d.to), className: "date" });
+    a.dataset.href = journalDest(d.day);
+    parent.append(a);
+    last = d.to;
+  }
+  parent.append(text.slice(last));
+}
+
 /** Appends the text of a table cell with its inline Markdown (code, bold, italic, strike, links) drawn. */
 function renderInline(text: string, parent: HTMLElement): void {
   let last = 0;
   for (const m of text.matchAll(INLINE)) {
     const at = m.index ?? 0;
-    parent.append(text.slice(last, at));
+    appendText(text.slice(last, at), parent);
     last = at + m[0].length;
     if (m[1]) parent.append(Object.assign(document.createElement("code"), { textContent: m[1].slice(1, -1) }));
     else if (m[2]) parent.append(Object.assign(document.createElement("strong"), { textContent: m[2].slice(2, -2) }));
@@ -222,7 +237,7 @@ function renderInline(text: string, parent: HTMLElement): void {
       parent.append(a);
     }
   }
-  parent.append(text.slice(last));
+  appendText(text.slice(last), parent);
 }
 
 class TableWidget extends WidgetType {
@@ -290,6 +305,7 @@ class PropertiesWidget extends WidgetType {
     private readonly title: string | null,
     private readonly source: string,
     private readonly edit: () => void,
+    private readonly openLink: (dest: string) => void,
   ) {
     super();
   }
@@ -320,7 +336,19 @@ class PropertiesWidget extends WidgetType {
     };
     if (props.type) chip(props.type, "cm-props-type", "type");
     for (const tag of props.tags) chip(`#${tag}`, "cm-props-tag");
-    if (props.when) chip(showWhen(props.when.value), "cm-props-when", `${props.when.key}: ${props.when.value}`);
+    if (props.when) {
+      chip(showWhen(props.when.value), "cm-props-when", `${props.when.key}: ${props.when.value}`);
+      // The date of the page leads to that day's journal.
+      const day = daysInLine(props.when.value)[0]?.day;
+      const when = row.lastElementChild as HTMLElement;
+      if (day !== undefined && props.when.value.startsWith(day)) {
+        when.classList.add("cm-props-day");
+        when.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          this.openLink(journalDest(day));
+        });
+      }
+    }
     for (const { key, value } of props.others.slice(0, 3)) chip(`${key} ${value}`, "cm-props-other");
     const button = document.createElement("button");
     button.type = "button";
@@ -380,7 +408,7 @@ function tables(opts: PreviewOptions): Extension {
           view.focus();
         };
         const title = bodyRepeatsTitle(head, fmEnd, props.title ?? opts.pageName()) ? null : (props.title ?? opts.pageName());
-        const widget = props.type === "journal" ? new NothingWidget() : new PropertiesWidget(props, title, source, edit);
+        const widget = props.type === "journal" ? new NothingWidget() : new PropertiesWidget(props, title, source, edit, openLink);
         ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
       }
     }

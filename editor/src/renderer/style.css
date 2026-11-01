@@ -198,6 +198,7 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .cm-lp-table { border-collapse: collapse; font: 400 14px/1.45 var(--sans); cursor: text; max-width: 100%; }
 .cm-lp-table th, .cm-lp-table td { border: 0; border-bottom: 1px solid var(--border); padding: 5px 16px 5px 0; text-align: left; overflow-wrap: anywhere; }
 .cm-lp-table th { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom-color: var(--text); }
+.cm-lp-table a.date { color: var(--date); text-decoration-color: var(--date); font-variant-numeric: tabular-nums; }
 .cm-lp-table a { color: var(--text); text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; cursor: pointer; }
 .cm-lp-table code { background: var(--codebg); color: var(--code); border-radius: 3px; padding: 0 3px; font-family: var(--mono); font-size: 0.86em; }
 .cm-lp-image { display: inline-block; max-width: 100%; height: auto; vertical-align: top; border-radius: 3px; cursor: text; }
@@ -221,6 +222,8 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .cm-props-tag { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 500; }
 .cm-props-when { background: none; border: 0; padding-inline: 0; color: var(--date); font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
 .cm-props-other { background: none; border: 0; padding-inline: 0; }
+.cm-props-day { cursor: pointer; }
+.cm-props-day:hover { text-decoration: underline; text-underline-offset: 3px; }
 .cm-props-edit { margin-left: auto; opacity: 0; background: none; border: 0; padding: 0; color: var(--muted); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; transition: opacity 0.15s; }
 .cm-props:hover .cm-props-edit, .cm-props-edit:focus-visible { opacity: 1; }
 .cm-props-none { height: 0; }
@@ -307,6 +310,8 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .hit .where { font-size: 11px; line-height: 1.3; color: var(--muted); }
 .hit .text { font: 400 14px/1.45 var(--serif); white-space: pre-wrap; }
 .hit .tag { color: var(--accent); background: var(--accent-soft); border-radius: 3px; padding: 0 3px; font: 500 0.84em var(--sans); }
+.hit .date { color: var(--date); font-variant-numeric: tabular-nums; text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+.hit .date:hover { text-decoration-style: solid; }
 .hit .lnk { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 2px; }
 .hit code { font: 0.86em var(--mono); background: var(--codebg); border-radius: 3px; padding: 0 3px; }
 .results .hit { max-height: 7em; }

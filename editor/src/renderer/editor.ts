@@ -29,9 +29,11 @@ import { tags as t } from "@lezer/highlight";
 import type { VocabEntry } from "../shared/api";
 import { slugFirst, suggest } from "../shared/complete";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
+import { dayAt } from "../shared/dates";
+import { journalDest } from "../shared/pages";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
-import { queryableMarks, refreshDecorations } from "./decorations";
+import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { focusMarks, livePreview, renderedLine } from "./livePreview";
 import { slashSource } from "./slash";
@@ -257,6 +259,14 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
             if (dest !== null) {
               event.preventDefault();
               openDest(dest);
+              return true;
+            }
+            // A date leads to its journal day: with a plain click where the line is drawn as text,
+            // with Ctrl/Cmd where it is being edited. Dates in code are only text.
+            const day = modifier || renderedLine(v, line.number) ? dayAt(line.text, pos - line.from) : null;
+            if (day !== null && !inCode(v.state, line.from + day.from)) {
+              event.preventDefault();
+              openDest(journalDest(day.day));
               return true;
             }
             if (!modifier) return false;
