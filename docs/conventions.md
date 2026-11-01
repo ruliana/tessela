@@ -310,6 +310,9 @@ writes the Markdown files itself.
 On macOS, Ctrl above is Cmd. Tab, Shift+Tab and Alt+Up/Down keep their usual
 behaviour inside front matter and fenced code. Blocks are the ones of §3: a
 paragraph owns the list directly under it, and an item owns the items nested in it.
+Where a block begins and ends is decided once, by the CommonMark reading of the page, so a
+paragraph after a blank line is never part of the list item above it unless it is indented to
+the item's text.
 
 ### Smart link: Ctrl+L (Super+L on macOS)
 

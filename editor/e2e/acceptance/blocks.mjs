@@ -205,6 +205,20 @@ suite("Block move and select", null, (test) => {
     assert.equal(await s.selected(), "Beta line\ncontinues");
   });
 
+  test("Esc on an item does not take in the paragraph after the blank line below it", async (s) => {
+    await s.openWith("sel-gap-item", "- Talk to Santista.\n\n This looks good\n Test another row\n\nAnother paragraph");
+    for (let i = 0; i < 5; i++) await s.key("ArrowUp");
+    await s.key("Escape");
+    assert.equal(await s.selected(), "- Talk to Santista.");
+  });
+
+  test("Esc on the paragraph after an item selects that paragraph alone", async (s) => {
+    await s.openWith("sel-gap-para", "- Talk to Santista.\n\n This looks good\n Test another row\n\nAnother paragraph");
+    for (let i = 0; i < 2; i++) await s.key("ArrowUp");
+    await s.key("Escape");
+    assert.equal(await s.selected(), " This looks good\n Test another row");
+  });
+
   test("Shift+Down and Shift+Up take in more blocks", async (s) => {
     await s.openWith("sel-more", "Alpha\n\nBeta\n\nGamma\n\nDelta");
     await s.key("ArrowUp");

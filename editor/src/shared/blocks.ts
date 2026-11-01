@@ -2,12 +2,31 @@
 // indent, outdent, move and select (spec §3). Everything here works on an array of
 // lines, so it can be tested without an editor.
 //
-// A block is a paragraph, a heading, a fenced code block, a list or a list item.
+// A block is a paragraph, a heading, a code block, a quote, a table, a list or a list item.
 // A paragraph owns the list that starts on the line right beneath it, and a list item
 // owns the items nested under it, so moving a block moves what it owns.
+//
+// Where a block begins and ends is decided in one place, `parseBlocks`, which reads the page
+// with the same CommonMark parser that the editor renders it with. Escape, Tab, Alt+Up/Down
+// and the block that focus mode and the live preview keep lit all ask it, so they cannot
+// disagree about, say, whether a paragraph after a blank line is still part of a list item.
+
+import { GFM, parser } from "@lezer/markdown";
 
 export interface Block {
-  kind: "frontmatter" | "heading" | "fence" | "para" | "list" | "item";
+  kind:
+    | "frontmatter"
+    | "heading"
+    | "fence"
+    | "code"
+    | "para"
+    | "list"
+    | "item"
+    | "quote"
+    | "table"
+    | "rule"
+    | "html"
+    | "other";
   /** First and last line, both included. Trailing blank lines are not part of a block. */
   start: number;
   end: number;
@@ -41,7 +60,6 @@ export interface Row {
 const ITEM = /^( *)([-*+]|\d{1,9}[.)])( +|$)/;
 const THEMATIC = /^ {0,3}([-*_])( *\1){2,} *$/;
 const HEADING = /^ {0,3}#{1,6}( |$)/;
-const FENCE = /^( *)(`{3,}|~{3,})/;
 
 function width(line: string): number {
   return (/^ */.exec(line)?.[0] ?? "").length;
@@ -53,25 +71,6 @@ function blank(line: string | undefined): boolean {
 
 function itemMatch(line: string): RegExpExecArray | null {
   return THEMATIC.test(line) ? null : ITEM.exec(line);
-}
-
-function isItem(line: string): boolean {
-  return itemMatch(line) !== null;
-}
-
-/** The fence marker that opens at this line, if any. */
-function fenceOpen(line: string): string | null {
-  const m = FENCE.exec(line);
-  if (!m) return null;
-  const marker = m[2]!;
-  // A backtick fence cannot have a backtick in its info string.
-  if (marker[0] === "`" && line.slice(m[0].length).includes("`")) return null;
-  return marker;
-}
-
-function fenceCloses(line: string, marker: string): boolean {
-  const t = line.trim();
-  return t.length >= marker.length && t.split("").every((c) => c === marker[0]);
 }
 
 /** The last line of the front matter, or -1 when the page has none. */
@@ -88,122 +87,127 @@ function newBlock(kind: Block["kind"], start: number, end: number, line: string)
   return { kind, start, end, indent: width(line), offset: 0, children: [], parent: null };
 }
 
-/** Parses the list that starts at `start` into items. Returns the list and the last line. */
-function parseList(lines: string[], start: number, owner: Block | null): Block {
-  const list: Block = owner ?? newBlock("list", start, start, lines[start]!);
-  const stack: Block[] = [];
-  let i = start;
-  let last = start;
-  const extend = (to: number, w: number) => {
-    // A line belongs to every open item that it is indented under.
-    for (const open of stack) if (open.indent < w || open === stack[stack.length - 1]) open.end = to;
-    last = to;
-  };
-  while (i < lines.length) {
-    const line = lines[i]!;
-    if (blank(line)) {
-      let j = i + 1;
-      while (j < lines.length && blank(lines[j])) j++;
-      if (j >= lines.length) break;
-      const next = lines[j]!;
-      if (!(isItem(next) || width(next) > 0)) break;
-      i = j;
-      continue;
-    }
-    const fence = fenceOpen(line);
-    const w = width(line);
-    const m = itemMatch(line);
-    if (m && !(w >= 4 && stack.length === 0)) {
-      const item = newBlock("item", i, i, line);
-      item.offset = m[0].length === line.length ? w + m[2]!.length + 1 : m[0].length;
-      while (stack.length > 0 && stack[stack.length - 1]!.indent >= w) stack.pop();
-      const parent = stack[stack.length - 1] ?? list;
-      item.parent = parent;
-      parent.children.push(item);
-      stack.push(item);
-      for (const open of stack) open.end = i;
-      last = i;
-      i++;
-      continue;
-    }
-    // Not an item: a heading or a fence at the margin ends the list, any other text
-    // continues the item above it.
-    if (w === 0 && (HEADING.test(line) || fence)) break;
-    if (w === 0 && blank(lines[i - 1])) break;
-    if (stack.length === 0) break;
-    if (fence && w > 0) {
-      const marker = fence;
-      let j = i + 1;
-      while (j < lines.length && !fenceCloses(lines[j]!, marker)) j++;
-      const to = Math.min(j, lines.length - 1);
-      extend(to, w);
-      i = to + 1;
-      continue;
-    }
-    extend(i, w);
-    i++;
-  }
-  list.end = Math.max(list.end, last);
-  return list;
+const markdown = parser.configure(GFM);
+type SyntaxNode = ReturnType<typeof markdown.parse>["topNode"];
+
+/** The width of the text of an item: where a line must start to belong to it. */
+function textOffset(line: string): number {
+  const m = ITEM.exec(line);
+  if (!m) return 0;
+  const w = m[1]!.length;
+  // A marker with nothing after it, or with five spaces or more, has its text one space in.
+  return m[3]!.length === 0 || m[3]!.length > 4 ? w + m[2]!.length + 1 : m[0].length;
 }
 
-/** The top-level blocks of a page, in order, with their items nested inside. */
+const LEAF: Record<string, Block["kind"]> = {
+  FencedCode: "fence",
+  CodeBlock: "code",
+  Blockquote: "quote",
+  Table: "table",
+  HorizontalRule: "rule",
+  HTMLBlock: "html",
+  CommentBlock: "html",
+  ProcessingInstructionBlock: "html",
+  LinkReference: "other",
+};
+
+/**
+ * The top-level blocks of a page, in order, with their items nested inside. The reading is
+ * CommonMark's (with tables): what belongs to an item, where a lazy line goes, what a fence
+ * swallows. On top of it, a paragraph owns the list that starts on the line right beneath it.
+ */
 export function parseBlocks(lines: string[]): Block[] {
+  const clean = lines.map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+  const fm = frontmatterEnd(clean);
+  // The front matter is not Markdown: its lines are blanked, so that line numbers stay put.
+  const text = clean.map((l, i) => (i <= fm ? "" : l));
+  const starts: number[] = [];
+  let at = 0;
+  for (const l of text) {
+    starts.push(at);
+    at += l.length + 1;
+  }
+  const lineOf = (pos: number): number => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid]! <= pos) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  /** The first and last line of a node, without the blank lines that trail it. */
+  const span = (node: SyntaxNode): [number, number] => {
+    const start = lineOf(node.from);
+    let end = lineOf(Math.max(node.from, node.to - 1));
+    while (end > start && blank(text[end])) end--;
+    return [start, end];
+  };
+  const make = (kind: Block["kind"], node: SyntaxNode, parent: Block | null): Block => {
+    const [start, end] = span(node);
+    const b = newBlock(kind, start, end, text[start]!);
+    b.parent = parent;
+    return b;
+  };
+  const item = (node: SyntaxNode, parent: Block): Block => {
+    const b = make("item", node, parent);
+    b.offset = textOffset(text[b.start]!);
+    for (let c = node.firstChild; c; c = c.nextSibling) {
+      if (c.name === "BulletList" || c.name === "OrderedList") {
+        for (let i = c.firstChild; i; i = i.nextSibling) if (i.name === "ListItem") b.children.push(item(i, b));
+      }
+    }
+    return b;
+  };
+  const list = (node: SyntaxNode): Block => {
+    const b = make("list", node, null);
+    for (let i = node.firstChild; i; i = i.nextSibling) if (i.name === "ListItem") b.children.push(item(i, b));
+    return b;
+  };
+
   const root: Block[] = [];
-  let i = 0;
-  const fm = frontmatterEnd(lines);
-  if (fm >= 0) {
-    root.push(newBlock("frontmatter", 0, fm, lines[0]!));
-    i = fm + 1;
+  if (fm >= 0) root.push(newBlock("frontmatter", 0, fm, clean[0]!));
+  for (let node = markdown.parse(text.join("\n")).topNode.firstChild; node; node = node.nextSibling) {
+    const name = node.name;
+    if (name === "BulletList" || name === "OrderedList") {
+      const l = list(node);
+      const owner = root[root.length - 1];
+      // The list right beneath a paragraph, with no blank line between, belongs to it.
+      if (owner && owner.kind === "para" && owner.children.length === 0 && l.start === owner.end + 1) {
+        owner.end = l.end;
+        owner.children = l.children;
+        for (const c of l.children) c.parent = owner;
+      } else {
+        root.push(l);
+      }
+    } else if (name === "Paragraph") {
+      root.push(make("para", node, null));
+    } else if (name.startsWith("ATXHeading") || name.startsWith("SetextHeading")) {
+      root.push(make("heading", node, null));
+    } else {
+      root.push(make(LEAF[name] ?? "other", node, null));
+    }
   }
-  while (i < lines.length) {
-    const line = lines[i]!;
-    if (blank(line)) {
-      i++;
-      continue;
-    }
-    const marker = fenceOpen(line);
-    if (marker) {
-      let j = i + 1;
-      while (j < lines.length && !fenceCloses(lines[j]!, marker)) j++;
-      const end = Math.min(j, lines.length - 1);
-      root.push(newBlock("fence", i, end, line));
-      i = end + 1;
-      continue;
-    }
-    if (HEADING.test(line)) {
-      root.push(newBlock("heading", i, i, line));
-      i++;
-      continue;
-    }
-    if (isItem(line) && width(line) < 4) {
-      const list = parseList(lines, i, null);
-      root.push(list);
-      i = list.end + 1;
-      continue;
-    }
-    let end = i;
-    while (
-      end + 1 < lines.length &&
-      !blank(lines[end + 1]) &&
-      !HEADING.test(lines[end + 1]!) &&
-      !fenceOpen(lines[end + 1]!) &&
-      !isItem(lines[end + 1]!)
-    ) {
-      end++;
-    }
-    const para = newBlock("para", i, end, line);
-    if (end + 1 < lines.length && isItem(lines[end + 1]!) && width(lines[end + 1]!) < 4) {
-      parseList(lines, end + 1, para);
-      para.end = Math.max(para.end, ...para.children.map((c) => c.end));
-    }
-    for (const c of para.children) c.parent = para;
-    root.push(para);
-    i = para.end + 1;
-  }
-  // Items need their parent set for lists that are not owned by a paragraph.
-  for (const b of root) for (const c of b.children) c.parent = b;
   return root;
+}
+
+/**
+ * The lines (0-based) of the block being edited at `line`: its own text, without the items
+ * nested in it and without blank lines. A code block is not one text, so there it is the
+ * line alone. Nothing for a blank line, or where no block is.
+ */
+export function editedBlockLines(lines: string[], line: number, blocks: Block[] = parseBlocks(lines)): number[] {
+  if (blank(lines[line])) return [];
+  const b = blockAt(blocks, line);
+  if (!b || b.kind === "list") return [];
+  if (b.kind === "frontmatter" || b.kind === "fence" || b.kind === "code" || b.kind === "html") return [line];
+  const own: number[] = [];
+  for (let n = b.start; n <= b.end; n++) {
+    if (blank(lines[n]) || b.children.some((c) => n >= c.start && n <= c.end)) continue;
+    own.push(n);
+  }
+  return own;
 }
 
 /** The innermost block that contains `line`. */
@@ -310,7 +314,7 @@ function topmost(blocks: Block[], from: number, to: number): Block[] {
 function inEditableText(blocks: Block[], from: number, to: number): boolean {
   for (let line = from; line <= to; line++) {
     const b = blockAt(blocks, line);
-    if (b && (b.kind === "frontmatter" || b.kind === "fence")) return false;
+    if (b && (b.kind === "frontmatter" || b.kind === "fence" || b.kind === "code")) return false;
   }
   return true;
 }
