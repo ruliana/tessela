@@ -3,6 +3,7 @@
 // and refuses to overwrite a change it has not seen (spec §9).
 
 import type { Api, VocabEntry } from "../shared/api";
+import { formatDate } from "../shared/dates";
 import { pageId } from "../shared/pages";
 import { el } from "./dom";
 import { createEditor, type EditorHandle } from "./editor";
@@ -52,6 +53,24 @@ function dirOf(path: string): string {
   return i < 0 ? "" : path.slice(0, i);
 }
 
+/** The opening of a journal day: its number large, the weekday in small capitals, its date, and a tag for today. */
+function dateline(path: string, title: HTMLElement, status: HTMLElement): HTMLElement {
+  const day = pageId(path).replace(/^journals\//, "");
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return el("div", { class: "pane-head" }, title, status);
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = formatDate(new Date()) === day;
+  return el(
+    "div",
+    { class: "dateline" },
+    el("span", { class: "n" }, m[3] ?? ""),
+    el("span", { class: "w" }, date.toLocaleDateString("en-US", { weekday: "long" })),
+    title,
+    today ? el("span", { class: "today-tag" }, "Today") : "",
+    status,
+  );
+}
+
 export function createCard(path: string, deps: CardDeps, opts: { compact?: boolean } = {}): Card {
   const { api } = deps;
   /** Hash of the file on disk when we last read or wrote it; null if it has no file yet. */
@@ -74,7 +93,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
   const root = el(
     "section",
     { class: `card${opts.compact ? " compact" : ""}` },
-    el("div", { class: "pane-head" }, title, status),
+    opts.compact ? dateline(path, title, status) : el("div", { class: "pane-head" }, title, status),
     banner,
     host,
   );

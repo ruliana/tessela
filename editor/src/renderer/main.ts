@@ -25,6 +25,7 @@ import { summary, visibleProblems } from "../shared/problems";
 import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
 import { el } from "./dom";
+import { renderInlineText } from "./inline";
 
 const api = window.tessela;
 const JOURNAL_STEP = 7;
@@ -828,22 +829,33 @@ async function renderBacklinks(): Promise<void> {
     backlinksEl.replaceChildren(head, el("p", { class: "empty" }, "Nothing mentions this page yet."));
     return;
   }
+  const pages = byPage.size;
+  const sub = el("p", { class: "sub" }, `${total === 1 ? "1 mention" : `${total} mentions`} in ${pages === 1 ? "1 page" : `${pages} pages`}`);
   const groups = [...byPage.entries()].map(([p, list]) =>
     el(
       "section",
-      {},
-      el("h3", {}, el("button", { onclick: () => void showPage(p) }, pageId(p))),
-      ...list.map((hit) =>
-        el(
+      { class: "bl-group" },
+      el("h3", {}, el("button", { onclick: () => void showPage(p) }, pageId(p)), el("span", { class: "n" }, String(list.length))),
+      ...list.map((hit) => {
+        const where = hitPlace(hit);
+        return el(
           "button",
           { class: "hit", onclick: () => void openAt(hit) },
-          el("span", { class: "kind" }, hit.kind),
-          hit.text,
-        ),
-      ),
+          where ? el("span", { class: "where" }, where) : "",
+          el("span", { class: "text" }, ...renderInlineText(hit.text)),
+        );
+      }),
     ),
   );
-  backlinksEl.replaceChildren(head, ...groups);
+  backlinksEl.replaceChildren(head, sub, ...groups);
+}
+
+/** Where in its page a hit sits: the headings above it, or what the hit is when it is not a paragraph. */
+function hitPlace(hit: Hit): string {
+  const trail = hit.heading_path.map((h) => h.replace(/^#+\s*/, "").trim()).filter(Boolean);
+  if (hit.kind === "page") return "Page properties";
+  if (hit.kind === "heading") return trail.length > 0 ? `Heading › ${trail.join(" › ")}` : "Heading";
+  return trail.join(" › ");
 }
 
 start().catch((e) => welcome(String(e)));
