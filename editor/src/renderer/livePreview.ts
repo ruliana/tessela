@@ -78,7 +78,7 @@ const linkText = Decoration.mark({ class: "cm-lp-link" });
 const HEADING = /^ATXHeading[1-6]$/;
 
 /** The lines (1-based) of the blocks that hold the selection: these are shown raw. */
-function editedLines(state: EditorState): Set<number> {
+export function editedLines(state: EditorState): Set<number> {
   const lines = new Set<number>();
   const tree = syntaxTree(state);
   const addBlock = (pos: number) => {
@@ -453,4 +453,37 @@ export function livePreview(opts: PreviewOptions): Extension {
       { decorations: (v) => v.decorations },
     ),
   ];
+}
+
+// ---- focus -------------------------------------------------------------------
+
+const currentBlock = Decoration.line({ class: "cm-focus-cur" });
+
+/**
+ * Marks the lines of the block the cursor is in, so focus mode can dim the rest. The mark is
+ * always there and only the window's focus setting makes it matter.
+ */
+export function focusMarks(): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = this.build(view);
+      }
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.selectionSet || update.focusChanged || update.viewportChanged) {
+          this.decorations = this.build(update.view);
+        }
+      }
+      build(view: EditorView): DecorationSet {
+        if (!view.hasFocus) return Decoration.none;
+        const ranges: Range<Decoration>[] = [];
+        for (const n of [...editedLines(view.state)].sort((a, b) => a - b)) {
+          if (n <= view.state.doc.lines) ranges.push(currentBlock.range(view.state.doc.line(n).from));
+        }
+        return Decoration.set(ranges, true);
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
 }
