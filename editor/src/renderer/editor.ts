@@ -69,14 +69,14 @@ export interface EditorHandle {
 const programmatic = Annotation.define<boolean>();
 
 const highlight = HighlightStyle.define([
-  { tag: t.heading1, color: "var(--heading)", fontWeight: "700", fontSize: "1.5em" },
-  { tag: t.heading2, color: "var(--heading)", fontWeight: "700", fontSize: "1.3em" },
-  { tag: t.heading3, color: "var(--heading)", fontWeight: "700", fontSize: "1.15em" },
-  { tag: [t.heading4, t.heading5, t.heading6], color: "var(--heading)", fontWeight: "700" },
+  { tag: t.heading1, color: "var(--heading)", fontFamily: "var(--serif)", fontWeight: "600", fontSize: "1.85em", letterSpacing: "-0.01em" },
+  { tag: t.heading2, color: "var(--heading)", fontFamily: "var(--serif)", fontWeight: "600", fontSize: "1.45em", letterSpacing: "-0.01em" },
+  { tag: t.heading3, color: "var(--heading)", fontFamily: "var(--serif)", fontWeight: "600", fontSize: "1.2em" },
+  { tag: [t.heading4, t.heading5, t.heading6], color: "var(--heading)", fontFamily: "var(--serif)", fontWeight: "600" },
   { tag: t.strong, fontWeight: "700" },
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strikethrough, textDecoration: "line-through", color: "var(--muted)" },
-  { tag: t.link, color: "var(--link)" },
+  { tag: t.link, color: "var(--text)", textDecoration: "underline", textDecorationColor: "var(--accent)", textDecorationThickness: "1.5px", textUnderlineOffset: "3px" },
   { tag: t.url, color: "var(--muted)" },
   { tag: t.monospace, fontFamily: "var(--mono)", color: "var(--code)" },
   { tag: t.quote, color: "var(--muted)" },
