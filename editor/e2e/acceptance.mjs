@@ -13,5 +13,6 @@ import "./acceptance/syntax.mjs";
 import "./acceptance/preview.mjs";
 import "./acceptance/files.mjs";
 import "./acceptance/look.mjs";
+import "./acceptance/properties.mjs";
 
 await runAll();

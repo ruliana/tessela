@@ -37,14 +37,14 @@ let problems: Diagnostic[] = [];
 let written: Set<string> | null = null;
 let filter = "";
 const PREVIEW_KEY = "tessela.livePreview";
-/** Markdown shown rendered outside the block being edited; remembered between runs. */
+/** Markdown shown rendered outside the block being edited; on unless it was turned off. */
 let livePreview = readPreview();
 
 function readPreview(): boolean {
   try {
-    return localStorage.getItem(PREVIEW_KEY) === "1";
+    return localStorage.getItem(PREVIEW_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 

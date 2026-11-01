@@ -44,17 +44,25 @@ export function bodyOf(bundle, path) {
 }
 
 /** Starts the built app on `bundle`. E2E_PACKAGED runs the packaged app instead (see smoke.mjs). */
-export async function launch(bundle) {
+export async function launch(bundle, { rendered = false } = {}) {
   const packaged = process.env.E2E_PACKAGED;
+  // A fresh profile, so nothing a window remembers (the look, the rendering) leaks between suites.
+  const profile = mkdtempSync(join(tmpdir(), "tessela-profile-"));
   if (!packaged) process.env.TESSELA_BIN ??= resolve(root, "../target/debug/tessela");
   else delete process.env.TESSELA_BIN;
   const app = await electron.launch(
     packaged
-      ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } }
-      : { args: [join(root, "dist/main.cjs"), "--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } },
+      ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`], env: { ...process.env } }
+      : { args: [join(root, "dist/main.cjs"), "--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`], env: { ...process.env } },
   );
   const win = await app.firstWindow();
   await win.waitForSelector(".cm-content");
+  if (!rendered) {
+    // The window starts with Markdown rendered; most tests are about the Markdown as typed.
+    await win.evaluate(() => localStorage.setItem("tessela.livePreview", "0"));
+    await win.reload();
+    await win.waitForSelector(".cm-content");
+  }
   return new Session(app, win, bundle);
 }
 
@@ -148,8 +156,8 @@ export class Session {
 
 const tests = [];
 
-export function suite(name, make, run) {
-  tests.push({ name, make, run });
+export function suite(name, make, run, options = {}) {
+  tests.push({ name, make, run, options });
 }
 
 /**
@@ -167,7 +175,7 @@ export async function runAll() {
     const picked = cases.filter((c) => !only || only.test(`${s.name} ${c.name}`));
     if (picked.length === 0) continue;
     const bundle = makeBundle(s.make?.() ?? {});
-    const session = await launch(bundle);
+    const session = await launch(bundle, s.options);
     console.log(`\n${s.name}`);
     for (const c of picked) {
       try {

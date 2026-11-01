@@ -7,6 +7,9 @@ import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
+import { frontmatterEnd } from "../shared/blocks";
+import { type Properties, bodyRepeatsTitle, parseProperties, showWhen } from "../shared/properties";
+
 class Glyph extends WidgetType {
   constructor(
     private readonly text: string,
@@ -277,6 +280,74 @@ class TableWidget extends WidgetType {
   }
 }
 
+
+// ---- properties ----------------------------------------------------------------
+
+/** The front matter drawn as a title and one line of properties; its YAML shows when it is edited. */
+class PropertiesWidget extends WidgetType {
+  constructor(
+    private readonly props: Properties,
+    private readonly title: string | null,
+    private readonly source: string,
+    private readonly edit: () => void,
+  ) {
+    super();
+  }
+  override eq(other: PropertiesWidget): boolean {
+    return other.source === this.source && other.title === this.title;
+  }
+  override ignoreEvent(): boolean {
+    return true;
+  }
+  override toDOM(): HTMLElement {
+    const { props } = this;
+    const wrap = document.createElement("div");
+    wrap.className = "cm-props";
+    if (this.title !== null) {
+      const h = document.createElement("h1");
+      h.className = "cm-props-title";
+      h.textContent = this.title;
+      wrap.append(h);
+    }
+    const row = document.createElement("div");
+    row.className = "cm-props-row";
+    const chip = (text: string, cls: string, title?: string) => {
+      const span = document.createElement("span");
+      span.className = `cm-props-chip ${cls}`;
+      span.textContent = text;
+      if (title) span.title = title;
+      row.append(span);
+    };
+    if (props.type) chip(props.type, "cm-props-type", "type");
+    for (const tag of props.tags) chip(`#${tag}`, "cm-props-tag");
+    if (props.when) chip(showWhen(props.when.value), "cm-props-when", `${props.when.key}: ${props.when.value}`);
+    for (const { key, value } of props.others.slice(0, 3)) chip(`${key} ${value}`, "cm-props-other");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cm-props-edit";
+    button.textContent = "Edit properties";
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      this.edit();
+    });
+    row.append(button);
+    wrap.append(row);
+    return wrap;
+  }
+}
+
+/** A journal day's front matter says what the day's heading already does, so it draws nothing. */
+class NothingWidget extends WidgetType {
+  override eq(): boolean {
+    return true;
+  }
+  override toDOM(): HTMLElement {
+    const div = document.createElement("div");
+    div.className = "cm-props-none";
+    return div;
+  }
+}
+
 const focusChanged = StateEffect.define<boolean>();
 
 const hasFocus = StateField.define<boolean>({
@@ -285,10 +356,34 @@ const hasFocus = StateField.define<boolean>({
 });
 
 /** Draws each table as a table, unless the cursor is in it. Block widgets cannot come from a plugin. */
-function tables(openLink: (dest: string) => void): Extension {
+function tables(opts: PreviewOptions): Extension {
+  const { openLink } = opts;
   const build = (state: EditorState): DecorationSet => {
     const focused = state.field(hasFocus);
     const ranges: Range<Decoration>[] = [];
+    const head = Array.from({ length: Math.min(state.doc.lines, 200) }, (_, i) => state.doc.line(i + 1).text);
+    const fmEnd = frontmatterEnd(head);
+    if (fmEnd > 0) {
+      const from = state.doc.line(1).from;
+      // The blank lines after the front matter go with it, when there is text below them.
+      let last = fmEnd + 1;
+      while (last < state.doc.lines && state.doc.line(last + 1).text.trim() === "") last++;
+      const to = state.doc.line(last < state.doc.lines ? last : fmEnd + 1).to;
+      if (!(focused && state.selection.ranges.some((r) => r.from <= to && r.to >= from))) {
+        const props = parseProperties(head, fmEnd);
+        const source = head.slice(0, fmEnd + 1).join("\n");
+        const edit = () => {
+          const view = opts.view();
+          if (!view) return;
+          // The cursor goes to the end of the first property, which shows the YAML.
+          view.dispatch({ selection: { anchor: view.state.doc.line(2).to }, scrollIntoView: true });
+          view.focus();
+        };
+        const title = bodyRepeatsTitle(head, fmEnd, props.title ?? opts.pageName()) ? null : (props.title ?? opts.pageName());
+        const widget = props.type === "journal" ? new NothingWidget() : new PropertiesWidget(props, title, source, edit);
+        ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
+      }
+    }
     syntaxTree(state).iterate({
       enter: (node) => {
         if (node.name !== "Table") return;
@@ -332,11 +427,15 @@ export interface PreviewOptions {
   openLink: (dest: string) => void;
   /** Where a picture can be loaded from, or null when it cannot be shown. */
   imageUrl: (dest: string) => string | null;
+  /** The name of the open page, for a title when the front matter has none. */
+  pageName: () => string;
+  /** The editor, once it exists. */
+  view: () => EditorView | null;
 }
 
 export function livePreview(opts: PreviewOptions): Extension {
   return [
-    tables(opts.openLink),
+    tables(opts),
     ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;

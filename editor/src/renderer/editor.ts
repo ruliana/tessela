@@ -35,6 +35,7 @@ import { queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { livePreview, renderedLine } from "./livePreview";
 import { slashSource } from "./slash";
+import { bodyStart } from "../shared/properties";
 
 export interface EditorOptions {
   vocab: () => VocabEntry[];
@@ -49,6 +50,8 @@ export interface EditorOptions {
   onOpenConcept: (id: string) => void;
   /** A link to the web or to an e-mail address was clicked. */
   onOpenExternal: (url: string) => void;
+  /** The name of the open page, for a title when the front matter has none. */
+  pageName?: () => string;
   /** Starts with Markdown rendered outside the block being edited. */
   livePreview?: boolean;
   /** The key for switching the rendering on or off was pressed. */
@@ -204,7 +207,8 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
     if (id) opts.onOpenConcept(id);
     else if (/^(https?:|mailto:)/i.test(dest)) opts.onOpenExternal(dest);
   };
-  const previewExtension = () => livePreview({ openLink: openDest, imageUrl });
+  const previewExtension = () =>
+    livePreview({ openLink: openDest, imageUrl, pageName: opts.pageName ?? (() => ""), view: () => view });
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -273,7 +277,8 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
   return {
     text: () => view.state.doc.toString(),
     setText(text, line) {
-      const keep = Math.min(view.state.selection.main.head, text.length);
+      // A page opens with the cursor in its text, not in the front matter.
+      const keep = view.state.doc.length === 0 ? bodyStart(text) : Math.min(view.state.selection.main.head, text.length);
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: text },
         // Loading a page is not something to undo: undoing it would blank the page.
