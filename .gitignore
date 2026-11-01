@@ -1,2 +1,4 @@
 /target
 .tessela/
+
+node_modules/
