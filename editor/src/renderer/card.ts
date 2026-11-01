@@ -81,6 +81,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     onFocus: () => deps.onActive(path),
     onOpenConcept: deps.onOpenConcept,
     onOpenExternal: deps.onOpenExternal,
+    pageName: () => pageId(path).split("/").pop() ?? "",
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
   });

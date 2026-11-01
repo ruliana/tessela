@@ -37,9 +37,9 @@ async function rendered(s) {
 }
 
 suite("Live preview", null, (test) => {
-  test("is off at first: the Markdown shows as typed", async (s) => {
-    // The window remembers the choice, so start from a clean slate.
-    await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+  test("can be off: the Markdown shows as typed", async (s) => {
+    // The window remembers the choice; the other suites start with it off.
+    await s.win.evaluate(() => localStorage.setItem("tessela.livePreview", "0"));
     await s.win.reload();
     await s.win.waitForSelector(".cm-content");
     await s.openWith("preview", page);
@@ -164,7 +164,7 @@ suite("Live preview", null, (test) => {
   test("switching it off for the next tests", async (s) => {
     await s.win.click("#preview-toggle");
     await s.win.waitForFunction(() => document.querySelector("#preview-toggle")?.getAttribute("aria-pressed") === "false");
-    await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+    await s.win.evaluate(() => localStorage.setItem("tessela.livePreview", "0"));
   });
 });
 
@@ -189,7 +189,7 @@ const withLinks = [
 
 /** The window remembers the choice between runs, so every suite starts from the preview being off. */
 async function startOff(s) {
-  await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+  await s.win.evaluate(() => localStorage.setItem("tessela.livePreview", "0"));
   await s.win.reload();
   await s.win.waitForSelector(".cm-content");
 }
@@ -290,7 +290,7 @@ suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype
     assert.equal((await opened(s)).length, plain, "a plain click does not follow links");
     await s.win.click(".cm-line:has-text('](https://example.com/page)') >> text=site", { modifiers: ["Control"] });
     assert.equal((await opened(s)).length, plain + 1);
-    await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+    await s.win.evaluate(() => localStorage.setItem("tessela.livePreview", "0"));
   });
 });
 
@@ -427,6 +427,6 @@ suite("Live preview anchors, pictures and width", () => ({ "assets/wide.svg": wi
   test("switching it off for the next tests", async (s) => {
     await s.win.click("#preview-toggle");
     await s.win.waitForFunction(() => document.querySelector("#preview-toggle")?.getAttribute("aria-pressed") === "false");
-    await s.win.evaluate(() => localStorage.removeItem("tessela.livePreview"));
+    await s.win.evaluate(() => localStorage.setItem("tessela.livePreview", "0"));
   });
 });

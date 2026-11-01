@@ -31,12 +31,17 @@ const root = resolve(import.meta.dirname, "..");
 const packaged = process.env.E2E_PACKAGED;
 if (!packaged) process.env.TESSELA_BIN ??= resolve(root, "../target/debug/tessela");
 else delete process.env.TESSELA_BIN;
+const profile = mkdtempSync(join(tmpdir(), "tessela-profile-"));
 const app = await electron.launch(
   packaged
-    ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } }
-    : { args: [join(root, "dist/main.cjs"), "--no-sandbox", `--bundle=${bundle}`], env: { ...process.env } },
+    ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`], env: { ...process.env } }
+    : { args: [join(root, "dist/main.cjs"), "--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`], env: { ...process.env } },
 );
 const win = await app.firstWindow();
+await win.waitForSelector(".cm-content");
+// The window starts with Markdown rendered; this run is about the Markdown as typed.
+await win.evaluate(() => localStorage.setItem("tessela.livePreview", "0"));
+await win.reload();
 await win.waitForSelector(".cm-content");
 
 // Opens on the journals: today first, then the earlier day, each in its own editor.
