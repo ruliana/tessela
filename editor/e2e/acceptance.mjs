@@ -15,5 +15,6 @@ import "./acceptance/files.mjs";
 import "./acceptance/look.mjs";
 import "./acceptance/properties.mjs";
 import "./acceptance/strip.mjs";
+import "./acceptance/tiles.mjs";
 
 await runAll();
