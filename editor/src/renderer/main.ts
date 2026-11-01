@@ -28,6 +28,8 @@ import { el } from "./dom";
 
 const api = window.tessela;
 const JOURNAL_STEP = 7;
+/** How many journal days the sidebar lists (All opens the stack). */
+const JOURNAL_LIST = 7;
 const SEARCH_DELAY_MS = 250;
 
 let pages: PageEntry[] = [];
@@ -232,6 +234,11 @@ let newPageInput: HTMLInputElement;
 let newPageError: HTMLElement;
 let themeButton: HTMLElement;
 let textButton: HTMLElement;
+let rootCount: HTMLElement;
+let journalsSection: HTMLElement;
+let conceptsSection: HTMLElement;
+let statusEl: HTMLElement;
+let wordsEl: HTMLElement;
 
 const label = (s: string) => s[0]?.toUpperCase() + s.slice(1);
 
@@ -304,23 +311,26 @@ function buildShell(bundle: string): void {
   journalsEl = el("ul", { class: "list", id: "journals" });
   listEl = el("ul", { class: "list", id: "pages" });
   resultsEl = el("div", { class: "results", id: "results", hidden: true });
-  problemsEl = el("ul", { class: "problems", id: "problems", hidden: true });
+  problemsEl = el("ul", { class: "problems pop", id: "problems", hidden: true });
   problemsToggle = el("button", { class: "problems-toggle", id: "problems-toggle", onclick: toggleProblems });
   previewButton = el(
     "button",
     {
-      class: "secondary",
+      class: "seg-toggle",
       id: "preview-toggle",
       title: "Show Markdown rendered, raw only where you are typing (Ctrl/Cmd+Alt+M)",
       onclick: togglePreview,
     },
-    "Rendered",
+    el("span", { class: "on" }, "Rendered"),
+    el("span", { class: "off" }, "Source"),
   );
   previewButton.setAttribute("aria-pressed", String(livePreview));
   themeButton = el("button", { class: "pref", id: "theme-toggle", onclick: cycleTheme });
   textButton = el("button", { class: "pref", id: "text-toggle", onclick: toggleText });
   renderPrefs();
-  const mod = navigator.userAgent.includes("Mac") ? "Cmd" : "Super";
+  const isMac = navigator.userAgent.includes("Mac");
+  const key = isMac ? "⌘" : "Ctrl";
+  const mod = isMac ? "Cmd" : "Super";
   backButton = el("button", { class: "nav", id: "go-back", title: `Go back (${mod}+[)`, ariaLabel: "Go back", onclick: () => void go(-1) }, "‹");
   forwardButton = el("button", { class: "nav", id: "go-forward", title: `Go forward (${mod}+])`, ariaLabel: "Go forward", onclick: () => void go(1) }, "›");
   recentList = el("ul", { class: "list", id: "recent-list" });
@@ -339,43 +349,95 @@ function buildShell(bundle: string): void {
     el("div", { class: "recent-head" }, el("h2", {}, "Recent"), recentSize),
     recentList,
   );
+  const row = (id: string, glyph: string, text: string, title: string, run: () => void, hint?: string) =>
+    el(
+      "button",
+      { class: "row", id, title, onclick: run },
+      el("span", { class: "g" }, glyph),
+      el("span", { class: "t" }, text),
+      hint ? el("kbd", {}, hint) : "",
+    );
+  const now = new Date();
+  const todayDay = `${now.toLocaleDateString("en-US", { weekday: "short" })} ${now.getDate()}`;
+  rootCount = el("span", { class: "root-count" });
+  journalsSection = el(
+    "section",
+    { class: "group", id: "journals-section" },
+    el(
+      "div",
+      { class: "group-head" },
+      el("h2", {}, "Journals"),
+      el("button", { class: "link", id: "journals-all", title: "Show the days stacked", onclick: () => void showJournals() }, "All ›"),
+    ),
+    journalsEl,
+  );
+  conceptsSection = el(
+    "section",
+    { class: "group", id: "concepts-section" },
+    el("div", { class: "group-head" }, el("h2", {}, "Concepts"), el("span", { class: "hint" }, "by mentions")),
+    listEl,
+  );
   const sidebar = el(
     "aside",
     { class: "sidebar" },
-    el("div", { class: "brand" }, "Tessela", el("span", { class: "navs" }, backButton, forwardButton)),
+    el(
+      "div",
+      { class: "brand" },
+      el("span", { class: "brand-name" }, el("span", { class: "mark", ariaHidden: "true" }, el("i"), el("i"), el("i"), el("i")), "Tessela"),
+      el("span", { class: "navs" }, backButton, forwardButton),
+    ),
     el(
       "button",
       { class: "root", id: "root", title: `${bundle}\nThe root of your notes. Click to choose another folder.`, onclick: () => void changeRoot() },
+      el("span", { class: "g", ariaHidden: "true" }, "⌂"),
       el("span", { class: "root-name" }, bundle.split(/[\\/]/).filter(Boolean).pop() ?? bundle),
+      rootCount,
       el("span", { class: "root-path" }, bundle),
     ),
+    search,
+    resultsEl,
     el(
-      "div",
-      { class: "buttons" },
-      el("button", { class: "primary", id: "today", onclick: () => void showJournals(true) }, "Today"),
-      el("button", { class: "secondary", id: "journals-view", onclick: () => void showJournals() }, "Journals"),
-      previewButton,
+      "nav",
+      { class: "places" },
+      el(
+        "button",
+        { class: "today", id: "today", title: "Today's journal", onclick: () => void showJournals(true) },
+        el("span", { class: "dot" }),
+        el("span", { class: "t" }, "Today"),
+        el("span", { class: "d" }, todayDay),
+      ),
+      row("journals-view", "◷", "Journals", "The latest journal days, stacked", () => void showJournals()),
     ),
     recentEl,
     el(
-      "div",
-      { class: "buttons" },
-      el("button", { class: "secondary", id: "new-page", title: "New page (Ctrl+N)", onclick: () => showNewPage() }, "New page"),
-      el("button", { class: "secondary", id: "open-file", title: "Open a file (Ctrl+O)", onclick: () => void openFile() }, "Open file…"),
+      "nav",
+      { class: "places" },
+      row("new-page", "+", "New page", `New page (${key}+N)`, () => showNewPage(), `${key} N`),
+      row("open-file", "↗", "Open file…", `Open a file (${key}+O)`, () => void openFile(), `${key} O`),
     ),
     newPageEl,
     noticeEl,
-    search,
-    resultsEl,
-    el("div", { class: "lists" }, journalsEl, listEl),
-    problemsEl,
+    el("div", { class: "lists" }, journalsSection, conceptsSection),
+  );
+
+  statusEl = el("span", { class: "strip-status", id: "strip-status" });
+  wordsEl = el("span", { class: "strip-words", id: "strip-words" });
+  const strip = el(
+    "footer",
+    { class: "strip", id: "strip" },
+    statusEl,
+    wordsEl,
     problemsToggle,
-    el("div", { class: "prefs" }, themeButton, textButton),
+    el("span", { class: "sp" }),
+    previewButton,
+    themeButton,
+    textButton,
   );
 
   stackEl = el("div", { class: "stack", id: "stack" });
   backlinksEl = el("aside", { class: "backlinks", id: "backlinks" });
-  app.replaceChildren(el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl));
+  app.replaceChildren(el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl, strip, problemsEl));
+  renderStrip();
   renderProblems();
   renderNav();
 }
@@ -397,7 +459,7 @@ function renderLists(): void {
     .filter((p) => isJournalPath(p.path))
     .sort((a, b) => newestFirst(a.id, b.id))
     .filter((p) => !q || p.id.includes(q))
-    .slice(0, q ? 50 : 14);
+    .slice(0, q ? 50 : JOURNAL_LIST);
   journalsEl.replaceChildren(...journals.map((p) => item(p.id.replace("journals/", ""), p.path)));
 
   recentEl.hidden = recent.length === 0;
@@ -405,6 +467,8 @@ function renderLists(): void {
     ...recent.slice(0, recentShown).map((path) => item(pageId(path).replace(/^journals\//, ""), path)),
   );
 
+  journalsSection.hidden = journals.length === 0;
+  rootCount.textContent = pages.length === 0 ? "" : `· ${pages.length} ${pages.length === 1 ? "page" : "pages"}`;
   const written = new Set(pages.map((p) => p.id.toLowerCase()));
   const concepts = vocab
     .filter((v) => !v.deprecated && !v.use_instead)
@@ -422,6 +486,7 @@ function renderLists(): void {
     ),
     ...rest.map((p) => item(p.id, p.path)),
   );
+  conceptsSection.hidden = listEl.childElementCount === 0;
 }
 
 async function refreshIndex(): Promise<void> {
@@ -470,6 +535,19 @@ async function runSearch(): Promise<void> {
   );
 }
 
+// ---- status strip ----------------------------------------------------------
+
+/** Shows the save state of the cards (the worst one wins) and the words of the page being worked on. */
+function renderStrip(): void {
+  if (!statusEl) return;
+  const infos = cards.map((c) => c.statusInfo());
+  const shown = infos.find((i) => i.state === "conflict") ?? infos.find((i) => i.state === "dirty") ?? active?.statusInfo() ?? infos[0];
+  statusEl.dataset.state = shown?.state ?? "saved";
+  statusEl.replaceChildren(el("span", { class: "dot" }), shown?.text ?? "");
+  const words = active?.words() ?? 0;
+  wordsEl.textContent = words === 0 ? "" : `${words.toLocaleString("en-US")} ${words === 1 ? "word" : "words"}`;
+}
+
 // ---- problems --------------------------------------------------------------
 
 function toggleProblems(): void {
@@ -478,7 +556,8 @@ function toggleProblems(): void {
 }
 
 function renderProblems(): void {
-  problemsToggle.textContent = `${problemsOpen ? "▾" : "▸"} ${summary(problems)}`;
+  problemsToggle.textContent = problems.length === 0 ? summary(problems) : `▲ ${summary(problems)}`;
+  problemsToggle.setAttribute("aria-expanded", String(problemsOpen && problems.length > 0));
   problemsToggle.dataset.clean = String(problems.length === 0);
   problemsEl.hidden = !problemsOpen || problems.length === 0;
   problemsEl.replaceChildren(
@@ -610,9 +689,11 @@ function cardDeps() {
       const card = cards.find((c) => c.path === path);
       if (card && card !== active) {
         active = card;
+        renderStrip();
         void renderBacklinks();
       }
     },
+    onStatus: renderStrip,
     onOpenPage: (path: string) => void showPage(path),
     onOpenConcept: (id: string) => void showPage(conceptPath(id)),
     onOpenExternal: (url: string) => void api.openExternal(url),
@@ -627,6 +708,7 @@ async function closeCards(): Promise<void> {
   cards = [];
   active = null;
   stackEl.replaceChildren();
+  renderStrip();
 }
 
 async function showPage(path: string, line?: number): Promise<void> {
@@ -639,6 +721,7 @@ async function showPage(path: string, line?: number): Promise<void> {
   active = card;
   stackEl.replaceChildren(card.root);
   await card.load();
+  renderStrip();
   card.focus(line);
   renderLists();
   await renderBacklinks();
@@ -687,6 +770,7 @@ async function showJournals(focusToday = false): Promise<void> {
   // Today is the first day unless some days are dated after it.
   const todayCard = cards[days.indexOf(today)] ?? null;
   active = focusToday ? todayCard : (cards[0] ?? null);
+  renderStrip();
   if (focusToday) active?.focus();
   renderLists();
   await renderBacklinks();
