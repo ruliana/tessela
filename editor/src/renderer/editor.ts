@@ -37,6 +37,7 @@ import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { focusMarks, livePreview, renderedLine } from "./livePreview";
 import { slashSource } from "./slash";
+import { noSetext } from "../shared/blocks";
 import { bodyStart } from "../shared/properties";
 
 export interface EditorOptions {
@@ -183,7 +184,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
     const lines: number[] = [];
     syntaxTree(view.state).iterate({
       enter: (node) => {
-        if (/^(ATX|Setext)Heading\d$/.test(node.name)) lines.push(view.state.doc.lineAt(node.from).number);
+        if (/^ATXHeading\d$/.test(node.name)) lines.push(view.state.doc.lineAt(node.from).number);
       },
     });
     const texts = lines.map((n) => headingText(view.state.doc.line(n).text));
@@ -221,7 +222,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         EditorView.lineWrapping,
         // YAML front matter, then Markdown (with tables and task lists) and code in the
         // languages that fenced blocks name.
-        yamlFrontmatter({ content: markdown({ codeLanguages: languages, extensions: GFM }) }),
+        yamlFrontmatter({ content: markdown({ codeLanguages: languages, extensions: [GFM, noSetext] }) }),
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),

@@ -53,6 +53,28 @@ suite(
       await s.win.waitForSelector(".cm-props-title");
     });
 
+    test("typing after a click on the title writes in the text, not in front of the front matter", async (s) => {
+      await s.open("plain");
+      await s.win.click(".cm-props");
+      await s.type("First line");
+      await s.saved();
+      const text = (await import("node:fs")).readFileSync(`${s.bundle}/plain.md`, "utf8");
+      assert.ok(text.startsWith("---\ntype: concept\n---\n"), text);
+      assert.ok(text.includes("First line"), text);
+      assert.ok(await s.win.$(".cm-props"));
+    });
+
+    test("going up into the properties lands on the first property, never on line 1", async (s) => {
+      await s.open("same");
+      await s.key("Control+Home");
+      await s.win.waitForFunction(() => document.querySelector(".cm-line")?.textContent === "---");
+      await s.type("x");
+      // A heading would be drawn bigger than the text: the line with the typed letter is not.
+      const sizes = await s.win.$$eval(".cm-line", (ls) => ls.slice(0, 4).map((l) => getComputedStyle(l.querySelector("span") ?? l).fontSize));
+      assert.ok(sizes.every((z) => z === sizes[0]), sizes.join());
+      assert.equal((await lines(s))[0], "---");
+    });
+
     test("a page without a title in its front matter is titled by its name", async (s) => {
       await s.open("plain");
       await s.win.waitForSelector(".cm-props-title");

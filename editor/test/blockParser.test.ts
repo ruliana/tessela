@@ -209,7 +209,7 @@ describe("the block parser: paragraphs", () => {
   });
 
   it("does not own an empty item, which cannot interrupt a paragraph", () => {
-    expect(outline("Para\n-")).toEqual(["heading 0-1"]);
+    expect(outline("Para\n-")).toEqual(["para 0-1"]);
     expect(outline("Para\n*\nafter")).toEqual(["para 0-2"]);
   });
 
@@ -241,7 +241,7 @@ describe("the block parser: paragraphs", () => {
   });
 });
 
-describe("the block parser: headings, rules and setext", () => {
+describe("the block parser: headings and rules", () => {
   it("reads ATX headings of every level, with closing hashes, up to three spaces in", () => {
     expect(outline("# a\n## b ##\n###### c\n   # d")).toEqual(["heading 0-0", "heading 1-1", "heading 2-2", "heading 3-3"]);
   });
@@ -250,9 +250,9 @@ describe("the block parser: headings, rules and setext", () => {
     expect(outline("####### x")).toEqual(["para 0-0"]);
   });
 
-  it("reads a setext heading as one block of two lines", () => {
-    expect(outline("Title\n=====\n\nPara")).toEqual(["heading 0-1", "para 3-3"]);
-    expect(outline("Title\n-----\nPara")).toEqual(["heading 0-1", "para 2-2"]);
+  it("does not read a line of dashes or equals under text as a heading", () => {
+    expect(outline("Title\n=====\n\nPara")).toEqual(["para 0-1", "para 3-3"]);
+    expect(outline("Title\n-----\nPara")).toEqual(["para 0-0", "rule 1-1", "para 2-2"]);
   });
 
   it("reads rules that look like bullets", () => {
@@ -396,7 +396,7 @@ describe("Escape and block selection over blank lines", () => {
     expect(escape("| a |\n|---|\n| 1 |\n\nx", 2)).toBe("0-2");
   });
 
-  it("selects a heading as one line, a setext heading as two", () => {
+  it("selects a heading as one line", () => {
     expect(escape("# H\n- a", 0)).toBe("0-0");
     expect(escape("Title\n=====\n\nPara", 1)).toBe("0-1");
   });
