@@ -312,7 +312,11 @@ behaviour inside front matter and fenced code. Blocks are the ones of §3: a
 paragraph owns the list directly under it, and an item owns the items nested in it.
 Where a block begins and ends is decided once, by the CommonMark reading of the page, so a
 paragraph after a blank line is never part of the list item above it unless it is indented to
-the item's text.
+the item's text. The one departure from CommonMark: there are no setext headings (a line of
+`---` or `===` under text), only `#` headings, so text typed on the first line of a page, in
+front of the front matter, cannot turn the YAML into a heading. The caret also stays out of
+the front matter drawn as a title: a click on it goes to the text, an arrow key up into it
+goes to the first property.
 
 ### Smart link: Ctrl+L (Super+L on macOS)
 

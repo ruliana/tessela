@@ -4,13 +4,13 @@
 // saving, searching and the tools see the same Markdown as always.
 
 import { syntaxTree } from "@codemirror/language";
-import { type EditorState, type Extension, type Range, StateEffect, StateField, type Text } from "@codemirror/state";
+import { EditorState, type Extension, type Range, StateEffect, StateField, type Text } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
 import { type Block, editedBlockLines, frontmatterEnd, parseBlocks } from "../shared/blocks";
 import { daysInLine } from "../shared/dates";
 import { journalDest } from "../shared/pages";
-import { type Properties, bodyRepeatsTitle, parseProperties, showWhen } from "../shared/properties";
+import { type Properties, bodyRepeatsTitle, bodyStart, parseProperties, showWhen } from "../shared/properties";
 
 class Glyph extends WidgetType {
   constructor(
@@ -315,6 +315,7 @@ class PropertiesWidget extends WidgetType {
     private readonly title: string | null,
     private readonly source: string,
     private readonly edit: () => void,
+    private readonly toBody: () => void,
     private readonly openLink: (dest: string) => void,
   ) {
     super();
@@ -329,6 +330,14 @@ class PropertiesWidget extends WidgetType {
     const { props } = this;
     const wrap = document.createElement("div");
     wrap.className = "cm-props";
+    // The editor ignores clicks on the title, and typing after one went nowhere (or, with the
+    // caret left on line 1, in front of the front matter). A click means "write here": go to the
+    // text. The buttons and the day link below handle their own clicks.
+    wrap.addEventListener("mousedown", (event) => {
+      if (event.target instanceof Element && event.target.closest("button, .cm-props-day")) return;
+      event.preventDefault();
+      this.toBody();
+    });
     if (this.title !== null) {
       const h = document.createElement("h1");
       h.className = "cm-props-title";
@@ -417,8 +426,14 @@ function tables(opts: PreviewOptions): Extension {
           view.dispatch({ selection: { anchor: view.state.doc.line(2).to }, scrollIntoView: true });
           view.focus();
         };
+        const toBody = () => {
+          const view = opts.view();
+          if (!view) return;
+          view.dispatch({ selection: { anchor: bodyStart(view.state.doc.toString()) }, scrollIntoView: true });
+          view.focus();
+        };
         const title = bodyRepeatsTitle(head, fmEnd, props.title ?? opts.pageName()) ? null : (props.title ?? opts.pageName());
-        const widget = props.type === "journal" ? new NothingWidget() : new PropertiesWidget(props, title, source, edit, openLink);
+        const widget = props.type === "journal" ? new NothingWidget() : new PropertiesWidget(props, title, source, edit, toBody, openLink);
         ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
       }
     }
@@ -471,8 +486,34 @@ export interface PreviewOptions {
   view: () => EditorView | null;
 }
 
+/**
+ * The caret never walks into the front matter that is drawn as a title: a click on the title or
+ * an arrow key up from the body would put it on line 1 (or on the closing `---`), and typing
+ * there breaks the front matter. It goes to the first property instead, where the YAML opens for
+ * editing, the same place as "Edit properties". Only a caret the user moved is sent there: a
+ * selection, a page opening at a line and the Edit properties button are left alone. (A click on
+ * the title goes to the start of the text: see PropertiesWidget.)
+ */
+export function frontMatterGuard(): Extension {
+  return EditorState.transactionFilter.of((tr) => {
+    if (tr.docChanged || !tr.selection || !tr.isUserEvent("select")) return tr;
+    const { head, empty } = tr.selection.main;
+    if (!empty) return tr;
+    const { doc } = tr.state;
+    const lines = Array.from({ length: Math.min(doc.lines, 200) }, (_, i) => doc.line(i + 1).text);
+    const end = frontmatterEnd(lines);
+    // No front matter, or nothing in it to edit.
+    if (end < 2) return tr;
+    const to = doc.line(end + 1).to;
+    // Outside it, or already editing it.
+    if (head > to || tr.startState.selection.main.head <= to) return tr;
+    return [tr, { selection: { anchor: doc.line(2).to }, scrollIntoView: true }];
+  });
+}
+
 export function livePreview(opts: PreviewOptions): Extension {
   return [
+    frontMatterGuard(),
     tables(opts),
     ViewPlugin.fromClass(
       class {

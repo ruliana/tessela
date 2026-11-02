@@ -11,7 +11,7 @@
 // and the block that focus mode and the live preview keep lit all ask it, so they cannot
 // disagree about, say, whether a paragraph after a blank line is still part of a list item.
 
-import { GFM, parser } from "@lezer/markdown";
+import { GFM, type MarkdownConfig, parser } from "@lezer/markdown";
 
 export interface Block {
   kind:
@@ -87,7 +87,15 @@ function newBlock(kind: Block["kind"], start: number, end: number, line: string)
   return { kind, start, end, indent: width(line), offset: 0, children: [], parent: null };
 }
 
-const markdown = parser.configure(GFM);
+/**
+ * Tessela writes headings with `#`. A line of dashes or equals under a paragraph is a rule or
+ * text, not an underline: otherwise `hello---` on the first line of a page, in front of the
+ * front matter, turned the whole front matter into one big heading. The editor and this parser
+ * read the page with the same configuration.
+ */
+export const noSetext: MarkdownConfig = { remove: ["SetextHeading"] };
+
+const markdown = parser.configure([GFM, noSetext]);
 type SyntaxNode = ReturnType<typeof markdown.parse>["topNode"];
 
 /** The width of the text of an item: where a line must start to belong to it. */
@@ -183,7 +191,7 @@ export function parseBlocks(lines: string[]): Block[] {
       }
     } else if (name === "Paragraph") {
       root.push(make("para", node, null));
-    } else if (name.startsWith("ATXHeading") || name.startsWith("SetextHeading")) {
+    } else if (name.startsWith("ATXHeading")) {
       root.push(make("heading", node, null));
     } else {
       root.push(make(LEAF[name] ?? "other", node, null));
