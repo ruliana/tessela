@@ -96,3 +96,13 @@ fn vocabulary_aliases_and_deprecations() {
             .any(|d| d.rule == "tessela/unwritten-concept" && d.message.contains("`brand-new`"))
     );
 }
+
+#[test]
+fn home_pages_should_have_type_home() {
+    let ds = lint("home");
+    let wrong = find(&ds, "tessela/home-type", "wrong/home.md");
+    assert_eq!(wrong.len(), 1);
+    assert_eq!(wrong[0].severity, Severity::Warning);
+    assert!(find(&ds, "tessela/home-type", "home.md").is_empty());
+    assert!(find(&ds, "tessela/home-type", "notes/home.md").is_empty());
+}

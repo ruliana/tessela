@@ -378,3 +378,41 @@ fn date_filter_applies_to_backlink_hits_too() {
     assert!(hits.iter().all(|h| h.page == "journals/2026-10-27"));
     assert!(hits.iter().any(|h| h.kind == HitKind::Heading));
 }
+
+fn home_bundle() -> Bundle {
+    Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/home")).unwrap()
+}
+
+#[test]
+fn backlinks_from_home_pages_come_first_and_the_deepest_home_wins() {
+    let hits = refs(&["rust"]).run(&home_bundle());
+    let order: Vec<(&str, bool)> = hits.iter().map(|h| (h.path.as_str(), h.home)).collect();
+    assert_eq!(
+        order,
+        [
+            ("notes/home.md", true),
+            ("home.md", true),
+            ("aardvark.md", false),
+            ("notes/learning.md", false),
+        ]
+    );
+}
+
+#[test]
+fn hit_order_is_unchanged_when_no_concept_is_asked_for() {
+    let hits = Query {
+        text: Some("rust".into()),
+        ..Query::default()
+    }
+    .run(&home_bundle());
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            "aardvark.md",
+            "home.md",
+            "notes/home.md",
+            "notes/learning.md"
+        ]
+    );
+}

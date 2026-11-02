@@ -70,6 +70,16 @@ impl Page {
         self.get(key).and_then(Value::as_str)
     }
 
+    /// Whether this is a folder's `home.md`: the hand-written place where reading starts (spec §1).
+    pub fn is_home(&self) -> bool {
+        self.path == "home.md" || self.path.ends_with("/home.md")
+    }
+
+    /// How many folders deep the page is: 0 at the bundle root.
+    pub fn depth(&self) -> usize {
+        self.path.matches('/').count()
+    }
+
     /// The page's `type`, if it is a non-empty string.
     pub fn kind(&self) -> Option<&str> {
         self.get_str("type").filter(|t| !t.trim().is_empty())

@@ -1,5 +1,6 @@
 //! Retrieval: find the blocks that mention concepts, contain text, or sit in a date range.
 
+use std::cmp::Reverse;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -66,6 +67,9 @@ pub struct Hit {
     pub dates: Vec<String>,
     /// Handle of the enclosing list item, if any.
     pub parent: Option<String>,
+    /// The hit is on a `home.md` page. A link from a home page marks the target as
+    /// important, so these hits come first (spec §5).
+    pub home: bool,
 }
 
 impl Query {
@@ -105,6 +109,14 @@ impl Query {
             // Document order; the page itself first.
             found.sort_by_key(|h| h.line);
             hits.extend(found.into_iter().filter(accepts));
+        }
+        // Backlinks from home pages first, the most specific folder's first. The sort is
+        // stable, so everything else keeps its order.
+        if !wanted.is_empty() {
+            hits.sort_by_key(|h| match h.home {
+                true => (0, Reverse(h.path.matches('/').count())),
+                false => (1, Reverse(0)),
+            });
         }
         hits
     }
@@ -165,6 +177,7 @@ fn block_hit(page: &Page, block: &Block) -> Hit {
         refs: block.refs.clone(),
         path_refs: block.path_refs.clone(),
         parent: block.parent.map(|p| page.blocks[p].handle.clone()),
+        home: page.is_home(),
     }
 }
 
@@ -182,6 +195,7 @@ fn heading_hit(page: &Page, heading: &Heading) -> Hit {
         refs: heading.refs.clone(),
         path_refs: heading.path_refs.clone(),
         parent: None,
+        home: page.is_home(),
     }
 }
 
@@ -200,6 +214,7 @@ fn page_hit(page: &Page) -> Hit {
         refs: page.refs.clone(),
         path_refs: page.refs.clone(),
         parent: None,
+        home: page.is_home(),
     }
 }
 

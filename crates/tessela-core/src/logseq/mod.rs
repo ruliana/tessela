@@ -216,9 +216,9 @@ fn base_slug(name: &str) -> String {
     if slug.is_empty() {
         return "untitled".into();
     }
-    // `index.md` and `log.md` are reserved by OKF.
+    // `index.md` and `log.md` are reserved by OKF, `home.md` by Tessela (spec §1).
     match slug.rsplit('/').next() {
-        Some("index" | "log") => format!("{slug}-page"),
+        Some("index" | "log" | "home") => format!("{slug}-page"),
         _ => slug,
     }
 }
@@ -680,6 +680,8 @@ mod tests {
         assert_eq!(base_slug("Project/Tessela (old)"), "project/tessela-old");
         assert_eq!(base_slug("Index"), "index-page");
         assert_eq!(base_slug("a/log"), "a/log-page");
+        assert_eq!(base_slug("Home"), "home-page");
+        assert_eq!(base_slug("Projects/Home"), "projects/home-page");
         assert_eq!(base_slug("🔥"), "untitled");
     }
 
