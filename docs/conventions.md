@@ -14,7 +14,7 @@ Sync is done with git. Tessela is local and single-user.
 
 ```
 my-notes/
-├── index.md              # OKF root index (okf_version: 0.2)
+├── home.md               # optional: where reading starts, see below
 ├── vocabulary.md         # optional, see §8
 ├── journals/
 │   └── 2026-10-27.md     # one file per day, see §6
@@ -25,8 +25,35 @@ my-notes/
 ```
 
 - `index.md` and `log.md` are reserved by OKF and are never concept pages.
+  Tessela does not generate or keep them: a listing of a folder is a query, so
+  `tessela index` computes it on demand (§10). A hand-written `index.md` or
+  `log.md` is still fine, and OKF consumers that want one can have it written
+  with `tessela index --write`. A root `index.md` is also the one place OKF lets a
+  bundle declare its version (`okf_version: "0.2"`); a bundle without one is read
+  as the version the tool understands.
+- `home.md` is reserved by Tessela, see below.
 - Everything under `.tessela/` can be deleted at any time. Tools rebuild it from the
   Markdown files. It is never committed.
+
+### Home pages
+
+Every folder, the root included, can have a `home.md`: the hand-written page
+where reading starts. It is the first level of progressive disclosure and says
+how to use that part of the notes: house rules, tools, the important pages, and
+links to the `home.md` of deeper folders or to other guides such as `AGENTS.md`.
+Anyone, human or agent, reaches it on purpose; nothing is merged or inherited
+from the home pages above it, and tools never write it.
+
+- It has `type: home`, so it is valid OKF (§2). `tessela lint` warns when a
+  `home.md` has another type.
+- It is an ordinary page of the graph, not hidden: the links, tags and
+  headings in it are references like any other (§4).
+- A link from a home page says "this page matters". Backlinks from home pages
+  come first, the most specific folder's first, and clients mark them (§5).
+- `home` is not a name for a concept. The Logseq importer writes a page called
+  "Home" as `home-page.md` (§12).
+- A computed index (`tessela index`) lists everything; a home page is the
+  curated short list. Use the first to find, the second to start.
 
 ## 2. Pages
 
@@ -159,6 +186,11 @@ backlinks. A hit is one of:
 Headings and pages only exist to hold references, so they are returned only when
 a concept is asked for.
 
+Backlinks from a home page (§1) come first, the most specific folder's home first,
+and each such hit has `home: true`. The rest keep their order. A link from a home
+page is how the notes say a page is important, so a client shows these first and
+marks them.
+
 ## 6. Journals
 
 - One file per day at `journals/YYYY-MM-DD.md`.
@@ -231,7 +263,7 @@ Several writers can touch the bundle at once (the editor, agents, CLI tools).
 All tools are Rust binaries built on one shared core library. Each has a
 human-readable output and a `--json` output, which the editor and agents use.
 
-- `tessela lint`: OKF conformance plus Tessela rules (dates, tags, vocabulary).
+- `tessela lint`: OKF conformance plus Tessela rules (dates, tags, vocabulary, home pages).
   Rules are pluggable, so semantic rules can be added later.
 - `tessela query`: the backlinks engine. Asking for a concept returns everything
   that mentions it, as hits of three kinds: `block`, `heading` (a heading that
@@ -242,6 +274,14 @@ human-readable output and a `--json` output, which the editor and agents use.
   keeps what is on journal days in the range and anything, on any page, whose
   text contains a date in the range (§7). A concept also matches the ones nested
   under it: `#project` matches `#project/tessela`, but not `#projector`.
+- `tessela index`: what a folder holds, as an OKF `index.md` (§6 of OKF):
+  sub-folders, then the folder's own pages (its `home.md` first) with their
+  `description` or first line, then its journal days, newest first. It prints to
+  stdout (`--json` gives the same as data; `--dir` picks a folder) and writes
+  nothing. `--write` writes an `index.md` into the root and every folder for
+  bundles read by tools that do not compute listings. Generated files carry a
+  marker line; one that does not (a hand-written `index.md`) is kept unless
+  `--force` is given.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
@@ -268,7 +308,9 @@ writes the Markdown files itself.
 - It watches the bundle: pages changed by other programs are reloaded, unless
   there are unsaved edits, which count as a conflict.
 - The right panel shows the backlinks of the open page (`query --ref PAGE`; for a
-  journal, also anything that mentions its date), grouped by page.
+  journal, also anything that mentions its date), grouped by page. Groups from a
+  home page (§1) come first, the most specific folder's first, with a "Home" tag
+  and a tinted background.
 - "New page" (Ctrl+N) asks for a name, where `/` makes folders, and creates the file
   at once from the page template (typing the name in the search box and pressing Enter
   also opens the page, but its file only appears on the first edit). "Open file…"
@@ -381,13 +423,13 @@ its parent's tag after import.
 
 Names. A page is written at the slug of its title: lowercase, words joined by `-`,
 other punctuation dropped. `index` and `log` are reserved by OKF, so pages with
-those names get `-page` added. Two pages with the same slug get `-2`, `-3`, and
-the report lists them. Links are written with the same slugs, so they stay
-connected.
+those names get `-page` added, and so does `home`, which Tessela reserves (§1).
+Two pages with the same slug get `-2`, `-3`, and the report lists them. Links
+are written with the same slugs, so they stay connected.
 
 The importer writes only what the graph contains. It does not generate `index.md`
-or `log.md`: listings are computed by tools on demand, not kept as files that go
-stale (§5).
+or `log.md`: listings are computed on demand with `tessela index` (§10), not kept
+as files that go stale.
 
 Not imported, and listed in the report: `.org` pages, whiteboards, and files that
 are not valid UTF-8. Logseq macros such as `{{query ...}}` are copied as they are
