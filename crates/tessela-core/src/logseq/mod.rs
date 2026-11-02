@@ -3,7 +3,7 @@
 mod outline;
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -575,7 +575,6 @@ impl Importer {
 
     fn write(self, graph: &Path, out: &Path) -> io::Result<Report> {
         std::fs::create_dir_all(out)?;
-        let mut entries = Vec::new();
         for source in &self.sources {
             let body = self.body(&source.outline);
             let has_props = source
@@ -596,24 +595,12 @@ impl Importer {
                 content.push_str(&body);
             }
             std::fs::write(path, content)?;
-            entries.push(IndexEntry {
-                slug: slug.clone(),
-                title: source.title.clone(),
-                journal: matches!(source.kind, Kind::Journal(_)),
-                description: description_of(&body),
-            });
             let mut report = self.report.borrow_mut();
             match source.kind {
                 Kind::Journal(_) => report.journals += 1,
                 Kind::Page => report.pages += 1,
             }
         }
-        let name = graph
-            .canonicalize()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| "Notes".into());
-        write_indexes(out, &name, &entries)?;
         let assets = graph.join("assets");
         if assets.is_dir() {
             let copied = copy_dir(&assets, &out.join("assets"))?;
@@ -621,112 +608,6 @@ impl Importer {
         }
         Ok(self.report.into_inner())
     }
-}
-
-/// A page that was written, as listed in an `index.md`.
-struct IndexEntry {
-    /// The page's path in the bundle, without `.md`.
-    slug: String,
-    title: String,
-    journal: bool,
-    /// The first line of the page, if it has a body.
-    description: Option<String>,
-}
-
-/// The first line of text in a page body, short enough for an index entry.
-fn description_of(body: &str) -> Option<String> {
-    let line = body
-        .lines()
-        .map(|l| l.trim().trim_start_matches(['#', '-', '*', '>']).trim())
-        .find(|l| !l.is_empty())?;
-    let mut text: String = line.chars().take(120).collect();
-    if text.len() < line.len() {
-        text = text.trim_end().to_string() + "…";
-    }
-    Some(text)
-}
-
-/// Link text must not contain brackets.
-fn link_text(title: &str) -> String {
-    title.replace('[', "(").replace(']', ")")
-}
-
-/// One `index.md` per directory that holds pages (OKF §6): the root one carries
-/// `okf_version`, the others have no frontmatter. Each lists its sub-folders and
-/// its own pages, with relative links.
-fn write_indexes(out: &Path, name: &str, entries: &[IndexEntry]) -> io::Result<()> {
-    // Directory ("" is the root) to its direct sub-directories and pages.
-    let mut dirs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    let mut pages: BTreeMap<String, Vec<&IndexEntry>> = BTreeMap::new();
-    dirs.entry(String::new()).or_default();
-    for entry in entries {
-        let dir = entry.slug.rsplit_once('/').map_or("", |(d, _)| d);
-        pages.entry(dir.to_string()).or_default().push(entry);
-        let mut child = dir.to_string();
-        while !child.is_empty() {
-            let parent = child.rsplit_once('/').map_or("", |(p, _)| p).to_string();
-            dirs.entry(parent.clone())
-                .or_default()
-                .insert(child.clone());
-            dirs.entry(child.clone()).or_default();
-            child = parent;
-        }
-    }
-    for (dir, children) in &dirs {
-        let mut body = String::new();
-        if dir.is_empty() {
-            body.push_str(&format!(
-                "---\nokf_version: \"0.2\"\n---\n\n# {name}\n\nImported from Logseq with `tessela import-logseq`.\n"
-            ));
-        } else {
-            body.push_str(&format!("# {dir}\n"));
-        }
-        if !children.is_empty() {
-            body.push_str("\n## Folders\n\n");
-            for child in children {
-                let label = child.rsplit('/').next().unwrap();
-                let count = entries
-                    .iter()
-                    .filter(|e| e.slug.starts_with(&format!("{child}/")))
-                    .count();
-                let unit = if count == 1 { "page" } else { "pages" };
-                body.push_str(&format!(
-                    "* [{}]({label}/index.md) - {count} {unit}\n",
-                    link_text(label)
-                ));
-            }
-        }
-        for (heading, journal) in [("Pages", false), ("Journals", true)] {
-            let mut list: Vec<&IndexEntry> = pages
-                .get(dir)
-                .into_iter()
-                .flatten()
-                .copied()
-                .filter(|e| e.journal == journal)
-                .collect();
-            if list.is_empty() {
-                continue;
-            }
-            if journal {
-                list.sort_by(|a, b| b.slug.cmp(&a.slug));
-            } else {
-                list.sort_by_key(|e| (e.title.to_lowercase(), e.slug.clone()));
-            }
-            body.push_str(&format!("\n## {heading}\n\n"));
-            for e in list {
-                let file = e.slug.rsplit('/').next().unwrap();
-                body.push_str(&format!("* [{}]({file}.md)", link_text(&e.title)));
-                if let Some(d) = &e.description {
-                    body.push_str(&format!(" - {d}"));
-                }
-                body.push('\n');
-            }
-        }
-        let folder = out.join(dir);
-        std::fs::create_dir_all(&folder)?;
-        std::fs::write(folder.join("index.md"), body)?;
-    }
-    Ok(())
 }
 
 fn journal_title_day(name: &str) -> Option<String> {

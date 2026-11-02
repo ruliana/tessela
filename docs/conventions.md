@@ -385,14 +385,9 @@ those names get `-page` added. Two pages with the same slug get `-2`, `-3`, and
 the report lists them. Links are written with the same slugs, so they stay
 connected.
 
-Indexes. The importer writes an `index.md` in the root and in every folder that
-holds pages (`journals/`, and one per namespace), as OKF §6 describes. The root
-one keeps `okf_version: "0.2"` as its only frontmatter; the others have none.
-Each lists its sub-folders and then its own pages (journals newest first) as
-`* [Title](page.md) - first line of the page`, with links relative to the
-index. Ordinary pages stay at the root on purpose: a concept's path is its
-identity (§4), so `#rust` must find `rust.md`. The root index is how you browse
-them; the files themselves do not move.
+The importer writes only what the graph contains. It does not generate `index.md`
+or `log.md`: listings are computed by tools on demand, not kept as files that go
+stale (§5).
 
 Not imported, and listed in the report: `.org` pages, whiteboards, and files that
 are not valid UTF-8. Logseq macros such as `{{query ...}}` are copied as they are

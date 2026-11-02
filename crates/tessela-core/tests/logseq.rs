@@ -70,39 +70,16 @@ fn files_land_where_the_spec_says() {
         [
             "assets/diagram.png",
             "index-page.md",
-            "index.md",
             "journals/2026-10-26.md",
             "journals/2026-10-27.md",
-            "journals/index.md",
             "machine-learning.md",
-            "project/index.md",
             "project/tessela.md",
             "rust.md",
             "tessela.md",
         ]
     );
-    assert!(read(&out, "index.md").contains("okf_version: \"0.2\""));
-    std::fs::remove_dir_all(out).unwrap();
-}
-
-#[test]
-fn index_files_list_folders_and_pages_the_okf_way() {
-    let (out, _) = imported("indexes");
-    let root = read(&out, "index.md");
-    assert!(root.starts_with("---\nokf_version: \"0.2\"\n---\n\n# "));
-    assert!(root.contains("## Folders\n\n* [journals](journals/index.md) - 2 pages\n"));
-    assert!(root.contains("* [project](project/index.md) - 1 page\n"));
-    assert!(root.contains("## Pages\n\n"));
-    assert!(root.contains("* [Rust](rust.md)"));
-    assert!(root.contains("* [Index](index-page.md)"));
-    // Journals are not mixed into the root listing.
-    assert!(!root.contains("2026-10-27.md"));
-    // Only the root index has frontmatter.
-    let journals = read(&out, "journals/index.md");
-    assert!(journals.starts_with("# journals\n"));
-    assert!(journals.find("2026-10-27.md").unwrap() < journals.find("2026-10-26.md").unwrap());
-    let project = read(&out, "project/index.md");
-    assert!(project.starts_with("# project\n\n## Pages\n\n* [Project/Tessela](tessela.md)"));
+    // The importer only writes what the graph contains: no generated index or log.
+    assert!(!out.join("index.md").exists() && !out.join("log.md").exists());
     std::fs::remove_dir_all(out).unwrap();
 }
 
