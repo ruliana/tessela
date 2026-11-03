@@ -17,6 +17,8 @@ export interface Hit {
   path_refs: string[];
   dates: string[];
   parent: string | null;
+  /** The hit is on a `home.md` page. Absent from older `tessela` builds. */
+  home?: boolean;
 }
 
 /** One concept from `tessela vocab --json`. */

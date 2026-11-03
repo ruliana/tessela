@@ -9,6 +9,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "./style.css";
 
 import type { Diagnostic, Hit, PageEntry, VocabEntry } from "../shared/api";
+import { isHomeHit, orderBacklinks } from "../shared/backlinks";
 import {
   canGoBack,
   canGoForward,
@@ -915,7 +916,7 @@ async function renderBacklinks(): Promise<void> {
 
   const seen = new Set<string>();
   const byPage = new Map<string, Hit[]>();
-  for (const hit of hits) {
+  for (const hit of orderBacklinks(hits)) {
     if (hit.path === path || seen.has(hit.handle)) continue;
     seen.add(hit.handle);
     byPage.set(hit.path, [...(byPage.get(hit.path) ?? []), hit]);
@@ -929,11 +930,18 @@ async function renderBacklinks(): Promise<void> {
   }
   const pages = byPage.size;
   const sub = el("p", { class: "sub" }, `${total === 1 ? "1 mention" : `${total} mentions`} in ${pages === 1 ? "1 page" : `${pages} pages`}`);
-  const groups = [...byPage.entries()].map(([p, list]) =>
-    el(
+  const groups = [...byPage.entries()].map(([p, list]) => {
+    const fromHome = list.some(isHomeHit);
+    return el(
       "section",
-      { class: "bl-group" },
-      el("h3", {}, el("button", { onclick: () => void showPage(p) }, pageId(p)), el("span", { class: "n" }, String(list.length))),
+      { class: fromHome ? "bl-group home" : "bl-group" },
+      el(
+        "h3",
+        {},
+        el("button", { onclick: () => void showPage(p) }, pageId(p)),
+        fromHome ? el("span", { class: "bl-home" }, "Home") : "",
+        el("span", { class: "n" }, String(list.length)),
+      ),
       ...list.map((hit) => {
         const where = hitPlace(hit);
         return el(
@@ -943,8 +951,8 @@ async function renderBacklinks(): Promise<void> {
           el("span", { class: "text" }, ...renderInlineText(hit.text, (day) => void showPage(journalPath(day)))),
         );
       }),
-    ),
-  );
+    );
+  });
   backlinksEl.replaceChildren(head, sub, ...groups);
 }
 

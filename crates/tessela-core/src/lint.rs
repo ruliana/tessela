@@ -54,6 +54,7 @@ impl Default for Linter {
     fn default() -> Self {
         let mut linter = Linter::empty();
         linter.add_rule(Box::new(OkfConformance));
+        linter.add_rule(Box::new(HomePages));
         linter.add_rule(Box::new(Dates));
         linter.add_rule(Box::new(Journals));
         linter.add_rule(Box::new(Vocabulary));
@@ -98,6 +99,33 @@ fn diag(
         path: path.to_string(),
         line,
         message,
+    }
+}
+
+/// Spec §1: a `home.md` has `type: home`, so it is valid OKF and tools can tell it apart.
+/// A missing `type` is already an error under `okf`.
+pub struct HomePages;
+
+impl Rule for HomePages {
+    fn id(&self) -> &'static str {
+        "tessela/home"
+    }
+
+    fn check(&self, bundle: &Bundle, out: &mut Vec<Diagnostic>) {
+        for page in bundle.pages.iter().filter(|p| p.is_home()) {
+            if let Some(kind) = page.kind().filter(|k| *k != "home") {
+                out.push(diag(
+                    "tessela/home-type",
+                    Severity::Warning,
+                    &page.path,
+                    None,
+                    format!(
+                        "`{}` is a home page, so its `type` should be `home`, not `{kind}`",
+                        page.path
+                    ),
+                ));
+            }
+        }
     }
 }
 

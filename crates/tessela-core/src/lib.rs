@@ -4,6 +4,7 @@
 
 pub mod blocks;
 pub mod bundle;
+pub mod index;
 pub mod lint;
 pub mod logseq;
 pub mod page;
@@ -13,6 +14,7 @@ pub mod vocab;
 
 pub use blocks::{Block, Heading};
 pub use bundle::Bundle;
+pub use index::{Listing, WriteReport};
 pub use lint::{Diagnostic, Linter, Rule, Severity};
 pub use page::Page;
 pub use query::{Hit, HitKind, Query};

@@ -70,7 +70,6 @@ fn files_land_where_the_spec_says() {
         [
             "assets/diagram.png",
             "index-page.md",
-            "index.md",
             "journals/2026-10-26.md",
             "journals/2026-10-27.md",
             "machine-learning.md",
@@ -79,7 +78,8 @@ fn files_land_where_the_spec_says() {
             "tessela.md",
         ]
     );
-    assert!(read(&out, "index.md").contains("okf_version: \"0.2\""));
+    // The importer only writes what the graph contains: no generated index or log.
+    assert!(!out.join("index.md").exists() && !out.join("log.md").exists());
     std::fs::remove_dir_all(out).unwrap();
 }
 

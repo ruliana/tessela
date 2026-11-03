@@ -216,9 +216,9 @@ fn base_slug(name: &str) -> String {
     if slug.is_empty() {
         return "untitled".into();
     }
-    // `index.md` and `log.md` are reserved by OKF.
+    // `index.md` and `log.md` are reserved by OKF, `home.md` by Tessela (spec §1).
     match slug.rsplit('/').next() {
-        Some("index" | "log") => format!("{slug}-page"),
+        Some("index" | "log" | "home") => format!("{slug}-page"),
         _ => slug,
     }
 }
@@ -601,17 +601,6 @@ impl Importer {
                 Kind::Page => report.pages += 1,
             }
         }
-        let name = graph
-            .canonicalize()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| "Notes".into());
-        std::fs::write(
-            out.join("index.md"),
-            format!(
-                "---\nokf_version: \"0.2\"\n---\n\n# {name}\n\nImported from Logseq with `tessela import-logseq`.\n"
-            ),
-        )?;
         let assets = graph.join("assets");
         if assets.is_dir() {
             let copied = copy_dir(&assets, &out.join("assets"))?;
@@ -691,6 +680,8 @@ mod tests {
         assert_eq!(base_slug("Project/Tessela (old)"), "project/tessela-old");
         assert_eq!(base_slug("Index"), "index-page");
         assert_eq!(base_slug("a/log"), "a/log-page");
+        assert_eq!(base_slug("Home"), "home-page");
+        assert_eq!(base_slug("Projects/Home"), "projects/home-page");
         assert_eq!(base_slug("🔥"), "untitled");
     }
 

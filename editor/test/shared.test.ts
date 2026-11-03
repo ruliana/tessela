@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { Diagnostic, VocabEntry } from "../src/shared/api";
+import type { Diagnostic, Hit, VocabEntry } from "../src/shared/api";
+import { isHomePath, orderBacklinks } from "../src/shared/backlinks";
 import { slugFirst, suggest } from "../src/shared/complete";
 import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget, refsInLine } from "../src/shared/links";
 import { summary, visibleProblems } from "../src/shared/problems";
@@ -279,5 +280,40 @@ describe("recent pages", () => {
     expect(recentCount("8")).toBe(8);
     expect(recentCount(500)).toBe(RECENT_MAX);
     for (const bad of [0, -2, "x", null, undefined, NaN]) expect(recentCount(bad)).toBe(RECENT_DEFAULT);
+  });
+});
+
+describe("backlink order", () => {
+  const hit = (path: string, extra: Partial<Hit> = {}): Hit => ({
+    kind: "block",
+    handle: path,
+    page: path.replace(/\.md$/, ""),
+    path,
+    page_type: null,
+    line: 1,
+    heading_path: [],
+    text: "",
+    refs: [],
+    path_refs: [],
+    dates: [],
+    parent: null,
+    ...extra,
+  });
+
+  it("knows a home page by its file name, at any depth", () => {
+    expect(isHomePath("home.md")).toBe(true);
+    expect(isHomePath("notes/home.md")).toBe(true);
+    expect(isHomePath("notes/nothome.md")).toBe(false);
+    expect(isHomePath("home/page.md")).toBe(false);
+  });
+
+  it("puts home pages first, the most specific folder's first, and keeps the rest in order", () => {
+    const hits = [hit("a.md"), hit("home.md"), hit("b.md"), hit("x/y/home.md"), hit("x/home.md")];
+    expect(orderBacklinks(hits).map((h) => h.path)).toEqual(["x/y/home.md", "x/home.md", "home.md", "a.md", "b.md"]);
+  });
+
+  it("trusts the home flag of the tool when it is there", () => {
+    const hits = [hit("a.md"), hit("b.md", { home: true })];
+    expect(orderBacklinks(hits).map((h) => h.path)).toEqual(["b.md", "a.md"]);
   });
 });
