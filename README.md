@@ -7,6 +7,8 @@ synced with git. Rust tools lint, query and list the vocabulary of that bundle,
 and import a Logseq graph. An Electron editor uses the same tools behind the
 scenes.
 
+![Tessela editor showing a page and the pages that link to it](docs/screenshots/page-backlinks.png)
+
 - [Conventions](docs/conventions.md): what Tessela adds on top of OKF.
 
 ## Tools
@@ -99,6 +101,8 @@ cd editor && npm install && npm run build
 npm start -- --bundle ~/notes     # or choose the notes folder from the welcome screen
 ```
 
+![The journals, with each day in its own editor](docs/screenshots/journals.png)
+
 The folder you open is the root: pages, links and tags are all relative to it. Its
 name and path sit at the top of the sidebar; click it (or Ctrl+Shift+O) to switch.
 Ctrl+N makes a new page and Ctrl+O opens a Markdown file.
@@ -109,6 +113,13 @@ turns a selection into a link with Ctrl+L (Super+L on macOS). The **Rendered** b
 (Ctrl/Cmd+Alt+M) shows the Markdown rendered and switches to the raw text only in the
 block you are editing. Details are in spec §11. `npm test` runs the unit tests and `npm run e2e` drives a real window, and `npm run e2e:acceptance`
 checks every feature of the editor there (`ONLY=regex` runs some of them).
+
+The editor also has a dark theme, which follows the system until you choose one:
+
+![The editor in the dark theme](docs/screenshots/dark.png)
+
+The screenshots come from a small sample bundle; `npm run screenshots` in `editor/` takes them
+again (`xvfb-run -a npm run screenshots` on a server).
 
 To build an app that carries its own `tessela` binary:
 
