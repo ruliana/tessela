@@ -10,6 +10,8 @@ scenes.
 ![Tessela editor showing a page and the pages that link to it](docs/screenshots/page-backlinks.png)
 
 - [Conventions](docs/conventions.md): what Tessela adds on top of OKF.
+- [Agent skill](skills/tessela/SKILL.md): how an agent should work in a bundle, and which
+  changes go through the `tessela` CLI.
 
 ## Tools
 
