@@ -88,6 +88,29 @@ declared in `vocabulary.md`, with its mention count, how many pages mention it,
 whether it has a page, and any alias or deprecation from `vocabulary.md`. Use it
 to pick an existing term instead of inventing a new one.
 
+### Changing pages
+
+```
+tessela read -b ~/notes project/tessela.md --json    # text + hash (or a template when new)
+tessela add -b ~/notes "Machine Learning"            # new page from the template
+tessela save -b ~/notes project/tessela.md --expect HASH < new-text.md
+tessela save -b ~/notes project/tessela.md --expect HASH --patch < changes.diff
+tessela rename -b ~/notes ai/llm.md Models           # tags and links that name it follow
+tessela move -b ~/notes ai/models.md archive/ --dry-run
+tessela remove -b ~/notes ai/old.md --expect HASH    # says who still mentions it
+```
+
+This is the one door for edits: the editor saves through it, and so should agents.
+A `save` names the hash it read (`--expect`, or `new` for a page that must not exist
+yet) and fails with exit code 3 and a `conflict` error when the file has changed
+since, so nothing is overwritten blindly. Writes are atomic. `--patch` takes a unified
+diff that must apply exactly, for fine-grained changes. `rename` and `move` rewrite
+the tags and links that name the page in every page, and keep the moved page's own
+relative links pointing where they did. With `--json` every answer, errors included,
+is `{"api": 1, "ok": true|false, ...}`; `--api 1` makes the tool refuse when it speaks
+another version. The files stay the source of truth: every call reads the disk, so
+edits made with vim or git are seen. Spec §9 has the rules.
+
 ### Import from Logseq
 
 ```

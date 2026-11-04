@@ -4,12 +4,14 @@
 
 pub mod blocks;
 pub mod bundle;
+pub mod edit;
 pub mod index;
 pub mod lint;
 pub mod logseq;
 pub mod page;
 pub mod query;
 pub mod refs;
+pub mod rewrite;
 pub mod vocab;
 
 pub use blocks::{Block, Heading};

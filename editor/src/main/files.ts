@@ -1,16 +1,11 @@
-// Reading and writing pages safely. The files are the only source of truth, so a
-// write is atomic and refuses to overwrite a change it has not seen (spec §9).
+// Finding pages and watching for changes. Reading and writing a page is `tessela`'s job
+// (see tessela.ts), so every writer follows the same rules (spec §9).
 
-import { createHash } from "node:crypto";
 import { promises as fs, watch } from "node:fs";
 import path from "node:path";
 
-import type { PageEntry, PageFile, WriteResult } from "../shared/api";
-import { newPageText, pageId } from "../shared/pages";
-
-export function hashText(text: string): string {
-  return createHash("sha256").update(text).digest("hex").slice(0, 16);
-}
+import type { PageEntry } from "../shared/api";
+import { pageId } from "../shared/pages";
 
 /** The absolute path of a page, or an error when `rel` could leave the bundle. */
 export function resolveInside(root: string, rel: string): string {
@@ -49,39 +44,6 @@ export function relativeInside(root: string, file: string): string | null {
   const relative = path.relative(root, file);
   if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
   return relative.split(path.sep).join("/");
-}
-
-async function readIfExists(file: string): Promise<string | null> {
-  try {
-    return await fs.readFile(file, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw e;
-  }
-}
-
-export async function readPage(root: string, rel: string): Promise<PageFile> {
-  const text = await readIfExists(resolveInside(root, rel));
-  if (text === null) return { path: rel, exists: false, text: newPageText(rel), hash: null };
-  return { path: rel, exists: true, text, hash: hashText(text) };
-}
-
-export async function writePage(
-  root: string,
-  rel: string,
-  text: string,
-  expectedHash: string | null,
-): Promise<WriteResult> {
-  const file = resolveInside(root, rel);
-  const current = await readIfExists(file);
-  const diskHash = current === null ? null : hashText(current);
-  if (diskHash !== expectedHash) return { ok: false, reason: "conflict", diskHash };
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  // Write next to the page and rename, so a reader never sees half a file.
-  const temp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(temp, text, "utf8");
-  await fs.rename(temp, file);
-  return { ok: true, hash: hashText(text) };
 }
 
 const RESERVED = new Set(["index.md", "log.md"]);

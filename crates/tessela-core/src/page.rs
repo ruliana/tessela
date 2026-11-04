@@ -126,13 +126,13 @@ fn collect_strings(value: &Value, out: &mut Vec<String>) {
     }
 }
 
-enum Split<'a> {
+pub(crate) enum Split<'a> {
     None,
     Unterminated,
     Found { yaml: &'a str, body_offset: usize },
 }
 
-fn split_frontmatter(text: &str) -> Split<'_> {
+pub(crate) fn split_frontmatter(text: &str) -> Split<'_> {
     let Some(first) = text.lines().next() else {
         return Split::None;
     };

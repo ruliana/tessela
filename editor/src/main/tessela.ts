@@ -4,7 +4,10 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 
-import type { QueryArgs } from "../shared/api";
+import type { PageFile, QueryArgs, WriteResult } from "../shared/api";
+
+/** The version of the `tessela` edit commands this editor was written for. */
+export const TESSELA_API = 1;
 
 export function queryArgv(bundle: string, q: QueryArgs): string[] {
   const argv = ["query", bundle, "--json"];
@@ -47,6 +50,87 @@ export function runJson<T>(bin: string, argv: string[], okCodes: number[] = []):
       }
     });
   });
+}
+
+/** The error part of what the edit commands print when they fail. */
+interface EditFailure {
+  ok: false;
+  error: { code: string; message: string; disk_hash?: string | null };
+}
+
+/**
+ * Runs an edit command (`read`, `add`, `save`, ...), passing `input` on stdin. The tool prints
+ * JSON on success and on failure, so a non-zero exit with JSON is a result, not a crash.
+ */
+export function runEdit<T>(bin: string, bundle: string, argv: string[], input = ""): Promise<T | EditFailure> {
+  return new Promise((resolve, reject) => {
+    const full = [...argv, "--bundle", bundle, "--json", "--api", String(TESSELA_API)];
+    const child = execFile(bin, full, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
+      try {
+        resolve(JSON.parse(stdout) as T | EditFailure);
+      } catch {
+        const text = stderr.trim() || error?.message || "it printed nothing";
+        const old = /unrecognized subcommand|unexpected argument/.test(text);
+        reject(
+          new Error(
+            old
+              ? `The tessela tool is too old for this editor (it has no \`${argv[0]}\` command). Update it.`
+              : `${bin} ${argv[0]} failed: ${text}`,
+          ),
+        );
+      }
+    });
+    // A tool that exits before reading its input closes the pipe; that is reported above.
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(input);
+  });
+}
+
+function failure(argv0: string, f: EditFailure): Error {
+  return new Error(`tessela ${argv0}: ${f.error.message}`);
+}
+
+/** The page as `tessela read` sees it; a page without a file comes with the template for one. */
+export async function readPageVia(bin: string, bundle: string, rel: string): Promise<PageFile> {
+  const r = await runEdit<{ ok: true; path: string; exists: boolean; text: string; hash: string | null }>(
+    bin,
+    bundle,
+    ["read", rel],
+  );
+  if (!r.ok) throw failure("read", r);
+  return { path: r.path, exists: r.exists, text: r.text, hash: r.hash };
+}
+
+/**
+ * Saves a page with `tessela save`. It writes only when the file on disk still has `expectedHash`
+ * (null: there must be no file yet); otherwise the answer is a conflict and nothing is written.
+ */
+export async function savePageVia(
+  bin: string,
+  bundle: string,
+  rel: string,
+  text: string,
+  expectedHash: string | null,
+): Promise<WriteResult> {
+  const r = await runEdit<{ ok: true; hash: string }>(
+    bin,
+    bundle,
+    ["save", rel, "--expect", expectedHash ?? "new"],
+    text,
+  );
+  if (r.ok) return { ok: true, hash: r.hash };
+  if (r.error.code === "conflict") return { ok: false, reason: "conflict", diskHash: r.error.disk_hash ?? null };
+  throw failure("save", r);
+}
+
+/** Creates a page from the template with `tessela add`; false when the page already exists. */
+export async function addPageVia(bin: string, bundle: string, rel: string, title?: string): Promise<boolean> {
+  const argv = ["add", rel];
+  if (title) argv.push(`--title=${title}`);
+  const r = await runEdit<{ ok: true }>(bin, bundle, argv);
+  if (r.ok) return true;
+  if (r.error.code === "exists") return false;
+  throw failure("add", r);
 }
 
 export interface BinLookup {

@@ -95,9 +95,12 @@ export interface Api {
   vocab(): Promise<VocabEntry[]>;
   query(args: QueryArgs): Promise<Hit[]>;
   lint(): Promise<Diagnostic[]>;
+  /** A page without a file comes back with `exists: false` and the template for a new one. */
   readPage(path: string): Promise<PageFile>;
   /** Writes only if the file on disk still has `expectedHash` (null: must not exist). */
   writePage(path: string, text: string, expectedHash: string | null): Promise<WriteResult>;
+  /** Creates a page from the template. False when the page already exists. */
+  addPage(path: string, title?: string): Promise<boolean>;
   /** Opens a web or mail address in the system's own program. Other addresses are ignored. */
   openExternal(url: string): Promise<void>;
   /** Path of today's journal, in local time. */
