@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-labelledby="t">
+  <title id="t">Tessela</title>
+  <rect x="0" y="0" width="10" height="14" rx="2.5" fill="#6cc4ae"/>
+  <rect x="11" y="0" width="10" height="14" rx="2.5" fill="#6cc4ae"/>
+  <rect x="22" y="0" width="10" height="14" rx="2.5" fill="#6cc4ae"/>
+  <rect x="11" y="15" width="10" height="17" rx="2.5" fill="#e6b365"/>
+</svg>

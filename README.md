@@ -1,6 +1,13 @@
-# Tessela
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/tessela-mark-dark.svg">
+    <img src="assets/logo/tessela-mark.svg" alt="The Tessela logo: five small tiles forming a T" width="112">
+  </picture>
+</p>
 
-A personal knowledge manager for humans and agents.
+<h1 align="center">Tessela</h1>
+
+<p align="center">A personal knowledge manager for humans and agents.</p>
 
 Notes are plain Markdown in an [Open Knowledge Format](https://okf.md/) bundle,
 synced with git. Rust tools lint, query and list the vocabulary of that bundle,

@@ -133,6 +133,8 @@ function createWindow(): void {
     width: 1360,
     height: 860,
     title: "Tessela",
+    // The packaged app gets its icon from the build; this is for the window on Linux and when run unpackaged.
+    icon: path.join(__dirname, "renderer", "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
