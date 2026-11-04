@@ -250,12 +250,35 @@ terms:
 
 ## 9. Writing files
 
-Several writers can touch the bundle at once (the editor, agents, CLI tools).
+Several writers can touch the bundle at once (the editor, agents, people with a text
+editor or git). The files are the source of truth, so nothing is cached: every
+operation reads the disk.
 
-- Writes are atomic: write a temporary file in the same folder, then rename it.
-- An edit changes only the targeted block or frontmatter key. Everything else in
-  the file is preserved byte for byte.
-- Edits that target a block handle fail on a hash mismatch (§3).
+Edits go through one door, the `tessela` edit commands (§10), which the editor and
+agents share. Its rules:
+
+- A write names the content hash of the page it was based on (`--expect HASH`, or
+  `new` for a page that must not exist). If the file on disk has another hash, the
+  write fails with a `conflict` error that carries the hash now on disk, and nothing
+  is written. A caller starts from `tessela read` and, after a conflict, reads again
+  and redoes its change.
+- Writes are atomic: write a temporary file in the same folder, then rename it. A
+  new page is created with a hard link, so two writers cannot both create it. (An
+  existing page is checked and then replaced; a writer that slips in between those
+  two steps in the same instant is not detected.)
+- An edit changes only what it targets. `save --patch` applies a unified diff that
+  must match exactly; the rest of the file is preserved byte for byte, including
+  frontmatter keys the tool does not know.
+- `rename` and `move` change the page's concept, so they rewrite the tags and links
+  (inline and reference-style) that name it, in the frontmatter `tags` and text and
+  in every block of every page, never in code. The moved page's own relative links
+  are rebased so they still reach the same files. Folders and nested concepts are
+  separate pages and do not move. What cannot be rewritten (a link written with
+  escapes) is left alone and reported as a warning.
+- `remove` needs the hash too, and reports the pages that still mention the page
+  (a link to a missing page is allowed, §4).
+- Anyone may still edit the Markdown directly. That is safe because the tool checks
+  the disk on every call; the hash only protects writers that go through the tool.
 - The editor watches the bundle for changes and reloads open pages.
 
 ## 10. Tools
@@ -282,6 +305,22 @@ human-readable output and a `--json` output, which the editor and agents use.
   bundles read by tools that do not compute listings. Generated files carry a
   marker line; one that does not (a hand-written `index.md`) is kept unless
   `--force` is given.
+- `tessela read | add | save | rename | move | remove`: the edit commands (§9). They
+  take the bundle with `--bundle DIR` (default `.`) and the page as a path relative to
+  it, with or without `.md`. `add` and the targets of `rename` and `move` take a name
+  the way a person writes it (`Machine Learning` becomes `machine-learning.md`, §4);
+  `index.md` and `log.md` are refused as names (§1). `save` reads the new text, or with
+  `--patch` a unified diff, from stdin (or `--file`). `rename` keeps the folder; `move`
+  takes a folder ending in `/` or a path. `rename` and `move` accept `--dry-run`.
+  With `--json` the answer is `{"api": N, "ok": true, ...}`, and a failure is
+  `{"api": N, "ok": false, "error": {"code", "message"}}` with the exit code 3 for a
+  `conflict` and 2 for any other error. Error codes: `conflict`, `not-found`, `exists`,
+  `invalid-path`, `invalid-patch`, `invalid-input`, `api-mismatch`, `io`. The `api`
+  number is the version of this contract (command names, arguments and JSON); callers
+  pass `--api N` for the version they were written for, and the tool refuses on a
+  mismatch. `tessela api` prints it. The operations are written against a `PageStore`
+  in `tessela-core`, so a bundle kept elsewhere (remote, database) needs a new store,
+  not new callers.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
@@ -291,8 +330,9 @@ human-readable output and a `--json` output, which the editor and agents use.
 An Electron editor (in `editor/`, TypeScript, CodeMirror 6) that uses the same
 tools as everyone else: it runs `tessela query --json` and `tessela vocab --json`
 and `tessela lint --json` (the binary comes from `$TESSELA_BIN`, then the one
-packaged with the app, then `target/{release,debug}`, then `PATH`), and reads and
-writes the Markdown files itself.
+packaged with the app, then `target/{release,debug}`, then `PATH`). It reads and
+saves pages with `tessela read` and `tessela save` (§9, §10), one call per read and per
+save, so it follows the same rules as agents; it only lists and watches the files itself.
 
 - The root is the folder it opens: `--bundle PATH`, or the last one used, or the one
   chosen in the window (the folder button at the top of the sidebar, Ctrl+Shift+O, or
@@ -302,9 +342,11 @@ writes the Markdown files itself.
 - It opens a bundle on the journals: today
   and the latest earlier days stacked, each one editable, with "Older days" for more.
   A journal file is only created on the first edit.
-- Edits are saved after a short pause. A write is atomic (temporary file, then
-  rename) and refused when the file on disk is not the one the editor last read;
-  the editor then offers to load the disk version or to overwrite it.
+- Edits are saved after a short pause with `tessela save --expect HASH`, where HASH
+  is the hash the editor last read (§9). The save is refused when the file on disk is
+  another one; the editor then offers to load the disk version or to overwrite it.
+  A tool too old to have these commands, or one with another `api` number, makes
+  saving fail with a message that says so.
 - It watches the bundle: pages changed by other programs are reloaded, unless
   there are unsaved edits, which count as a conflict.
 - The right panel shows the backlinks of the open page (`query --ref PAGE`; for a

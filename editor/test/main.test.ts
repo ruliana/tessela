@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { listPages, readPage, relativeInside, resolveImage, resolveInside, writePage } from "../src/main/files";
-import { findTessela, queryArgv } from "../src/main/tessela";
+import { existsSync } from "node:fs";
+
+import { listPages, relativeInside, resolveImage, resolveInside } from "../src/main/files";
+import { addPageVia, findTessela, queryArgv, readPageVia, savePageVia } from "../src/main/tessela";
 
 async function bundle(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "tessela-test-"));
@@ -42,31 +44,79 @@ describe("files", () => {
     expect(relativeInside("/tmp/b", "/tmp/b-sibling/a.md")).toBeNull();
     expect(relativeInside("/tmp/b", "/tmp/b")).toBeNull();
   });
+});
 
+// Saving goes through the real `tessela` tool: `cargo build -p tessela-cli` makes one, or set
+// TESSELA_BIN. Without a build there is nothing to test against, so these are skipped.
+const tool = findTessela({
+  env: process.env.TESSELA_BIN,
+  resourcesPath: undefined,
+  appPath: path.resolve(__dirname, ".."),
+  platform: process.platform,
+  exists: existsSync,
+});
+const haveTool = path.isAbsolute(tool) && existsSync(tool);
+
+describe.skipIf(!haveTool)("saving through the tessela tool", () => {
   it("offers a template for a page that has no file, and writes it on first save", async () => {
     const root = await bundle();
-    const page = await readPage(root, "project/new.md");
+    const page = await readPageVia(tool, root, "project/new.md");
     expect(page).toMatchObject({ exists: false, hash: null });
     expect(page.text).toContain("type: concept");
-    const result = await writePage(root, "project/new.md", `${page.text}hello\n`, null);
+    const result = await savePageVia(tool, root, "project/new.md", `${page.text}hello\n`, null);
     expect(result.ok).toBe(true);
     expect(await readFile(path.join(root, "project/new.md"), "utf8")).toContain("hello");
   });
 
+  it("reads the hash that a save must be based on", async () => {
+    const root = await bundle();
+    const page = await readPageVia(tool, root, "journals/2026-10-27.md");
+    expect(page).toMatchObject({ exists: true, text: "---\ntype: journal\n---\n\nhi\n" });
+    const result = await savePageVia(tool, root, "journals/2026-10-27.md", "mine\n", page.hash);
+    expect(result.ok).toBe(true);
+    // Saving again with the old hash is stale.
+    expect(await savePageVia(tool, root, "journals/2026-10-27.md", "late\n", page.hash)).toMatchObject({
+      ok: false,
+      reason: "conflict",
+    });
+    expect(await readFile(path.join(root, "journals/2026-10-27.md"), "utf8")).toBe("mine\n");
+  });
+
   it("refuses to overwrite a change it has not seen", async () => {
     const root = await bundle();
-    const page = await readPage(root, "journals/2026-10-27.md");
+    const page = await readPageVia(tool, root, "journals/2026-10-27.md");
     await writeFile(path.join(root, "journals/2026-10-27.md"), "changed elsewhere");
-    const result = await writePage(root, "journals/2026-10-27.md", "mine", page.hash);
+    const result = await savePageVia(tool, root, "journals/2026-10-27.md", "mine", page.hash);
     expect(result).toMatchObject({ ok: false, reason: "conflict" });
     expect(await readFile(path.join(root, "journals/2026-10-27.md"), "utf8")).toBe("changed elsewhere");
     // A page that appeared meanwhile also counts as a conflict.
-    expect(await writePage(root, "journals/2026-10-27.md", "mine", null)).toMatchObject({ ok: false });
+    expect(await savePageVia(tool, root, "journals/2026-10-27.md", "mine", null)).toMatchObject({ ok: false });
+  });
+
+  it("sends text of any size and shape untouched", async () => {
+    const root = await bundle();
+    const text = `---\ntype: concept\n---\n\n${"línea ünï ✓ \"q\" \\ \r\n".repeat(20000)}`;
+    expect((await savePageVia(tool, root, "big.md", text, null)).ok).toBe(true);
+    expect(await readFile(path.join(root, "big.md"), "utf8")).toBe(text);
+  });
+
+  it("creates a page from the template, and says when it is already there", async () => {
+    const root = await bundle();
+    expect(await addPageVia(tool, root, "project/idea.md", "My Idea")).toBe(true);
+    expect(await readFile(path.join(root, "project/idea.md"), "utf8")).toBe(
+      '---\ntype: concept\ntitle: "My Idea"\n---\n\n',
+    );
+    expect(await addPageVia(tool, root, "project/idea.md")).toBe(false);
+  });
+
+  it("fails loudly on a path outside the bundle", async () => {
+    const root = await bundle();
+    await expect(savePageVia(tool, root, "../x.md", "x", null)).rejects.toThrow(/outside|leave the bundle|invalid/i);
   });
 
   it("leaves no temporary files behind", async () => {
     const root = await bundle();
-    await writePage(root, "a.md", "x", null);
+    await savePageVia(tool, root, "a.md", "x", null);
     expect((await listPages(root)).map((p) => p.path)).toContain("a.md");
     const { readdir } = await import("node:fs/promises");
     expect((await readdir(root)).filter((n) => n.endsWith(".tmp"))).toEqual([]);

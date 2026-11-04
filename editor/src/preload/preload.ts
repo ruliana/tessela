@@ -13,6 +13,7 @@ const api: Api = {
   lint: () => ipcRenderer.invoke("lint"),
   readPage: (path) => ipcRenderer.invoke("readPage", path),
   writePage: (path, text, expected) => ipcRenderer.invoke("writePage", path, text, expected),
+  addPage: (path, title) => ipcRenderer.invoke("addPage", path, title),
   openExternal: (url) => ipcRenderer.invoke("openExternal", url),
   todayPath: () => ipcRenderer.invoke("todayPath"),
   onChanged(listener) {
