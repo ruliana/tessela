@@ -16,6 +16,7 @@
     "e2e": "npm run build && node e2e/smoke.mjs",
     "e2e:acceptance": "npm run build && node e2e/acceptance.mjs",
     "screenshots": "npm run build && node scripts/screenshots.mjs",
+    "icons": "node scripts/build-icons.mjs",
     "package": "npm run build && node scripts/prepare-bin.mjs && electron-builder --publish never",
     "package:dir": "npm run build && node scripts/prepare-bin.mjs && electron-builder --dir"
   },
@@ -52,7 +53,8 @@
     "appId": "md.tessela.editor",
     "productName": "Tessela",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",

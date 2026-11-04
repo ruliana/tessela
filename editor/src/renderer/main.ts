@@ -27,6 +27,7 @@ import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
 import { el } from "./dom";
 import { renderInlineText } from "./inline";
+import { logo } from "./logo";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -228,6 +229,7 @@ function welcome(message?: string): void {
       el(
         "div",
         {},
+        logo(72),
         el("h1", {}, "Tessela"),
         el(
           "p",
@@ -423,7 +425,7 @@ function buildShell(bundle: string): void {
     el(
       "div",
       { class: "brand" },
-      el("span", { class: "brand-name" }, el("span", { class: "mark", ariaHidden: "true" }, el("i"), el("i"), el("i"), el("i")), "Tessela"),
+      el("span", { class: "brand-name" }, logo(20), "Tessela"),
       el("span", { class: "navs" }, backButton, forwardButton),
     ),
     el(
