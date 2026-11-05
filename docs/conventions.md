@@ -21,6 +21,7 @@ my-notes/
 ├── machine-learning.md   # concept pages, anywhere in the tree
 ├── project/
 │   └── tessela.md
+├── assets/               # attachments: images, PDFs, other files
 └── .tessela/             # rebuildable caches and indexes; gitignored
 ```
 
@@ -32,6 +33,9 @@ my-notes/
   bundle declare its version (`okf_version: "0.2"`); a bundle without one is read
   as the version the tool understands.
 - `home.md` is reserved by Tessela, see below.
+- `assets/` at the root holds attachments that pages link to. `tessela lint` skips
+  everything under it, Markdown files included, because an attachment is a file
+  as it arrived (an export, a pasted document), not a note written to these rules.
 - Everything under `.tessela/` can be deleted at any time. Tools rebuild it from the
   Markdown files. It is never committed.
 
