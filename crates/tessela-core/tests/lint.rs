@@ -54,6 +54,14 @@ fn attachments_are_not_linted() {
         .filter(|d| d.path.starts_with("assets/"))
         .collect();
     assert!(in_assets.is_empty(), "{in_assets:?}");
+    // A mention inside an attachment neither hides nor inflates the note on a real page.
+    let brand_new = find(&ds, "tessela/unwritten-concept", "uses-vocab.md");
+    assert!(
+        brand_new
+            .iter()
+            .any(|d| d.message == "`brand-new` is mentioned once but has no page yet"),
+        "{brand_new:?}"
+    );
 }
 
 #[test]

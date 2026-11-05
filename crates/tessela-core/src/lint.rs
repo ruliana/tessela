@@ -391,7 +391,7 @@ impl Rule for UnwrittenConcepts {
     fn check(&self, bundle: &Bundle, out: &mut Vec<Diagnostic>) {
         let existing = bundle.page_ids();
         let mut missing: BTreeMap<String, (&str, Option<usize>, usize)> = BTreeMap::new();
-        for page in &bundle.pages {
+        for page in bundle.pages.iter().filter(|p| !is_attachment(&p.path)) {
             for (concept, line) in mentions(page) {
                 if existing.contains(&concept) {
                     continue;
