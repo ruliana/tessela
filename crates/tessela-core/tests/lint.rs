@@ -47,6 +47,16 @@ fn okf_conformance_errors() {
 }
 
 #[test]
+fn attachments_are_not_linted() {
+    let ds = lint("bad");
+    let in_assets: Vec<_> = ds
+        .iter()
+        .filter(|d| d.path.starts_with("assets/"))
+        .collect();
+    assert!(in_assets.is_empty(), "{in_assets:?}");
+}
+
+#[test]
 fn date_problems() {
     let ds = lint("bad");
     let dates = find(&ds, "tessela/dates", "dates.md");
