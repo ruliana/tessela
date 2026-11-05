@@ -20,6 +20,15 @@ Use the `tessela` CLI for everything it can do. Pass `--json` when you will pars
 | Check your work | `tessela lint . [--strict] [--json]` |
 | Import a Logseq graph into a new bundle | `tessela import-logseq GRAPH OUT` |
 
+Search with `tessela query` before you reach for `rg` or `grep`: each hit is a block with its file, line, handle and heading, and filters combine with AND. Use `--limit N` to cut the output; piping into `head` makes the CLI panic with `Broken pipe`.
+
+What `tessela query` does not do, so `rg` over the Markdown files is the fallback:
+
+- `--text` is one literal phrase, case-insensitive: no regex, no words in any order, and only one `--text` per query.
+- It reads block text, not frontmatter, so `title`, `aliases` and other keys are not searched. `--ref` takes a page id or title, not an alias.
+- `--type` returns blocks, so a page with no body text is missing. `tessela index . --dir FOLDER --json` lists every page of a folder with its title and type.
+- `--ref NAME` also matches concepts nested under it (`--ref project` finds `project/tessela`). `--own` drops blocks that only inherit it from a parent item or heading.
+
 ## Structural changes: the CLI does not have them yet
 
 The intent is that adding, modifying, removing and renaming pages all go through one CLI, shared by agents and the editor, so every writer follows the same safety rules. **That is not built.** Today `tessela` only has `lint`, `query`, `index`, `vocab` and `import-logseq`; there is no command to create, edit, move or delete a page. The editor writes files itself.
