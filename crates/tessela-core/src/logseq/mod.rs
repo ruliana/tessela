@@ -67,6 +67,10 @@ static JOURNAL_TITLE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.? (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})$").unwrap()
 });
 static ISO_DAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}$").unwrap());
+// Logseq's `yyyy-MM-dd EEEE` journal title format, e.g. "2026-10-27 Tuesday".
+static ISO_DAY_WEEKDAY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(\d{4}-\d{2}-\d{2}) (?:mon|tue|wed|thu|fri|sat|sun)[a-z]*$").unwrap()
+});
 static SIMPLE_VALUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[\p{L}\p{N}_-]+$").unwrap());
 
 /// Imports the Logseq graph in `graph` into a new bundle in `out`. `out` must not
@@ -614,6 +618,9 @@ fn journal_title_day(name: &str) -> Option<String> {
     if ISO_DAY.is_match(name) {
         return Some(name.to_string());
     }
+    if let Some(c) = ISO_DAY_WEEKDAY.captures(name) {
+        return Some(c[1].to_string());
+    }
     let c = JOURNAL_TITLE.captures(name)?;
     let month = [
         "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
@@ -704,6 +711,15 @@ mod tests {
             Some("2025-03-03".into())
         );
         assert_eq!(journal_title_day("2026-10-27"), Some("2026-10-27".into()));
+        assert_eq!(
+            journal_title_day("2026-10-27 Tuesday"),
+            Some("2026-10-27".into())
+        );
+        assert_eq!(
+            journal_title_day("2026-10-27 Tue"),
+            Some("2026-10-27".into())
+        );
+        assert_eq!(journal_title_day("2026-10-27 Notes"), None);
         assert_eq!(
             journal_title_day("September 9, 2026"),
             Some("2026-09-09".into())

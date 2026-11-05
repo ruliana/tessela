@@ -438,4 +438,5 @@ as files that go stale.
 Not imported, and listed in the report: `.org` pages, whiteboards, and files that
 are not valid UTF-8. Logseq macros such as `{{query ...}}` are copied as they are
 and counted. Journal links are recognised in Logseq's default title format
-(`Oct 27th, 2026`) and in ISO form.
+(`Oct 27th, 2026`) and in ISO form, with or without a weekday (`2026-10-27`,
+`2026-10-27 Tuesday`).

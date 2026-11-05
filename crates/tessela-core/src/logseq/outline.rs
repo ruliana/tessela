@@ -48,6 +48,13 @@ impl Analyzed {
     }
 }
 
+/// A fence opens or closes only at the start of a line's text, as in CommonMark,
+/// so "a ``` code block" written in prose does not swallow the blocks after it.
+fn toggles_fence(text: &str, in_fence: bool) -> bool {
+    let text = text.trim_start();
+    text.starts_with("```") && (in_fence || text.matches("```").count() % 2 == 1)
+}
+
 pub fn parse(text: &str) -> Outline {
     let mut blocks: Vec<Block> = Vec::new();
     let mut header: Vec<String> = Vec::new();
@@ -67,12 +74,12 @@ pub fn parse(text: &str) -> Outline {
             });
             indents.push(indent);
             content_indent = indent + 2;
-            if line.matches("```").count() % 2 == 1 {
+            if toggles_fence(rest, in_fence) {
                 in_fence = !in_fence;
             }
             continue;
         }
-        if line.matches("```").count() % 2 == 1 {
+        if toggles_fence(&line, in_fence) {
             in_fence = !in_fence;
         }
         match blocks.last_mut() {
@@ -240,6 +247,13 @@ mod tests {
         assert_eq!(o.props.len(), 2);
         assert_eq!(o.blocks.len(), 1);
         assert_eq!(o.blocks[0].lines, ["text"]);
+    }
+
+    #[test]
+    fn triple_backticks_in_prose_do_not_open_a_fence() {
+        let o = parse("- a ``` code block in prose\n- next\n  ```\n  - code\n  ```\n- last\n");
+        let shape: Vec<_> = o.blocks.iter().map(|b| (b.depth, b.lines.len())).collect();
+        assert_eq!(shape, [(0, 1), (0, 4), (0, 1)]);
     }
 
     #[test]
