@@ -79,6 +79,34 @@ fn a_recursive_listing_has_every_page_below_the_folder() {
 }
 
 #[test]
+fn a_recursive_listing_keeps_sub_folders_next_to_their_parent() {
+    let dir = copy("recursive");
+    for file in ["notes/deep/more.md", "notes-extra/other.md"] {
+        std::fs::create_dir_all(dir.join(file).parent().unwrap()).unwrap();
+        std::fs::write(dir.join(file), "---\ntype: concept\n---\n\nText.\n").unwrap();
+    }
+    let bundle = Bundle::load(&dir).unwrap();
+    let pages: Vec<String> = recursive_listing(&bundle, "")
+        .pages
+        .into_iter()
+        .map(|p| p.path)
+        .filter(|p| p.starts_with("notes"))
+        .collect();
+    assert_eq!(
+        pages,
+        [
+            "notes/home.md",
+            "notes/learning.md",
+            "notes/deep/more.md",
+            "notes-extra/other.md"
+        ]
+    );
+    let notes = recursive_listing(&bundle, "notes").to_markdown("My notes");
+    assert!(notes.contains("* [more](deep/more.md)"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn markdown_follows_okf_section_6() {
     let bundle = Bundle::load(fixture()).unwrap();
     let root = listing(&bundle, "").to_markdown("My notes");

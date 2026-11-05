@@ -94,7 +94,7 @@ fn build(bundle: &Bundle, dir: &str, recursive: bool) -> Listing {
     pages.sort_by_key(|e| {
         let (folder, file) = e.path.rsplit_once('/').unwrap_or(("", &e.path));
         (
-            folder.to_string(),
+            folder.split('/').map(str::to_string).collect::<Vec<_>>(),
             file != "home.md",
             e.title.to_lowercase(),
             e.path.clone(),

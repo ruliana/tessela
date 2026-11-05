@@ -25,9 +25,9 @@ Search with `tessela query` before you reach for `rg` or `grep`: each hit is a b
 What `tessela query` does not do, so `rg` over the Markdown files is the fallback:
 
 - `--text` is one literal phrase, case-insensitive: no regex, no words in any order, and only one `--text` per query.
-- It reads block text, not frontmatter, so `title`, `role`, `team` and other keys are not searched (`--ref` does match a page's `tags`).
+- `--text` reads block text, not frontmatter, so `title`, `role`, `team` and other keys are not searched by words. `--ref` does match a page's `tags` and the links in its other frontmatter text.
 - `--type` returns blocks, so a page with no body text is missing. `tessela index . --dir FOLDER --recursive --json` lists every page below a folder, with its title and type.
-- `--ref NAME` takes a page id, a title or an alias from the page's frontmatter `aliases`: all find the same backlinks. It also matches concepts nested under it (`--ref project` finds `project/tessela`). `--own` drops blocks that only inherit it from a parent item or heading.
+- `--ref NAME` takes a page id, a title or an alias from a page's frontmatter `aliases`. An alias finds the page's backlinks plus the blocks that use the alias itself, but the page id does not find blocks that use an alias, and an alias that several pages share finds all of them. It also matches concepts nested under it (`--ref project` finds `project/tessela`). `--own` drops blocks that only inherit it from a parent item or heading.
 
 ## Structural changes: the CLI does not have them yet
 

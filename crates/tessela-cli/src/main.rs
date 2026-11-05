@@ -101,7 +101,7 @@ enum Command {
         #[arg(long, default_value = "", conflicts_with = "write")]
         dir: String,
         /// List every page below the folder, sub-folders included, as one flat list
-        #[arg(long, short = 'r', conflicts_with = "write")]
+        #[arg(long, conflicts_with = "write")]
         recursive: bool,
         /// Write an `index.md` into every folder instead, for bundles that are read
         /// by tools that do not compute listings. Files that were not generated are kept.
