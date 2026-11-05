@@ -391,6 +391,8 @@ that already has files, and it never changes the graph.
 | `[[alias]]` of a page with `alias::`  | A link to the page that declares the alias           |
 | `#foo`                                | `#foo`                                               |
 | Page properties (header or first bullet) | Frontmatter: `title`, `tags`, `aliases`, other keys |
+| `tags:: #a #b`, `tags:: a, [[B c]]`      | `tags: ["a", "b"]`, `tags: ["a", "b-c"]`          |
+| Page property `created:: [[2026-10-27]]` | `created: "2026-10-27"`, a date (§7)               |
 | Block property `status:: done`        | `#status/done` on the last line of the block         |
 | Block property `author:: [[Jane]]`    | `[author](/author.md): [Jane](/jane.md)`             |
 | Block property `tags:: a, b`          | `#a #b`                                              |

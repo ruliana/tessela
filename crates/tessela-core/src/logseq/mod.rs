@@ -69,8 +69,13 @@ static JOURNAL_TITLE: LazyLock<Regex> = LazyLock::new(|| {
 static ISO_DAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}$").unwrap());
 // Logseq's `yyyy-MM-dd EEEE` journal title format, e.g. "2026-10-27 Tuesday".
 static ISO_DAY_WEEKDAY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^(\d{4}-\d{2}-\d{2}) (?:mon|tue|wed|thu|fri|sat|sun)[a-z]*$").unwrap()
+    Regex::new(
+        r"(?i)^(\d{4}-\d{2}-\d{2}) (?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)$",
+    )
+    .unwrap()
 });
+static LIST_REF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"#?\[\[([^\]]+)\]\]|#([^\s#,\[\]]+)").unwrap());
 static SIMPLE_VALUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[\p{L}\p{N}_-]+$").unwrap());
 
 /// Imports the Logseq graph in `graph` into a new bundle in `out`. `out` must not
@@ -227,19 +232,30 @@ fn base_slug(name: &str) -> String {
     }
 }
 
+/// The items of a `tags::` or `alias::` value. Commas separate them, and so do
+/// spaces between references, as Logseq reads `#ai #logseq` or `[[A]] [[B]]`.
 fn split_list(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(|v| {
-            v.trim()
-                .trim_start_matches('#')
-                .trim_start_matches("[[")
-                .trim_end_matches("]]")
-                .trim()
-                .to_string()
-        })
-        .filter(|v| !v.is_empty())
-        .collect()
+    let mut items = Vec::new();
+    for part in value.split(',') {
+        let part = part.trim();
+        let refs: Vec<&str> = LIST_REF
+            .captures_iter(part)
+            .filter_map(|c| c.iter().skip(1).flatten().next().map(|m| m.as_str()))
+            .collect();
+        if refs.len() > 1 && LIST_REF.replace_all(part, "").trim().is_empty() {
+            items.extend(refs.iter().map(|r| r.trim().to_string()));
+            continue;
+        }
+        let item = part
+            .trim_start_matches('#')
+            .trim_start_matches("[[")
+            .trim_end_matches("]]")
+            .trim();
+        if !item.is_empty() {
+            items.push(item.to_string());
+        }
+    }
+    items
 }
 
 fn internal_key(key: &str) -> bool {
@@ -452,7 +468,7 @@ impl Importer {
                 } else {
                     self.inline(line, 0)
                 };
-                if line.matches("```").count() % 2 == 1 {
+                if outline::toggles_fence(line) {
                     in_fence = !in_fence;
                 }
                 converted
@@ -554,11 +570,14 @@ impl Importer {
                 k if internal_key(k) || value.trim().is_empty() => {}
                 k => {
                     self.report.borrow_mut().properties_converted += 1;
-                    other.push(format!(
-                        "{}: {}",
-                        yaml_key(k),
-                        yaml_str(&self.inline(value, 0))
-                    ));
+                    // A day alone stays a plain date, which clients show as one (spec §7).
+                    let day = value
+                        .trim()
+                        .strip_prefix("[[")
+                        .and_then(|v| v.strip_suffix("]]"))
+                        .and_then(journal_title_day);
+                    let value = day.unwrap_or_else(|| self.inline(value, 0));
+                    other.push(format!("{}: {}", yaml_key(k), yaml_str(&value)));
                 }
             }
         }
@@ -720,6 +739,8 @@ mod tests {
             Some("2026-10-27".into())
         );
         assert_eq!(journal_title_day("2026-10-27 Notes"), None);
+        assert_eq!(journal_title_day("2026-06-14 Wedding"), None);
+        assert_eq!(journal_title_day("2026-06-14 Sunset"), None);
         assert_eq!(
             journal_title_day("September 9, 2026"),
             Some("2026-09-09".into())
@@ -745,6 +766,25 @@ mod tests {
             "on [2026-10-27](/journals/2026-10-27.md)"
         );
         assert_eq!(i.inline("plain #tag stays", 0), "plain #tag stays");
+    }
+
+    #[test]
+    fn list_values_split_on_commas_and_between_references() {
+        assert_eq!(split_list("#ai #logseq"), ["ai", "logseq"]);
+        assert_eq!(split_list("[[A b]] [[C]], #d"), ["A b", "C", "d"]);
+        assert_eq!(
+            split_list("Agent Home, AI Start Here"),
+            ["Agent Home", "AI Start Here"]
+        );
+        assert_eq!(split_list("#[[Machine Learning]]"), ["Machine Learning"]);
+    }
+
+    #[test]
+    fn a_day_alone_in_page_properties_stays_a_date() {
+        let i = importer(&[("P", "created:: [[2026-09-04]]\nowner:: [[Jane]]\n\n- x\n")]);
+        let front = i.frontmatter(&i.sources[0]);
+        assert!(front.contains("created: \"2026-09-04\"\n"), "{front}");
+        assert!(front.contains("owner: \"[Jane](/jane.md)\"\n"), "{front}");
     }
 
     #[test]
@@ -799,6 +839,7 @@ mod tests {
             "[url](/url.md): https://x.org/a"
         );
         assert_eq!(i.property("tags", "a, [[B c]]").unwrap(), "#a #b-c");
+        assert_eq!(i.property("tags", "#ai #logseq").unwrap(), "#ai #logseq");
         assert_eq!(i.property("id", "x"), None);
         assert_eq!(i.property("collapsed", "true"), None);
     }
