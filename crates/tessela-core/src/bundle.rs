@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::page::Page;
+use crate::refs::normalize_concept;
 
 #[derive(Debug)]
 pub struct Bundle {
@@ -58,6 +59,19 @@ impl Bundle {
 
     pub fn page(&self, id: &str) -> Option<&Page> {
         self.pages.iter().find(|p| p.id.eq_ignore_ascii_case(id))
+    }
+
+    /// The concepts that mean `concept`: itself, and the page that lists it in its
+    /// frontmatter `aliases`, so a name that is only an alias still finds the page's backlinks.
+    pub fn names_for(&self, concept: &str) -> Vec<String> {
+        let mut names = vec![concept.to_string()];
+        for page in &self.pages {
+            let id = normalize_concept(&page.id);
+            if !names.contains(&id) && page.aliases().iter().any(|a| a == concept) {
+                names.push(id);
+            }
+        }
+        names
     }
 
     /// IDs of all pages, lowercased, for checking whether a concept has a page.

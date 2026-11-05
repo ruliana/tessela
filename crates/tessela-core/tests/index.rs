@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use tessela_core::Bundle;
-use tessela_core::index::{MARKER, listing, listings, write_indexes};
+use tessela_core::index::{MARKER, listing, listings, recursive_listing, write_indexes};
 
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/home")
@@ -46,6 +46,64 @@ fn a_listing_has_folders_then_pages_with_home_first() {
     let notes = listing(&bundle, "notes");
     let pages: Vec<&str> = notes.pages.iter().map(|p| p.path.as_str()).collect();
     assert_eq!(pages, ["notes/home.md", "notes/learning.md"]);
+}
+
+#[test]
+fn a_recursive_listing_has_every_page_below_the_folder() {
+    let bundle = Bundle::load(fixture()).unwrap();
+    let all = recursive_listing(&bundle, "");
+    assert!(all.folders.is_empty());
+    let pages: Vec<&str> = all.pages.iter().map(|p| p.path.as_str()).collect();
+    assert_eq!(
+        pages,
+        [
+            "home.md",
+            "aardvark.md",
+            "rust.md",
+            "notes/home.md",
+            "notes/learning.md",
+            "wrong/home.md"
+        ]
+    );
+    assert_eq!(pages.len(), bundle.pages.len());
+
+    let notes = recursive_listing(&bundle, "notes/");
+    assert_eq!(notes.dir, "notes");
+    let pages: Vec<&str> = notes.pages.iter().map(|p| p.path.as_str()).collect();
+    assert_eq!(pages, ["notes/home.md", "notes/learning.md"]);
+
+    // Links in the Markdown are relative to the listed folder.
+    let root = all.to_markdown("My notes");
+    assert!(root.contains("* [Learning](notes/learning.md)"));
+    assert!(!root.contains("## Folders"));
+}
+
+#[test]
+fn a_recursive_listing_keeps_sub_folders_next_to_their_parent() {
+    let dir = copy("recursive");
+    for file in ["notes/deep/more.md", "notes-extra/other.md"] {
+        std::fs::create_dir_all(dir.join(file).parent().unwrap()).unwrap();
+        std::fs::write(dir.join(file), "---\ntype: concept\n---\n\nText.\n").unwrap();
+    }
+    let bundle = Bundle::load(&dir).unwrap();
+    let pages: Vec<String> = recursive_listing(&bundle, "")
+        .pages
+        .into_iter()
+        .map(|p| p.path)
+        .filter(|p| p.starts_with("notes"))
+        .collect();
+    assert_eq!(
+        pages,
+        [
+            "notes/home.md",
+            "notes/learning.md",
+            "notes/deep/more.md",
+            "notes-extra/other.md"
+        ]
+    );
+    let notes = recursive_listing(&bundle, "notes").to_markdown("My notes");
+    assert!(notes.contains("* [more](deep/more.md)"));
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

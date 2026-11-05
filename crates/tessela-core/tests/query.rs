@@ -416,3 +416,62 @@ fn hit_order_is_unchanged_when_no_concept_is_asked_for() {
         ]
     );
 }
+
+#[test]
+fn a_page_alias_finds_what_the_page_name_finds() {
+    let (b, dir) = temp_bundle(
+        "aliases",
+        &[
+            (
+                "agent-start-here.md",
+                "---\ntype: resource\ntitle: Agent Start Here\naliases: [\"Agent Home\", AI Start Here]\n---\n\nA map.\n",
+            ),
+            ("a.md", "---\ntype: concept\n---\n\nSee #agent-start-here\n"),
+            (
+                "b.md",
+                "---\ntype: concept\n---\n\nSee [it](/agent-start-here.md)\n\nNot it: #agent-home-page\n",
+            ),
+            ("c.md", "---\ntype: concept\n---\n\nWrote #agent-home\n"),
+        ],
+    );
+    let page_name = refs(&["Agent Start Here"]).run(&b);
+    assert_eq!(
+        texts(&page_name),
+        ["See #agent-start-here", "See [it](/agent-start-here.md)"]
+    );
+    // The alias finds the page's backlinks, and the blocks that use the alias itself.
+    let alias = refs(&["Agent Home"]).run(&b);
+    assert_eq!(
+        texts(&alias),
+        [
+            "See #agent-start-here",
+            "See [it](/agent-start-here.md)",
+            "Wrote #agent-home"
+        ]
+    );
+    assert_eq!(refs(&["#ai-start-here"]).run(&b).len(), page_name.len());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn an_alias_works_with_any_and_with_a_single_string() {
+    let (b, dir) = temp_bundle(
+        "aliases-any",
+        &[
+            ("rust.md", "---\ntype: concept\naliases: rustlang\n---\n"),
+            (
+                "a.md",
+                "---\ntype: concept\n---\n\nUses #rust\n\nUses #okf\n",
+            ),
+        ],
+    );
+    let all = refs(&["rustlang", "okf"]).run(&b);
+    assert!(all.is_empty(), "no block has both: {all:?}");
+    let any = Query {
+        any: true,
+        ..refs(&["rustlang", "okf"])
+    }
+    .run(&b);
+    assert_eq!(texts(&any), ["Uses #rust", "Uses #okf"]);
+    std::fs::remove_dir_all(dir).unwrap();
+}
