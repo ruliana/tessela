@@ -104,6 +104,20 @@ impl Page {
         refs
     }
 
+    /// Frontmatter `aliases`, normalized to concept IDs: other names for this page.
+    pub fn aliases(&self) -> Vec<String> {
+        let names = match self.get("aliases") {
+            Some(Value::Sequence(items)) => items.iter().filter_map(Value::as_str).collect(),
+            Some(Value::String(one)) => vec![one.as_str()],
+            _ => Vec::new(),
+        };
+        names
+            .into_iter()
+            .map(normalize_concept)
+            .filter(|a| !a.is_empty())
+            .collect()
+    }
+
     /// Frontmatter `tags`, normalized to concept IDs.
     pub fn frontmatter_tags(&self) -> Vec<String> {
         let Some(Value::Sequence(tags)) = self.get("tags") else {

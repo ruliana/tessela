@@ -16,6 +16,7 @@ use crate::refs::normalize_concept;
 pub struct Query {
     /// Concepts the block must mention. Names are normalized (`#Foo Bar` is `foo-bar`).
     /// A concept also matches the ones below it: `project` matches `project/tessela`.
+    /// A name that a page lists in its frontmatter `aliases` also matches that page's ID.
     pub refs: Vec<String>,
     /// Match blocks that mention any of `refs` instead of all of them.
     pub any: bool,
@@ -74,7 +75,12 @@ pub struct Hit {
 
 impl Query {
     pub fn run(&self, bundle: &Bundle) -> Vec<Hit> {
-        let wanted: Vec<String> = self.refs.iter().map(|r| normalize_concept(r)).collect();
+        // Each asked concept with the other names that mean it (page aliases).
+        let wanted: Vec<Vec<String>> = self
+            .refs
+            .iter()
+            .map(|r| bundle.names_for(&normalize_concept(r)))
+            .collect();
         let text = self.text.as_ref().map(|t| t.to_lowercase());
         let by_date = self.from.is_some() || self.to.is_some();
         let mut hits = Vec::new();
@@ -87,9 +93,9 @@ impl Query {
                 let have = if self.own { &hit.refs } else { &hit.path_refs };
                 let refs_ok = wanted.is_empty()
                     || if self.any {
-                        wanted.iter().any(|w| mentions_concept(have, w))
+                        wanted.iter().any(|w| mentions_any(have, w))
                     } else {
-                        wanted.iter().all(|w| mentions_concept(have, w))
+                        wanted.iter().all(|w| mentions_any(have, w))
                     };
                 refs_ok
                     && text
@@ -216,6 +222,10 @@ fn page_hit(page: &Page) -> Hit {
         parent: None,
         home: page.is_home(),
     }
+}
+
+fn mentions_any(refs: &[String], concepts: &[String]) -> bool {
+    concepts.iter().any(|c| mentions_concept(refs, c))
 }
 
 /// Whether `refs` has the concept or one nested under it (`project/tessela` is under `project`).

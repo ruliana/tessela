@@ -54,6 +54,16 @@ pub struct Listing {
 
 /// The listing of one folder (`""` is the root).
 pub fn listing(bundle: &Bundle, dir: &str) -> Listing {
+    build(bundle, dir, false)
+}
+
+/// Every page below a folder, sub-folders included, as one flat listing: `folders` is
+/// empty, and each entry's `path` says where the page is.
+pub fn recursive_listing(bundle: &Bundle, dir: &str) -> Listing {
+    build(bundle, dir, true)
+}
+
+fn build(bundle: &Bundle, dir: &str, recursive: bool) -> Listing {
     let dir = dir.trim_matches('/');
     let prefix = if dir.is_empty() {
         String::new()
@@ -67,21 +77,25 @@ pub fn listing(bundle: &Bundle, dir: &str) -> Listing {
         let Some(rest) = page.path.strip_prefix(&prefix) else {
             continue;
         };
-        match rest.split_once('/') {
-            Some((folder, _)) => *folders.entry(format!("{prefix}{folder}")).or_default() += 1,
-            None => {
-                let entry = entry_of(page);
-                if page.kind() == Some("journal") {
-                    journal.push(entry);
-                } else {
-                    pages.push(entry);
-                }
-            }
+        if let Some((folder, _)) = rest.split_once('/')
+            && !recursive
+        {
+            *folders.entry(format!("{prefix}{folder}")).or_default() += 1;
+            continue;
+        }
+        let entry = entry_of(page);
+        if page.kind() == Some("journal") {
+            journal.push(entry);
+        } else {
+            pages.push(entry);
         }
     }
+    // A folder's own pages come before the ones in its sub-folders.
     pages.sort_by_key(|e| {
+        let (folder, file) = e.path.rsplit_once('/').unwrap_or(("", &e.path));
         (
-            e.path.rsplit('/').next() != Some("home.md"),
+            folder.to_string(),
+            file != "home.md",
             e.title.to_lowercase(),
             e.path.clone(),
         )
@@ -115,6 +129,11 @@ pub fn listings(bundle: &Bundle) -> Vec<Listing> {
 impl Listing {
     /// The listing as an OKF `index.md` (§6). `name` titles the root.
     pub fn to_markdown(&self, name: &str) -> String {
+        let prefix = if self.dir.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", self.dir)
+        };
         let mut out = String::new();
         if self.dir.is_empty() {
             out.push_str("---\nokf_version: \"0.2\"\n---\n\n");
@@ -141,7 +160,8 @@ impl Listing {
             }
             out.push_str(&format!("\n## {heading}\n\n"));
             for e in entries {
-                let file = e.path.rsplit('/').next().unwrap_or(&e.path);
+                // Relative to the folder, so a flat listing of sub-folders still links.
+                let file = e.path.strip_prefix(&prefix).unwrap_or(&e.path);
                 out.push_str(&format!("* [{}]({file})", link_text(&e.title)));
                 if let Some(d) = &e.description {
                     out.push_str(&format!(" - {d}"));
