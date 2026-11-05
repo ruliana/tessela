@@ -70,6 +70,9 @@ pub struct Hit {
     /// The hit is on a `home.md` page. A link from a home page marks the target as
     /// important, so these hits come first (spec §5).
     pub home: bool,
+    /// When the page's file was last changed, in milliseconds since the Unix epoch.
+    /// Backlinks are ordered by it, newest first. Absent when unknown.
+    pub modified: Option<u64>,
 }
 
 impl Query {
@@ -110,12 +113,17 @@ impl Query {
             found.sort_by_key(|h| h.line);
             hits.extend(found.into_iter().filter(accepts));
         }
-        // Backlinks from home pages first, the most specific folder's first. The sort is
-        // stable, so everything else keeps its order.
+        // Backlinks from home pages first, the most specific folder's first, then the
+        // most recently changed page's. Hits of one page share a time and the sort is
+        // stable, so a page's hits stay together in document order, and pages changed at
+        // the same time (or at an unknown time) keep their path order.
         if !wanted.is_empty() {
-            hits.sort_by_key(|h| match h.home {
-                true => (0, Reverse(h.path.matches('/').count())),
-                false => (1, Reverse(0)),
+            hits.sort_by_key(|h| {
+                let rank = match h.home {
+                    true => (0, Reverse(h.path.matches('/').count())),
+                    false => (1, Reverse(0)),
+                };
+                (rank, Reverse(h.modified))
             });
         }
         hits
@@ -178,6 +186,7 @@ fn block_hit(page: &Page, block: &Block) -> Hit {
         path_refs: block.path_refs.clone(),
         parent: block.parent.map(|p| page.blocks[p].handle.clone()),
         home: page.is_home(),
+        modified: page.modified,
     }
 }
 
@@ -196,6 +205,7 @@ fn heading_hit(page: &Page, heading: &Heading) -> Hit {
         path_refs: heading.path_refs.clone(),
         parent: None,
         home: page.is_home(),
+        modified: page.modified,
     }
 }
 
@@ -215,6 +225,7 @@ fn page_hit(page: &Page) -> Hit {
         path_refs: page.refs.clone(),
         parent: None,
         home: page.is_home(),
+        modified: page.modified,
     }
 }
 

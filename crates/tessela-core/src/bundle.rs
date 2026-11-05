@@ -44,7 +44,11 @@ impl Bundle {
                 .collect::<Vec<_>>()
                 .join("/");
             match std::fs::read(entry.path()).map(String::from_utf8) {
-                Ok(Ok(text)) => pages.push(Page::parse(&rel, &text)),
+                Ok(Ok(text)) => {
+                    let mut page = Page::parse(&rel, &text);
+                    page.modified = modified_ms(&entry);
+                    pages.push(page);
+                }
                 Ok(Err(_)) => unreadable.push((rel, "file is not valid UTF-8".into())),
                 Err(e) => unreadable.push((rel, e.to_string())),
             }
@@ -64,6 +68,13 @@ impl Bundle {
     pub fn page_ids(&self) -> HashSet<String> {
         self.pages.iter().map(|p| p.id.to_lowercase()).collect()
     }
+}
+
+/// When the file was last changed, in milliseconds since the Unix epoch.
+fn modified_ms(entry: &DirEntry) -> Option<u64> {
+    let time = entry.metadata().ok()?.modified().ok()?;
+    let since = time.duration_since(std::time::UNIX_EPOCH).ok()?;
+    u64::try_from(since.as_millis()).ok()
 }
 
 fn is_reserved(file_name: &str) -> bool {
