@@ -3,13 +3,17 @@
 // It checks what a user sees: does a change made outside still reach the open window, is the
 // app alive at the end, and does its open-file count (`lsof -p`) stay flat?
 //
-//   (ulimit -n 256; node scripts/repro-watch-limit.mjs --app /Applications/Tessela.app)
+//   zsh -c 'ulimit -H -n 256; ulimit -S -n 256; node scripts/repro-watch-limit.mjs --app /Applications/Tessela.app'
+// (Set the hard limit too: Node raises its own soft limit to the hard one when it starts.)
 //
 // Options: --minutes 5 (default)   --source <git folder or URL to clone; default: made-up notes>
+// To see the failure itself without starving the machine's watchers, run the built main process with
+// scripts/break-watch.cjs (every fs.watch fails with EMFILE after 1 s):
+//   npm run build:app && electron --no-sandbox -r $PWD/scripts/break-watch.cjs dist/main.cjs --bundle=<folder>
 // On macOS the watcher also fails when the whole machine has run out of folder watchers
 // (fseventsd: "too many clients in system (limit 1024)"); the script says whether fs.watch works.
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, watch, writeFileSync, appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -71,11 +75,16 @@ console.log(`app: ${appPath}\nopen-file limit of this shell: ${limit} (run under
 console.log(`fs.watch on a folder from this machine: ${await fsWatchWorks()}`);
 
 const notes = makeNotes();
+// The page the window shows, and other pages that get edits and commits behind it.
+const pages = git(notes, "ls-files", "*.md").toString().split("\n").filter(Boolean);
+const shown = pages.includes("people/ana.md") ? "people/ana.md" : pages[0];
+const others = pages.filter((p) => p !== shown);
+const frontOf = (page) => (page === "people/ana.md" ? front("person") : `${readFileSync(join(notes, page), "utf8").match(/^---\n[\s\S]*?\n---\n\n?/)?.[0] ?? front()}`);
 const stuck = (what) => new Promise((_, no) => setTimeout(() => no(new Error(`${what} did not finish in 60 s`)), 60_000));
 let s;
 try {
   s = await Promise.race([launch(notes), stuck("the app window")]);
-  await Promise.race([s.open("people/ana"), stuck("opening a page")]);
+  await Promise.race([s.open(shown.replace(/\.md$/, "")), stuck("opening a page")]);
 } catch (err) {
   // A main process that is stuck behind its own error dialog never shows the window.
   console.log(`FAIL: ${err.message}`);
@@ -85,14 +94,17 @@ try {
 const pid = s.app.process().pid;
 console.log(`notes: ${notes}\napp pid ${pid}, ${openFiles(pid)} open files at start`);
 
+const started = Date.now();
+const seconds = () => Math.round((Date.now() - started) / 1000);
+s.app.process().on("exit", (code, signal) => console.log(`t=${seconds()}s the app exited: code=${code} signal=${signal}`));
 const counts = [openFiles(pid)];
 let delivered = 0;
 let missed = 0;
 const end = Date.now() + minutes * 60_000;
 for (let i = 1; Date.now() < end && alive(pid); i++) {
   const marker = `outside-change-${i}`;
-  writeFileSync(join(notes, "people/ana.md"), `${front("person")}${marker}\n`);
-  for (let p = 0; p < 3; p++) appendFileSync(join(notes, `folder-${i % 76}/page-${p}.md`), `\nedit ${i}\n`);
+  writeFileSync(join(notes, shown), `${frontOf(shown)}${marker}\n`);
+  for (let p = 0; p < 3; p++) appendFileSync(join(notes, others[(i * 3 + p) % others.length]), `\nedit ${i}\n`);
   if (i % 3 === 0) git(notes, "add", "-A"), git(notes, "commit", "-qm", `c${i}`);
   if (i % 12 === 0) git(notes, "gc", "-q");
   try {
@@ -102,7 +114,7 @@ for (let i = 1; Date.now() < end && alive(pid); i++) {
     missed++;
   }
   counts.push(openFiles(pid));
-  if (i % 6 === 0) console.log(`t=${i * 5}s alive=${alive(pid)} open files=${counts.at(-1)} delivered=${delivered} missed=${missed}`);
+  if (i % 3 === 0) console.log(`t=${seconds()}s alive=${alive(pid)} open files=${counts.at(-1)} delivered=${delivered} missed=${missed}`);
   await new Promise((r) => setTimeout(r, 5000));
 }
 
