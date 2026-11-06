@@ -2,7 +2,7 @@
 // write is atomic and refuses to overwrite a change it has not seen (spec §9).
 
 import { createHash } from "node:crypto";
-import { promises as fs, watch } from "node:fs";
+import { type FSWatcher, promises as fs, watch } from "node:fs";
 import path from "node:path";
 
 import type { PageEntry, PageFile, WriteResult } from "../shared/api";
@@ -103,24 +103,113 @@ export async function listPages(root: string): Promise<PageEntry[]> {
   return found.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** Tells `listener` which pages changed on disk, a moment after the last change. */
-export function watchBundle(root: string, listener: (paths: string[]) => void): () => void {
+export interface WatchOptions {
+  /** The operating system watcher; replaced in tests. */
+  watch?: typeof watch;
+  /** How often the fallback looks at the files when the system watcher is not available. */
+  pollMs?: number;
+  /** How long to wait before trying the system watcher again. */
+  retryMs?: number;
+  warn?: (message: string) => void;
+}
+
+/** Every page of the bundle with a stamp that changes when the file does; hidden folders are skipped. */
+async function stamps(root: string): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  async function walk(dir: string, prefix: string): Promise<void> {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) await walk(path.join(dir, entry.name), rel);
+      else if (entry.name.endsWith(".md")) {
+        try {
+          const st = await fs.stat(path.join(dir, entry.name));
+          found.set(rel, `${st.mtimeMs}:${st.size}`);
+        } catch {
+          // Gone since the listing.
+        }
+      }
+    }
+  }
+  await walk(root, "");
+  return found;
+}
+
+/**
+ * Tells `listener` which pages changed on disk, a moment after the last change.
+ * macOS gives out a limited number of folder watchers to the whole machine (1024), and
+ * `fs.watch` then fails with EMFILE. A failed watcher must not stop the editor: it falls back
+ * to looking at the files every few seconds, and tries the system watcher again now and then.
+ */
+export function watchBundle(root: string, listener: (paths: string[]) => void, options: WatchOptions = {}): () => void {
+  const { watch: startWatch = watch, pollMs = 2000, retryMs = 60_000, warn = console.warn } = options;
   let pending = new Set<string>();
-  let timer: NodeJS.Timeout | undefined;
-  const watcher = watch(root, { recursive: true }, (_event, filename) => {
-    if (!filename) return;
-    const rel = filename.split(path.sep).join("/");
-    if (!rel.endsWith(".md") || rel.split("/").some((p) => p.startsWith("."))) return;
+  let debounce: NodeJS.Timeout | undefined;
+  let pollTimer: NodeJS.Timeout | undefined;
+  let retryTimer: NodeJS.Timeout | undefined;
+  let watcher: FSWatcher | undefined;
+  let closed = false;
+
+  const changed = (rel: string): void => {
     pending.add(rel);
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
       const paths = [...pending];
       pending = new Set();
       listener(paths);
     }, 150);
-  });
+  };
+
+  const poll = async (before: Map<string, string>): Promise<void> => {
+    if (closed || watcher) return;
+    const now = await stamps(root);
+    if (closed || watcher) return;
+    for (const [rel, stamp] of now) if (before.get(rel) !== stamp) changed(rel);
+    for (const rel of before.keys()) if (!now.has(rel)) changed(rel);
+    pollTimer = setTimeout(() => void poll(now), pollMs);
+  };
+
+  const fallBack = (err: unknown): void => {
+    watcher?.close();
+    watcher = undefined;
+    if (closed) return;
+    warn(`cannot watch ${root}, looking at it every ${pollMs / 1000} s instead: ${err instanceof Error ? err.message : err}`);
+    clearTimeout(pollTimer);
+    void stamps(root).then((first) => {
+      if (!closed && !watcher) pollTimer = setTimeout(() => void poll(first), pollMs);
+    });
+    retryTimer = setTimeout(tryWatching, retryMs);
+  };
+
+  function tryWatching(): void {
+    if (closed) return;
+    try {
+      const w = startWatch(root, { recursive: true }, (_event, filename) => {
+        if (!filename) return;
+        const rel = filename.toString().split(path.sep).join("/");
+        if (!rel.endsWith(".md") || rel.split("/").some((p) => p.startsWith("."))) return;
+        changed(rel);
+      });
+      w.on("error", fallBack);
+      watcher = w;
+      clearTimeout(pollTimer);
+    } catch (err) {
+      fallBack(err);
+    }
+  }
+
+  tryWatching();
   return () => {
-    clearTimeout(timer);
-    watcher.close();
+    closed = true;
+    clearTimeout(debounce);
+    clearTimeout(pollTimer);
+    clearTimeout(retryTimer);
+    watcher?.close();
   };
 }
