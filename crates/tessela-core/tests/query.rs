@@ -417,6 +417,83 @@ fn hit_order_is_unchanged_when_no_concept_is_asked_for() {
     );
 }
 
+/// A bundle in the temp folder where each page has the given modification time
+/// (seconds after an arbitrary start). The folder is removed when dropped.
+struct TimedBundle(PathBuf);
+
+impl TimedBundle {
+    fn new(name: &str, pages: &[(&str, &str, u64)]) -> TimedBundle {
+        let root = std::env::temp_dir().join(format!("tessela-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (path, text, secs) in pages {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, text).unwrap();
+            let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000 + secs);
+            std::fs::File::options()
+                .write(true)
+                .open(&file)
+                .unwrap()
+                .set_modified(time)
+                .unwrap();
+        }
+        TimedBundle(root)
+    }
+
+    fn load(&self) -> Bundle {
+        Bundle::load(&self.0).unwrap()
+    }
+}
+
+impl Drop for TimedBundle {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn backlinks_come_newest_first_with_home_pages_still_on_top() {
+    let page = |title: &str| {
+        format!("---\ntype: concept\ntitle: {title}\n---\n\nSee #rust.\n\nAlso #rust again.\n")
+    };
+    let home = "---\ntype: home\ntitle: Home\n---\n\nStart with #rust.\n";
+    let dir = TimedBundle::new(
+        "recency",
+        &[
+            ("a-old.md", &page("Old"), 10),
+            ("b-new.md", &page("New"), 300),
+            ("c-mid.md", &page("Mid"), 100),
+            // The oldest file of all, but a home page.
+            ("home.md", home, 1),
+        ],
+    );
+    let hits = refs(&["rust"]).run(&dir.load());
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            "home.md", "b-new.md", "b-new.md", "c-mid.md", "c-mid.md", "a-old.md", "a-old.md"
+        ]
+    );
+    // The hits of one page stay in document order.
+    assert!(hits[1].line < hits[2].line);
+}
+
+#[test]
+fn deeper_home_pages_win_over_newer_ones() {
+    let home = |title: &str| format!("---\ntype: home\ntitle: {title}\n---\n\nStart with #rust.\n");
+    let dir = TimedBundle::new(
+        "home-depth",
+        &[
+            ("home.md", &home("Root"), 500),
+            ("notes/home.md", &home("Notes"), 5),
+        ],
+    );
+    let hits = refs(&["rust"]).run(&dir.load());
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(paths, ["notes/home.md", "home.md"]);
+}
+
 #[test]
 fn a_page_alias_finds_what_the_page_name_finds() {
     let (b, dir) = temp_bundle(

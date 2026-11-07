@@ -53,7 +53,8 @@ from the home pages above it, and tools never write it.
 - It is an ordinary page of the graph, not hidden: the links, tags and
   headings in it are references like any other (§4).
 - A link from a home page says "this page matters". Backlinks from home pages
-  come first, the most specific folder's first, and clients mark them (§5).
+  come first, the most specific folder's first, and clients mark them (§5). The
+  other backlinks follow, most recently changed first.
 - `home` is not a name for a concept. The Logseq importer writes a page called
   "Home" as `home-page.md` (§12).
 - A computed index (`tessela index`) lists everything; a home page is the
@@ -191,9 +192,11 @@ Headings and pages only exist to hold references, so they are returned only when
 a concept is asked for.
 
 Backlinks from a home page (§1) come first, the most specific folder's home first,
-and each such hit has `home: true`. The rest keep their order. A link from a home
-page is how the notes say a page is important, so a client shows these first and
-marks them.
+and each such hit has `home: true`. The rest come most recently changed first,
+by the modification time of the page's file (each hit carries it as `modified`,
+in milliseconds since the epoch); a page's own hits stay in document order. A link
+from a home page is how the notes say a page is important, so a client shows these
+first and marks them.
 
 ## 6. Journals
 
@@ -319,7 +322,7 @@ writes the Markdown files itself.
 - The right panel shows the backlinks of the open page (`query --ref PAGE`; for a
   journal, also anything that mentions its date), grouped by page. Groups from a
   home page (§1) come first, the most specific folder's first, with a "Home" tag
-  and a tinted background.
+  and a tinted background. The other groups follow, the most recently changed page first.
 - "New page" (Ctrl+N) asks for a name, where `/` makes folders, and creates the file
   at once from the page template (typing the name in the search box and pressing Enter
   also opens the page, but its file only appears on the first edit). "Open file…"
