@@ -68,8 +68,10 @@ Headings and pages only exist to hold references, so they are returned only when
 the query names a concept with `--ref`.
 
 A concept also matches the ones nested under it, so `--ref project` finds
-`#project/tessela`. A date range (`--from`, `--to`) keeps what is on journal days
-in the range and anything, on any page, whose text contains a date in the range.
+`#project/tessela`. A name that a page lists in its frontmatter `aliases` finds
+that page's backlinks too. A date range (`--from`, `--to`) keeps what is on
+journal days in the range and anything, on any page, whose text contains a date
+in the range.
 Every hit has a `handle` that stays the same until the text changes, plus its
 page, line, heading path, refs and parent handle. Text output is for people;
 `--json` is for agents and the editor.

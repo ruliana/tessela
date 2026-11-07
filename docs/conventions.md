@@ -280,12 +280,17 @@ human-readable output and a `--json` output, which the editor and agents use.
   date range. Refs match path refs unless `--own` is given (§3). A date range
   keeps what is on journal days in the range and anything, on any page, whose
   text contains a date in the range (§7). A concept also matches the ones nested
-  under it: `#project` matches `#project/tessela`, but not `#projector`.
+  under it: `#project` matches `#project/tessela`, but not `#projector`. A name
+  that a page lists in its frontmatter `aliases` also matches that page's ID, so
+  `--ref <alias>` finds the page's backlinks, plus the blocks that use the alias
+  itself. It does not work the other way: `--ref <page>` does not find blocks that
+  use one of its aliases.
 - `tessela index`: what a folder holds, as an OKF `index.md` (§6 of OKF):
   sub-folders, then the folder's own pages (its `home.md` first) with their
   `description` or first line, then its journal days, newest first. It prints to
-  stdout (`--json` gives the same as data; `--dir` picks a folder) and writes
-  nothing. `--write` writes an `index.md` into the root and every folder for
+  stdout (`--json` gives the same as data; `--dir` picks a folder; `--recursive`
+  lists every page below the folder, sub-folders included, as one flat list) and
+  writes nothing. `--write` writes an `index.md` into the root and every folder for
   bundles read by tools that do not compute listings. Generated files carry a
   marker line; one that does not (a hand-written `index.md`) is kept unless
   `--force` is given.
