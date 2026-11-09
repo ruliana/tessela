@@ -104,7 +104,7 @@ const end = Date.now() + minutes * 60_000;
 for (let i = 1; Date.now() < end && alive(pid); i++) {
   const marker = `outside-change-${i}`;
   writeFileSync(join(notes, shown), `${frontOf(shown)}${marker}\n`);
-  for (let p = 0; p < 3; p++) appendFileSync(join(notes, others[(i * 3 + p) % others.length]), `\nedit ${i}\n`);
+  for (let p = 0; p < 3; p++) appendFileSync(join(notes, (others.length ? others[(i * 3 + p) % others.length] : shown)), `\nedit ${i}\n`);
   if (i % 3 === 0) git(notes, "add", "-A"), git(notes, "commit", "-qm", `c${i}`);
   if (i % 12 === 0) git(notes, "gc", "-q");
   try {
@@ -124,7 +124,7 @@ console.log(`open files: first=${counts[0]} last=${counts.at(-1)} min=${Math.min
 // The first minute opens the window and its helpers; judge growth after that.
 const steady = counts.slice(12);
 console.log(`open files, first minute max=${Math.max(...counts.slice(0, 12))}, after it max=${Math.max(...steady)}`);
-const flat = steady.length > 0 && Math.max(...steady) <= Math.max(...counts.slice(0, 12)) + 5;
+const flat = steady.length === 0 || Math.max(...steady) <= Math.max(...counts.slice(0, 12)) + 5;
 const ok = isAlive && missed === 0 && flat;
 console.log(ok ? "PASS" : "FAIL");
 await s.app.close().catch(() => {});

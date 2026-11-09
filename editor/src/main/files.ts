@@ -166,24 +166,28 @@ export function watchBundle(root: string, listener: (paths: string[]) => void, o
     }, 150);
   };
 
-  const poll = async (before: Map<string, string>): Promise<void> => {
-    if (closed || watcher) return;
+  // Each polling run has a number, so a run that was replaced while it read the files ends quietly.
+  let run = 0;
+  let snapshot: Map<string, string> | undefined;
+  const poll = async (id: number): Promise<void> => {
+    if (closed || watcher || id !== run) return;
     const now = await stamps(root);
-    if (closed || watcher) return;
-    for (const [rel, stamp] of now) if (before.get(rel) !== stamp) changed(rel);
-    for (const rel of before.keys()) if (!now.has(rel)) changed(rel);
-    pollTimer = setTimeout(() => void poll(now), pollMs);
+    if (closed || watcher || id !== run) return;
+    if (snapshot) {
+      for (const [rel, stamp] of now) if (snapshot.get(rel) !== stamp) changed(rel);
+      for (const rel of snapshot.keys()) if (!now.has(rel)) changed(rel);
+    }
+    snapshot = now;
+    pollTimer = setTimeout(() => void poll(id), pollMs);
   };
 
   const fallBack = (err: unknown): void => {
-    watcher?.close();
     watcher = undefined;
     if (closed) return;
     warn(`cannot watch ${root}, looking at it every ${pollMs / 1000} s instead: ${err instanceof Error ? err.message : err}`);
     clearTimeout(pollTimer);
-    void stamps(root).then((first) => {
-      if (!closed && !watcher) pollTimer = setTimeout(() => void poll(first), pollMs);
-    });
+    void poll(++run);
+    clearTimeout(retryTimer);
     retryTimer = setTimeout(tryWatching, retryMs);
   };
 
@@ -196,8 +200,12 @@ export function watchBundle(root: string, listener: (paths: string[]) => void, o
         if (!rel.endsWith(".md") || rel.split("/").some((p) => p.startsWith("."))) return;
         changed(rel);
       });
-      w.on("error", fallBack);
+      w.on("error", (err) => {
+        w.close();
+        if (w === watcher) fallBack(err);
+      });
       watcher = w;
+      run++;
       clearTimeout(pollTimer);
     } catch (err) {
       fallBack(err);

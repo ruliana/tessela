@@ -164,4 +164,25 @@ describe("watchBundle", () => {
     await new Promise((r) => setTimeout(r, 150));
     expect(started()).toBe(after);
   });
+
+  it("stops looking at the files once the system watcher works again", async () => {
+    const root = await bundle();
+    const heard = new Set<string>();
+    let calls = 0;
+    let deliver: ((event: string, filename: string) => void) | undefined;
+    const flaky = ((_root: string, _opts: unknown, cb: (event: string, filename: string) => void) => {
+      const w = Object.assign(new EventEmitter(), { close: () => {} });
+      if (++calls === 1) setTimeout(() => w.emit("error", emfile), 5);
+      else deliver = cb;
+      return w;
+    }) as unknown as typeof watch;
+    const stop = watchBundle(root, (paths) => paths.forEach((p) => heard.add(p)), { watch: flaky, pollMs: 20, retryMs: 60, warn: () => {} });
+    await until(() => deliver !== undefined);
+    await writeFile(path.join(root, "quiet.md"), "x");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(heard.has("quiet.md")).toBe(false);
+    deliver!("change", "heard.md");
+    await until(() => heard.has("heard.md"));
+    stop();
+  });
 });
