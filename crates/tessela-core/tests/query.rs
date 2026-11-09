@@ -2,8 +2,20 @@ use std::path::PathBuf;
 
 use tessela_core::{Bundle, Hit, HitKind, Query, vocabulary};
 
+/// Backlinks sort by file time (checkout or write time here), so every page gets one
+/// shared time and ties keep the path order. `TimedBundle` sets real times.
+fn pinned(mut bundle: Bundle) -> Bundle {
+    for page in &mut bundle.pages {
+        page.modified = Some(0);
+    }
+    bundle
+}
+
 fn bundle() -> Bundle {
-    Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/query")).unwrap()
+    pinned(
+        Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/query"))
+            .unwrap(),
+    )
 }
 
 fn texts(hits: &[Hit]) -> Vec<&str> {
@@ -199,7 +211,7 @@ fn temp_bundle(name: &str, files: &[(&str, &str)]) -> (Bundle, PathBuf) {
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(file, content).unwrap();
     }
-    (Bundle::load(&dir).unwrap(), dir)
+    (pinned(Bundle::load(&dir).unwrap()), dir)
 }
 
 fn range(from: Option<&str>, to: Option<&str>) -> Query {
@@ -380,7 +392,10 @@ fn date_filter_applies_to_backlink_hits_too() {
 }
 
 fn home_bundle() -> Bundle {
-    Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/home")).unwrap()
+    pinned(
+        Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/home"))
+            .unwrap(),
+    )
 }
 
 #[test]
@@ -492,6 +507,18 @@ fn deeper_home_pages_win_over_newer_ones() {
     let hits = refs(&["rust"]).run(&dir.load());
     let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
     assert_eq!(paths, ["notes/home.md", "home.md"]);
+}
+
+#[test]
+fn pages_changed_at_the_same_time_keep_their_path_order() {
+    let page = "---\ntype: concept\n---\n\nSee #rust.\n";
+    let dir = TimedBundle::new(
+        "same-time",
+        &[("c.md", page, 7), ("a.md", page, 7), ("b.md", page, 7)],
+    );
+    let hits = refs(&["rust"]).run(&dir.load());
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(paths, ["a.md", "b.md", "c.md"]);
 }
 
 #[test]
