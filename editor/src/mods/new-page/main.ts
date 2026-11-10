@@ -5,7 +5,7 @@
 
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
-import { newPagePath } from "../../shared/pages";
+import { newPagePath, newPageTitle } from "../../shared/pages";
 import { cliOf } from "../kit";
 import { type PageKind, type TemplateEntry, PLAIN, kindsFrom, moveChoice } from "./plan";
 
@@ -19,8 +19,7 @@ export default function (ctx: ModContext): void {
   async function create(name: string, type: string): Promise<void> {
     const path = newPagePath(name);
     if (!path) return;
-    // The name, not the path, so the title keeps its capitals and spaces.
-    const title = name.trim().replace(/\.md$/i, "").split("/").pop()?.trim();
+    const title = newPageTitle(name);
     const argv = ["add", name.trim(), "--type", type, ...(title ? [`--title=${title}`] : [])];
     const answer = await cliOf(ctx)<{ path: string }>(argv);
     // A page that already exists is simply opened.

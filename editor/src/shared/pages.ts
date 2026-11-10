@@ -59,6 +59,11 @@ export function newPagePath(input: string): string | null {
   return path;
 }
 
+/** The title a new page starts with: what was typed, without a folder or `.md`, so it keeps its capitals and spaces. */
+export function newPageTitle(input: string): string | undefined {
+  return input.trim().replace(/\.md$/i, "").split("/").pop()?.trim();
+}
+
 /** Newest day first. Days are `YYYY-MM-DD`, so plain string order is date order. */
 export function newestFirst(a: string, b: string): number {
   return a < b ? 1 : a > b ? -1 : 0;
