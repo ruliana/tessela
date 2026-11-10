@@ -67,7 +67,7 @@ impl TaskFilter {
 
 /// What kind of thing a hit is. Anything that can hold a reference can be found,
 /// so a query for a concept returns its backlinks wherever they are.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum HitKind {
     /// A paragraph or list item.
@@ -80,7 +80,7 @@ pub enum HitKind {
     Page,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Hit {
     pub kind: HitKind,
     /// Blocks and headings: page ID plus a hash of the text. Pages: the page ID.
@@ -101,7 +101,7 @@ pub struct Hit {
     /// Blocks that are checkbox items: `open` or `done`.
     pub task: Option<TaskState>,
     /// With `unlinked`: where the concept is named in this block.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mentions: Vec<Mention>,
     /// The hit is on a `home.md` page. A link from a home page marks the target as
     /// important, so these hits come first (spec §5).

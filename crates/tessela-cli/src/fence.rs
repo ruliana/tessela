@@ -25,7 +25,7 @@ struct Source {
     data: Value,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct Row {
     pub text: String,
     /// What the row stands for: a hit of `query`, a page of `index`, a concept of `vocab`, a
@@ -33,7 +33,7 @@ pub struct Row {
     pub source: Option<Value>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct Output {
     /// The command of the first stage, which says what a `source` is.
     pub command: String,
@@ -254,5 +254,6 @@ fn first_stage(bundle: &Bundle, words: &[String]) -> Result<Vec<Source>, EditErr
         Command::Fence { .. } => Err(not_a_fence_command("fence")),
         Command::Pages { .. } => Err(not_a_fence_command("pages")),
         Command::Watch { .. } => Err(not_a_fence_command("watch")),
+        Command::Schema => Err(not_a_fence_command("schema")),
     }
 }

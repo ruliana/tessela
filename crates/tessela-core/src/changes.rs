@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::page::{Page, Split, split_frontmatter};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChangeKind {
     Added,
@@ -20,7 +20,7 @@ pub enum ChangeKind {
 }
 
 /// What a change is about: a block of text, a heading, or the page's properties.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
     Block,
@@ -28,7 +28,7 @@ pub enum Unit {
     Properties,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Change {
     pub kind: ChangeKind,
     pub unit: Unit,
