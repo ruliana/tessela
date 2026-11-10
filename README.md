@@ -212,6 +212,9 @@ ctx.ui.toast("Saved somewhere", { label: "Undo", run })      // a note in the si
 ctx.slots.add("page-menu", { label: "Do it…", run: ({ path }) => {} })  // the ⋯ menu in a page's head
 ctx.events.on("title-edited", ({ path, from, to }) => {})    // also page-opened, page-saved, changed
 ctx.pages.current(); ctx.pages.moved(from, to)               // the page shown; after a rename, move or delete
+ctx.pages.open("notes/idea.md", 12)                          // show a page (at a line), as a link would
+ctx.slots.mount("sidebar").root                              // an element in the sidebar, above the recent pages
+ctx.backlinks.add(async ({ path }) => ({ node, first: true, taken: [handle] }))  // a group in the backlinks of the open page
 ```
 
 The app's own features are mods too (`editor/src/mods/NAME/main.ts`, built to `dist/mods`), and a mod
@@ -219,7 +222,11 @@ of the same name in the config folder replaces them. `pages` renames, moves and 
 page ("Rename page…", "Move page…" and "Delete page…" in the palette and in the page's ⋯ menu), shows
 what will change first, and offers to rename the file when its title was edited.
 `fold` folds and zooms (Ctrl+Up and Ctrl+Down, Ctrl+Alt+Right and Left; see conventions §11): it keeps
-which blocks are folded in its settings, by page, and never in the notes. A mod can hand
+which blocks are folded in its settings, by page, and never in the notes. `agenda` turns plain
+`- [ ]` items and the dates written in them into an agenda: a journal day lists the open tasks that
+name it in a "Due" group at the top of its backlinks (today also lists the overdue ones), ticking a
+task on its tile is written as a one-line patch through `tessela save --patch`, and a month strip in
+the sidebar marks the days that have a file and the days that are only mentioned. A mod can hand
 `ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
 the page that editor shows.
 

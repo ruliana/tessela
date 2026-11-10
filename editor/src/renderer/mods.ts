@@ -11,13 +11,17 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type BacklinkContent, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { el } from "./dom";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 
 /** An extension a mod gives for each editor, told which page the editor shows. */
 export type PageExtension = (page: { path: string }) => Extension;
 
 export const registry = new ModRegistry<EditorView, Extension | PageExtension>();
+
+/** The place in the sidebar that mods draw in (`slots.mount("sidebar")`). It outlives the window's shell. */
+export const sidebarSlot = el("div", { class: "side-mods", id: "side-mods" });
 
 /** What the mods loaded, or why none did: nothing when the window has not asked yet. */
 export let modsInfo: ModsInfo | null = null;
@@ -37,9 +41,11 @@ export interface ModHost {
   flush(): Promise<void>;
   /** A page changed place (`to`) or was deleted (`to` null): the window follows it. */
   moved(from: string, to: string | null): Promise<void>;
+  /** Shows a page in the window, at `line` when given. */
+  open(path: string, line?: number): Promise<void>;
 }
 
-export const host: ModHost = { toast: () => {}, current: () => null, flush: async () => {}, moved: async () => {} };
+export const host: ModHost = { toast: () => {}, current: () => null, flush: async () => {}, moved: async () => {}, open: async () => {} };
 
 function settingsOf(mod: string) {
   const key = `tessela.mod.${mod}`;
@@ -80,14 +86,25 @@ export interface ModContext {
   };
   /** What happens in the window; `on` returns the way to stop listening. */
   events: { on<N extends ModEventName>(name: N, listener: (payload: ModEvents[N]) => unknown): () => void };
-  /** Named places in the window. `page-menu` is the menu in a page's head. */
-  slots: { add(slot: "page-menu", item: PageMenuItem): void };
+  /**
+   * Named places in the window. `add("page-menu", ...)` puts an entry in the menu in a page's head.
+   * `mount("sidebar")` gives the element in the sidebar, under the places and above the recent pages
+   * (empty, it is not drawn).
+   */
+  slots: {
+    add(slot: "page-menu", item: PageMenuItem): void;
+    mount(slot: "sidebar"): { root: HTMLElement };
+  };
+  /** Groups in the right-hand backlinks of the open page: `first` puts one above the mentions, and `taken` (handles) keeps those mentions from being listed twice. */
+  backlinks: { add(group: (page: { path: string }) => BacklinkContent | null | undefined | Promise<BacklinkContent | null | undefined>): void };
   /** The pages in the window. */
   pages: {
     current(): string | null;
     flush(): Promise<void>;
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
+    /** Shows a page (at `line` when given), as clicking a link to it would. */
+    open(path: string, line?: number): Promise<void>;
   };
   /** The notes folder, or null while none is open. */
   bundle(): Promise<string | null>;
@@ -105,8 +122,9 @@ function contextFor(mod: string): ModContext {
     settings: settingsOf(mod),
     ui: { dialog: (options) => openDialog(options), toast: (text, action) => host.toast(text, action) },
     events: { on: (name, listener) => registry.on(mod, name, listener) },
-    slots: { add: (_slot, item) => registry.addPageMenuItem(mod, item) },
-    pages: { current: () => host.current(), flush: () => host.flush(), moved: (from, to) => host.moved(from, to) },
+    slots: { add: (_slot, item) => registry.addPageMenuItem(mod, item), mount: () => ({ root: sidebarSlot }) },
+    backlinks: { add: (group) => registry.addBacklinkGroup(mod, group) },
+    pages: { current: () => host.current(), flush: () => host.flush(), open: (path, line) => host.open(path, line), moved: (from, to) => host.moved(from, to) },
     cli: (argv, options) => api.cli(argv, options?.input),
     bundle: () => api.bundle(),
     cm,
