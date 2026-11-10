@@ -28,7 +28,7 @@ import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
 import { suggest } from "../shared/complete";
-import { type LinkChoice, type LinkPage, choicesFor, markdownLink, pasteLink, splitAlias } from "../shared/linkFlows";
+import { type LinkChoice, type LinkPage, choicesFor, pasteLink } from "../shared/linkFlows";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { dayAt } from "../shared/dates";
 import { journalDest } from "../shared/pages";
@@ -151,35 +151,13 @@ function choiceOptions(choices: LinkChoice[], take: (view: EditorView, choice: L
   }));
 }
 
-/** `[[`: a picker over the pages. The choice is written as an ordinary Markdown link. */
-function wikiSource(pages: () => LinkPage[]) {
-  return (context: CompletionContext): CompletionResult | null => {
-    const open = context.matchBefore(/\[\[[^\][\n]*/);
-    if (!open) return null;
-    const { search, alias } = splitAlias(open.text.slice(2));
-    // closeBrackets has put the `]]` after the cursor; it goes with the link.
-    const end = context.state.sliceDoc(context.pos, context.pos + 2) === "]]" ? context.pos + 2 : context.pos;
-    return {
-      from: open.from + 2,
-      filter: false,
-      options: choiceOptions(choicesFor(pages(), search, 12), (view, c) => {
-        const link = markdownLink(alias ?? c.text, c.dest);
-        view.dispatch({
-          changes: { from: open.from, to: end, insert: link },
-          selection: { anchor: open.from + link.length },
-          userEvent: "input.complete",
-        });
-      }),
-    };
-  };
-}
-
 /** Addresses and anchors typed after `](` are not pages to look for. */
 const NOT_A_PAGE = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:|#|\.{1,2}\/|~)/;
 
 function completions(vocab: () => VocabEntry[], pages: () => LinkPage[]) {
   return (context: CompletionContext): CompletionResult | null => {
-    const link = context.matchBefore(/\]\([^)\s]*/);
+    // Spaces are allowed while searching: a title is typed as it is written, and a target never has one.
+    const link = context.matchBefore(/\]\([^)\n]*/);
     if (link) {
       const raw = link.text.slice(2);
       if (NOT_A_PAGE.test(raw)) return null;
@@ -192,12 +170,14 @@ function completions(vocab: () => VocabEntry[], pages: () => LinkPage[]) {
         filter: false,
         options: choiceOptions(choicesFor(pages(), query, 12), (view, c) => {
           // The rest of the target (and the `)` closeBrackets added) is replaced with it.
-          const tail = /^[^)\s]*\)?/.exec(view.state.sliceDoc(context.pos, view.state.doc.lineAt(context.pos).to))?.[0] ?? "";
+          const after = view.state.sliceDoc(context.pos, view.state.doc.lineAt(context.pos).to);
+          const close = after.indexOf(")");
+          const tail = close >= 0 && !/\s/.test(after.slice(0, close)) ? close + 1 : 0;
           // A link with no text takes the title of the page.
           const fill = label === "" ? c.text : "";
           const dest = `${c.dest})`;
           view.dispatch({
-            changes: [...(fill ? [{ from: link.from, insert: fill }] : []), { from: link.from + 2, to: context.pos + tail.length, insert: dest }],
+            changes: [...(fill ? [{ from: link.from, insert: fill }] : []), { from: link.from + 2, to: context.pos + tail, insert: dest }],
             selection: { anchor: link.from + 2 + fill.length + dest.length },
             userEvent: "input.complete",
           });
@@ -267,7 +247,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         // languages that fenced blocks name.
         yamlFrontmatter({ content: markdown({ codeLanguages: languages, extensions: [GFM, noSetext] }) }),
         syntaxHighlighting(highlight),
-        autocompletion({ override: [wikiSource(opts.pages), completions(opts.vocab, opts.pages), slashSource], icons: false }),
+        autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
         focusMarks(),
         preview.of(previewOn ? previewExtension() : []),

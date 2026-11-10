@@ -386,13 +386,12 @@ and offers a link to a new page named after what was typed (its path is made as 
 Choosing one fills in the target, and the text too when it is empty. With nothing typed
 yet, the pages are searched by the link text, so `[Daily TODO](` offers that page first.
 
-Two more ways to add a link, so that a title and a path are never typed twice:
+Titles come from the `title:` of the front matter, else the first `#` heading, else the
+file name. The same search opens after typing `](` by hand.
 
-- `[[` opens the same search. The choice is written as an ordinary Markdown link, with the
-  page's title as the text; `[[daily|my todo list]]` sets other text. Titles come from the
-  `title:` of the front matter, else the first `#` heading, else the file name.
-- An address (`https://...`, `mailto:...`) pasted over selected text makes the text its
-  link. With nothing selected, or inside code, a paste is a plain paste.
+An address (`https://...`, `mailto:...`) pasted over selected text makes the text its link,
+so a title and an address are not typed twice. With nothing selected, or inside code, a
+paste is a plain paste.
 
 ## 12. Importing from Logseq
 

@@ -71,12 +71,6 @@ export function choicesFor(pages: LinkPage[], query: string, limit = 8): LinkCho
   return (ranked[0]?.s ?? 0) >= 60 ? [...found, create] : [create, ...found];
 }
 
-/** `daily|my todo list`: what to search for, and the text to show for the link when it is not the title. */
-export function splitAlias(typed: string): { search: string; alias: string | null } {
-  const bar = typed.indexOf("|");
-  return bar < 0 ? { search: typed, alias: null } : { search: typed.slice(0, bar), alias: typed.slice(bar + 1) };
-}
-
 const WEB_ADDRESS = /^(?:https?:\/\/|mailto:)\S+$/i;
 
 /** Pasting an address over selected text makes the selection the link text. */

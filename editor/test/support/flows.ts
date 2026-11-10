@@ -2,7 +2,7 @@
 
 import type { VocabEntry } from "../../src/shared/api";
 import { slugFirst, suggest } from "../../src/shared/complete";
-import { type LinkChoice, type LinkPage, choicesFor, markdownLink, pasteLink, splitAlias } from "../../src/shared/linkFlows";
+import { type LinkChoice, type LinkPage, choicesFor, markdownLink, pasteLink } from "../../src/shared/linkFlows";
 import { type Doc, type Flow, type Option } from "./typing";
 
 function replace(doc: Doc, from: number, to: number, insert: string, cursor = from + insert.length): Doc {
@@ -60,7 +60,16 @@ function choiceOptions(choices: LinkChoice[], take: (c: LinkChoice) => Doc): Opt
   return choices.map((c) => option(c.fresh ? `new: ${c.text}` : c.text, () => take(c)));
 }
 
-/** `[[` opens a picker over the page titles; the choice becomes a normal Markdown link. */
+/** `daily|my todo list`: what to search for, and the text to show for the link when it is not the title. */
+function splitAlias(typed: string): { search: string; alias: string | null } {
+  const bar = typed.indexOf("|");
+  return bar < 0 ? { search: typed, alias: null } : { search: typed.slice(0, bar), alias: typed.slice(bar + 1) };
+}
+
+/**
+ * `[[` opens a picker over the page titles; the choice becomes a normal Markdown link. Measured
+ * only: `[[` is not part of the format (docs/conventions.md §4), so the editor does not have it.
+ */
 export function wikilink(pages: LinkPage[]): Flow {
   return {
     name: "`[[` picker",

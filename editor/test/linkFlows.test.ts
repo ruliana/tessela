@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { choicesFor, linkPages, pasteLink, splitAlias, titleOf } from "../src/shared/linkFlows";
+import { choicesFor, linkPages, pasteLink, titleOf } from "../src/shared/linkFlows";
 import { PAGES, SCENARIOS, WAYS, measure, slips, table, type Way } from "./support/bench";
 
 const way = (id: string): Way => WAYS.find((w) => w.id === id)!;
@@ -130,11 +130,6 @@ describe("the pieces", () => {
       { path: "bare.md", title: "bare" },
       { path: "later.md", title: "later" },
     ]);
-  });
-
-  it("splitAlias: text after | is the link text", () => {
-    expect(splitAlias("daily|my list")).toEqual({ search: "daily", alias: "my list" });
-    expect(splitAlias("daily")).toEqual({ search: "daily", alias: null });
   });
 });
 

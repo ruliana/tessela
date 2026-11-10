@@ -1,5 +1,5 @@
-// Adding a link without typing the title and the path twice: the `[[` picker, Ctrl+L search
-// and paste over selected words.
+// Adding a link without typing the title and the path twice: Ctrl+L search, `](` and paste
+// over selected words.
 
 import assert from "node:assert/strict";
 import { front, suite } from "../harness.mjs";
@@ -32,53 +32,6 @@ function bundle() {
   };
 }
 
-suite("Adding links: [[ picker", bundle, (test) => {
-  test("[[ and a few letters offers the page by its title and writes a normal link", async (s) => {
-    await s.openWith("wiki-title", "");
-    await s.type("[[dai");
-    await menu(s, "Daily TODO");
-    assert.match((await popup(s))[0], /daily-todo\.md/, "the path is shown beside the title");
-    await s.key("Enter");
-    assert.equal(await s.body(), "[Daily TODO](/daily-todo.md)");
-    await s.type(" next");
-    assert.equal(await s.body(), "[Daily TODO](/daily-todo.md) next", "the cursor is after the link");
-  });
-
-  test("a page whose file name is not its title is found by the title", async (s) => {
-    await s.openWith("wiki-heading", "");
-    await s.type("[[books");
-    await menu(s, "Books to read");
-    await s.key("Enter");
-    assert.equal(await s.body(), "[Books to read](/reading-list.md)");
-  });
-
-  test("a title with no page offers a link to a new page, with the path made from the words", async (s) => {
-    await s.openWith("wiki-new", "");
-    await s.type("[[Sprint retro");
-    await menu(s, "Sprint retro");
-    assert.match((await popup(s))[0], /new page/);
-    await s.key("Enter");
-    assert.equal(await s.body(), "[Sprint retro](/sprint-retro.md)");
-  });
-
-  test("text after | is the link text", async (s) => {
-    await s.openWith("wiki-alias", "");
-    await s.type("[[daily|my todo list");
-    await s.win.waitForTimeout(300);
-    await s.key("Enter");
-    assert.equal(await s.body(), "[my todo list](/daily-todo.md)");
-  });
-
-  test("it can be undone in one step", async (s) => {
-    await s.openWith("wiki-undo", "");
-    await s.type("[[dai");
-    await menu(s, "Daily TODO");
-    await s.key("Enter");
-    await s.key("Control+z");
-    assert.ok(!(await s.body()).includes("daily-todo.md"));
-  });
-});
-
 suite("Adding links: Ctrl+L search and ](", bundle, (test) => {
   test("Ctrl+L with nothing selected searches for the page and fills in the text and the path", async (s) => {
     await s.openWith("ctrl-l-search", "");
@@ -89,6 +42,35 @@ suite("Adding links: Ctrl+L search and ](", bundle, (test) => {
     assert.equal(await s.body(), "[Daily TODO](/daily-todo.md)");
     await s.type(" ok");
     assert.equal(await s.body(), "[Daily TODO](/daily-todo.md) ok");
+  });
+
+  test("a link made by searching can be undone in one step", async (s) => {
+    await s.openWith("ctrl-l-undo", "");
+    await s.key("Control+l");
+    await s.type("dai");
+    await menu(s, "Daily TODO");
+    await s.key("Enter");
+    await s.key("Control+z");
+    assert.ok(!(await s.body()).includes("daily-todo.md"));
+  });
+
+  test("a title with no page offers a link to a new page, with the path made from the words", async (s) => {
+    await s.openWith("ctrl-l-new", "");
+    await s.key("Control+l");
+    await s.type("Sprint retro");
+    await menu(s, "Sprint retro");
+    assert.match((await popup(s))[0], /new page/);
+    await s.key("Enter");
+    assert.equal(await s.body(), "[Sprint retro](/sprint-retro.md)");
+  });
+
+  test("a page whose file name is not its title is found by the title", async (s) => {
+    await s.openWith("ctrl-l-heading", "");
+    await s.key("Control+l");
+    await s.type("books");
+    await menu(s, "Books to read");
+    await s.key("Enter");
+    assert.equal(await s.body(), "[Books to read](/reading-list.md)");
   });
 
   test("selected words keep their text and look for the page by what is typed", async (s) => {
