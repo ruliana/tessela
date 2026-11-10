@@ -33,12 +33,6 @@ export function cleanDir(dir: string | undefined): string {
   return (dir ?? "").replace(/^\/+|\/+$/g, "");
 }
 
-/** The folder a page is in ("" for the root). */
-export function folderOf(path: string): string {
-  const at = path.lastIndexOf("/");
-  return at < 0 ? "" : path.slice(0, at);
-}
-
 /** The folders from the root down to `dir`: `{name, path}` each; the root is `{name: "", path: ""}`. */
 export function trail(dir: string): { name: string; path: string }[] {
   const parts = cleanDir(dir).split("/").filter(Boolean);

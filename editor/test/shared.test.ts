@@ -7,7 +7,7 @@ import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
 import { canGoBack, canGoForward, emptyHistory, RECENT_DEFAULT, RECENT_MAX, recentCount, step, touch, visit, type Place } from "../src/shared/nav";
-import { conceptPath, isJournalPath, journalDays, journalDest, localDay, newPagePath } from "../src/shared/pages";
+import { conceptFor, conceptPath, dirOf, isJournalPath, journalDays, journalDest, localDay, newPagePath } from "../src/shared/pages";
 import { smartLink } from "../src/shared/smartLink";
 
 describe("smartLink", () => {
@@ -58,6 +58,14 @@ describe("references", () => {
 describe("pages", () => {
   it("turns names into concept paths", () => {
     expect(conceptPath("#Project / My Tessela")).toBe("project/my-tessela.md");
+  });
+
+  it("asks for pages, not for journal days, and finds the folder of a page", () => {
+    expect(conceptFor("notes/idea.md")).toBe("notes/idea");
+    expect(conceptFor("journals/2026-03-04.md")).toBeNull();
+    expect(conceptFor(null)).toBeNull();
+    expect(dirOf("projects/sub/deep.md")).toBe("projects/sub");
+    expect(dirOf("home.md")).toBe("");
   });
 
   it("knows journals and today's date", () => {

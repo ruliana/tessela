@@ -1,14 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { conceptFor, homeLabel, isEmpty, togetherRows, trailOf } from "../src/mods/related/plan";
+import { homeLabel, isEmpty, togetherRows, trailOf } from "../src/mods/related/plan";
 
 describe("the related mod's plan", () => {
-  it("asks for pages, not for journal days", () => {
-    expect(conceptFor("project/tessela.md")).toBe("project/tessela");
-    expect(conceptFor("journals/2026-03-04.md")).toBeNull();
-    expect(conceptFor(null)).toBeNull();
-  });
-
   it("names a home page after its folder, and the root's Home", () => {
     expect(homeLabel("home.md")).toBe("Home");
     expect(homeLabel("project/home.md")).toBe("project");

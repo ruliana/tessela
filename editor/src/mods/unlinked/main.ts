@@ -5,8 +5,9 @@
 
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
+import { conceptFor } from "../../shared/pages";
 import { cliOf } from "../kit";
-import { conceptFor, countUnlinked, entriesOf, linked, type Entry, type UnlinkedHit } from "./plan";
+import { countUnlinked, entriesOf, linked, type Entry, type UnlinkedHit } from "./plan";
 
 /** How long after a save or a change on disk before the list is asked for again. */
 const PAUSE = 400;

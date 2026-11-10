@@ -6,7 +6,8 @@
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { cliOf } from "../kit";
-import { type Related, conceptFor, homeLabel, isEmpty, togetherRows, trailOf } from "./plan";
+import { conceptFor } from "../../shared/pages";
+import { type Related, homeLabel, isEmpty, togetherRows, trailOf } from "./plan";
 
 export default function (ctx: ModContext): void {
   ctx.backlinks.add(async ({ path }) => {

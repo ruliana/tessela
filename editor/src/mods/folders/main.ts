@@ -5,8 +5,9 @@
 
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
+import { dirOf } from "../../shared/pages";
 import { cliOf, failureText } from "../kit";
-import { type Listing, type PageEntry, cleanDir, folderOf, homePath, homeTitle, JOURNAL_SHOWN, leaf, pagesIn, trail } from "./plan";
+import { type Listing, type PageEntry, cleanDir, homePath, homeTitle, JOURNAL_SHOWN, leaf, pagesIn, trail } from "./plan";
 
 export default function (ctx: ModContext): void {
   const openFolder = (dir: string) => void ctx.views.open("folders", dir);
@@ -107,8 +108,8 @@ export default function (ctx: ModContext): void {
     label: "Show folders",
     run: () => {
       const path = ctx.pages.current();
-      return ctx.views.open("folders", path ? folderOf(path) : "");
+      return ctx.views.open("folders", path ? dirOf(path) : "");
     },
   });
-  ctx.slots.add("page-menu", { label: "Show folder", run: ({ path }) => ctx.views.open("folders", folderOf(path)) });
+  ctx.slots.add("page-menu", { label: "Show folder", run: ({ path }) => ctx.views.open("folders", dirOf(path)) });
 }

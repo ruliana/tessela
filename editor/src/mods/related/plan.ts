@@ -1,8 +1,6 @@
 // The pure parts of the related mod: which page asks, and how the answer of `tessela related`
 // reads as rows (what is mentioned together with the page) and a trail (the home pages that lead to it).
 
-import { isJournalPath, pageId } from "../../shared/pages";
-
 export interface PageRef {
   path: string;
   title: string;
@@ -21,12 +19,6 @@ export interface Related {
   chain: PageRef[];
   /** `links` when the home pages are a path of links from the root's; `folders` when they are only those of the folders around the page. */
   chain_by: "links" | "folders";
-}
-
-/** The concept to ask about for the page at `path`, or null for a journal day or something that is not a page. */
-export function conceptFor(path: string | null): string | null {
-  if (!path || !path.endsWith(".md") || isJournalPath(path)) return null;
-  return pageId(path);
 }
 
 /** What a home page is called in the trail: the folder it is the start of, `Home` for the root's. */
