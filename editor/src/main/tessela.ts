@@ -77,8 +77,12 @@ interface EditFailure {
  * JSON on success and on failure, so a non-zero exit with JSON is a result, not a crash.
  */
 export function runEdit<T>(bin: string, bundle: string, argv: string[], input = ""): Promise<T | EditFailure> {
+  return runCall(bin, [...argv, "--bundle", bundle, ...CALL], argv[0] ?? "", input);
+}
+
+/** Runs one `tessela` call whose answer is JSON on stdout, success or failure alike. */
+function runCall<T>(bin: string, full: string[], name: string, input: string): Promise<T | EditFailure> {
   return new Promise((resolve, reject) => {
-    const full = [...argv, "--bundle", bundle, "--json", "--api", String(TESSELA_API)];
     const child = execFile(bin, full, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
       try {
         resolve(JSON.parse(stdout) as T | EditFailure);
@@ -88,8 +92,8 @@ export function runEdit<T>(bin: string, bundle: string, argv: string[], input = 
         reject(
           new Error(
             old
-              ? `The tessela tool is too old for this editor (it has no \`${argv[0]}\` command). Update it.`
-              : `${bin} ${argv[0]} failed: ${text}`,
+              ? `The tessela tool is too old for this editor (it has no \`${name}\` command). Update it.`
+              : `${bin} ${name} failed: ${text}`,
           ),
         );
       }
@@ -147,20 +151,17 @@ export async function addPageVia(bin: string, bundle: string, rel: string, title
   throw failure("add", r);
 }
 
-/** The commands that change or read single pages: they take `--bundle`, `--json` and `--api` and answer `{ok, ...}`. */
-const EDIT_COMMANDS = new Set(["read", "add", "save", "rename", "move", "remove"]);
+/** The commands that take the folder as their first argument; the others take `--bundle`. */
+const POSITIONAL = new Set(["lint", "query", "index", "vocab"]);
 
 /**
- * Runs any `tessela` command for a mod. The edit commands go through `runEdit`; for the others the
- * folder is the first argument after the command name, as `query`, `vocab` and `lint` take it, and
- * `--json` is added unless given.
+ * Runs any `tessela` command for a mod, adding the folder, `--json` and the API version. The answer
+ * is the command's `{api, ok, ...}` JSON as it is; a failure (`ok: false`) is a result, not an error.
  */
 export function cliVia(bin: string, bundle: string, argv: string[], input = ""): Promise<unknown> {
   const [command = "", ...rest] = argv;
-  if (EDIT_COMMANDS.has(command)) return runEdit(bin, bundle, argv, input);
-  const full = [command, bundle, ...rest];
-  if (!full.includes("--json")) full.push("--json");
-  return runJson(bin, full, command === "lint" ? [1] : []);
+  if (!POSITIONAL.has(command)) return runEdit(bin, bundle, argv, input);
+  return runCall(bin, [command, bundle, ...rest, ...CALL], command, input);
 }
 
 export interface BinLookup {

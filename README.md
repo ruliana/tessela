@@ -176,7 +176,7 @@ export default function (ctx) {
   ctx.slash.add({ label: "Signature", text: "-- me" });
   ctx.editor.extend(ctx.cm.view.EditorView.editorAttributes.of({ "data-mine": "yes" }));
   const n = ctx.settings.get("runs") ?? 0;            // kept with the window's settings
-  ctx.cli(["vocab"]).then((concepts) => console.log(n, concepts.length));  // any tessela command, on the open folder
+  ctx.cli(["vocab"]).then((r) => console.log(n, r.concepts.length));  // any tessela command, on the open folder
 }
 ```
 

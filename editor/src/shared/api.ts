@@ -121,9 +121,9 @@ export interface Api {
   /** Which mods the window should load. */
   mods(): Promise<ModsInfo>;
   /**
-   * Runs a `tessela` command on the open notes folder for a mod and returns its JSON. The edit
-   * commands (read, add, save, rename, move, remove) get the folder and API version added and
-   * answer `{ok, ...}`; for the others the folder goes right after the command name.
+   * Runs a `tessela` command on the open notes folder for a mod and returns its JSON answer,
+   * `{api, ok, ...}`; a failure (`ok: false`) is an answer too. The folder, `--json` and the API
+   * version are added (the folder first for lint, query, index and vocab, else as `--bundle`).
    */
   cli(argv: string[], input?: string): Promise<unknown>;
   /** Called with the paths (relative) of pages that changed on disk. Returns an unsubscribe. */

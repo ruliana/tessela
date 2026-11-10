@@ -38,7 +38,7 @@ const good = {
     ctx.commands.add({
       id: "vocab",
       label: "Count the concepts",
-      run: async () => { document.body.dataset.modVocab = String((await ctx.cli(["vocab"])).length); },
+      run: async () => { document.body.dataset.modVocab = String((await ctx.cli(["vocab"])).concepts.length); },
     });
   };`,
   override: `export default (ctx) => {

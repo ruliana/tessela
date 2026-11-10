@@ -49,7 +49,7 @@ export interface ModContext {
   slash: { add(item: ModSlash): void };
   editor: { extend(extension: Extension): void };
   settings: { get(name: string): unknown; set(name: string, value: unknown): void };
-  /** Runs a tessela command on the open notes folder and returns its JSON (see Api.cli). */
+  /** Runs a tessela command on the open notes folder and returns its `{api, ok, ...}` JSON (see Api.cli). */
   cli(argv: string[], options?: { input?: string }): Promise<unknown>;
   /** The notes folder, or null while none is open. */
   bundle(): Promise<string | null>;
