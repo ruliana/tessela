@@ -241,6 +241,9 @@ next heading of its level) past the neighbour of the same level, without moving 
 any order, "quoted phrases", `#tag`, `type:`, `in:`, `from:`/`to:` and a bare `YYYY-MM-DD` become one `tessela query`,
 page titles and headings are searched with the text, the command is shown, and "Keep as live list" puts it in the
 open page as a ```` ```tessela ```` fence.
+`related` is a "Related" group in the right column, in place of a graph (from `tessela related`): the concepts
+mentioned together with the open page, most often first, each with its reason ("together in 7 blocks on 3 pages")
+and a click to open its page, and the home pages that lead to it as a trail, the root's first. Nothing is written.
 `changes` is the "Changes" row in the sidebar: what differs between the notes and git (the last commit, or
 any revision typed in, `ORIG_HEAD` for before the last pull), block by block, from `tessela changes`. Each
 change is kept (hidden, nothing written; the window remembers) or put back (the page is saved again without
