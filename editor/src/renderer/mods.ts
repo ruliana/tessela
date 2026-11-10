@@ -55,6 +55,8 @@ export interface ModHost {
   card(path: string, options?: { menu?: boolean }): Card;
   /** Makes the right column visible. */
   reveal(): void;
+  /** Puts `text` in the page being worked on, at the cursor; false when there is no page to put it in. */
+  insert(text: string, options?: { block?: boolean }): boolean;
   /** Shows a mod's view in the middle of the window. */
   showView(id: string, arg?: string): Promise<void>;
 }
@@ -69,6 +71,7 @@ export const host: ModHost = {
     throw new Error("The window has no cards yet");
   },
   reveal: () => {},
+  insert: () => false,
   showView: async () => {},
 };
 
@@ -142,6 +145,8 @@ export interface ModContext {
   /** The pages in the window. */
   pages: {
     current(): string | null;
+    /** Puts `text` in the page being worked on, at the cursor; false when no page is open. With `block`, `text` starts a line of its own. */
+    insert(text: string, options?: { block?: boolean }): boolean;
     flush(): Promise<void>;
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
@@ -184,6 +189,7 @@ function contextFor(mod: string): ModContext {
     override: { add: (id, replacement) => registry.addOverride(mod, id, replacement) },
     pages: {
       current: () => host.current(),
+      insert: (text, options) => host.insert(text, options),
       flush: () => host.flush(),
       moved: (from, to) => host.moved(from, to),
       open: (path, line) => host.open(path, line),

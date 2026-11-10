@@ -508,7 +508,7 @@ function buildShell(bundle: string): void {
 }
 
 function renderLists(): void {
-  const q = filter.trim().toLowerCase();
+  const q = namesFilter().trim().toLowerCase();
   const item = (label: string, path: string, count?: number, unwritten = false) => {
     const button = el(
       "button",
@@ -576,9 +576,27 @@ async function refreshIndex(): Promise<void> {
 
 let searchRun = 0;
 
+/** The part of the search box that filters the page names: all of it, unless a mod that took the search over says less. */
+function namesFilter(): string {
+  return registry.override("search")?.names?.(filter) ?? filter;
+}
+
 /** Looks for the typed text inside the notes, next to the filter on page names. */
 async function runSearch(): Promise<void> {
   const run = ++searchRun;
+  const custom = registry.override("search");
+  if (custom) {
+    let shown = false;
+    try {
+      shown = await custom.run({ input: filter, results: resultsEl, stale: () => run !== searchRun });
+    } catch (e) {
+      registry.fail(registry.overrideOwner("search") ?? "search", `search: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (run !== searchRun) return;
+    resultsEl.hidden = !shown;
+    if (!shown) resultsEl.replaceChildren();
+    return;
+  }
   const text = searchable(filter);
   if (!text) {
     resultsEl.hidden = true;
@@ -1082,6 +1100,15 @@ Object.assign(host, {
   current: currentPath,
   flush: async () => void (await Promise.all([...cards, ...modCards].map((c) => c.flush()))),
   moved: pageMoved,
+  insert(text, options) {
+    const editor = active?.view();
+    if (!editor) return false;
+    const { from, to } = editor.state.selection.main;
+    const midLine = from > editor.state.doc.lineAt(from).from;
+    const put = options?.block && midLine ? `\n${text}` : text;
+    editor.dispatch({ changes: { from, to, insert: put }, selection: { anchor: from + put.length }, scrollIntoView: true });
+    return true;
+  },
   open: showPage,
   showView: showModView,
   card(path, options) {

@@ -120,12 +120,25 @@ export interface PropertiesOverride {
   draw(arg: PropertiesArg): HTMLElement;
 }
 
+/** What the window asks of a mod that takes the sidebar search over. */
+export interface SearchOverride {
+  /**
+   * Fills `results` for what was typed in the search box. Answer true to have `results` shown, false
+   * to hide it. `stale()` turns true once something else has been typed, so a slow answer can stop.
+   */
+  run(arg: { input: string; results: HTMLElement; stale: () => boolean }): boolean | Promise<boolean>;
+  /** The part of what was typed that filters the page names in the sidebar (all of it when left out). */
+  names?(input: string): string;
+}
+
 /**
  * The built-in contributions a mod can replace, by id (`ctx.override.add(id, replacement)`). A
  * built-in command is replaced by adding a command with its id; these are the ones that are not
  * commands.
  */
 export interface ModOverrides {
+  /** The search under the sidebar's search box. */
+  search: SearchOverride;
   /** The title and properties drawn in place of a page's front matter. */
   properties: PropertiesOverride;
 }
