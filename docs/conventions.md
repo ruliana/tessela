@@ -317,6 +317,14 @@ Every command takes `--api N` for the version the caller was written for.
   `--task open|done|any` keeps only checkbox items (§3), so a task is a plain `- [ ]` and its
   due date is a date written in it: `--task open --to 2026-11-15` lists what is open on
   journal days up to the 15th or names a date up to it. Hits carry `task`.
+  `--unlinked CONCEPT` finds text that names a concept without linking it: blocks that
+  write the page's title, one of its aliases or a `vocabulary.md` term that says `use:` it
+  as plain words, and do not already reach it through a tag or link, their own or inherited
+  (§3). Code, links, tags and web addresses are not searched, nor is the concept's own page.
+  Only blocks are returned, newest page first, and each has `mentions`: `text`, `line`,
+  `column` (bytes into the file line, absent when the line could not be placed) and the
+  `link` that would replace the words (`[ML](/machine-learning.md)`). A client turns a
+  mention into a reference with a `save --patch`.
 - `tessela index`: what a folder holds, as an OKF `index.md` (§6 of OKF):
   sub-folders, then the folder's own pages (its `home.md` first) with their
   `description` or first line, then its journal days, newest first. It prints to
