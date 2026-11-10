@@ -229,7 +229,11 @@ the notes change, and opens the page of a row when it is clicked; nothing it dra
 `agenda` turns plain `- [ ]` items and the dates written in them into an agenda: a journal day lists the
 open tasks that name it in a "Due" group at the top of its backlinks (today also lists the overdue ones),
 ticking a task on its tile is written as a one-line patch through `tessela save --patch`, and a month
-strip in the sidebar marks the days that have a file and the days that are only mentioned. A mod can hand
+strip in the sidebar marks the days that have a file and the days that are only mentioned.
+`changes` is the "Changes" row in the sidebar: what differs between the notes and git (the last commit, or
+any revision typed in, `ORIG_HEAD` for before the last pull), block by block, from `tessela changes`. Each
+change is kept (hidden, nothing written; the window remembers) or put back (the page is saved again without
+it through `tessela save`); a new page can be deleted and a deleted one written again. A mod can hand
 `ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
 the page that editor shows.
 

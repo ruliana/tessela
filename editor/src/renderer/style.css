@@ -461,3 +461,29 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .folders-empty { margin: 2px 8px; color: var(--muted); font-size: 12.5px; }
 .folders-error { color: var(--warn); }
 .row[aria-current="page"] { background: var(--accent-soft); font-weight: 600; }
+
+/* The changes mod: what differs from git, page by page and block by block. */
+.changes-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12.5px; color: var(--muted); }
+.changes-since { flex: 1; min-width: 0; max-width: 240px; font: 400 12.5px var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.changes-since:focus { outline: none; border-color: var(--accent); }
+.changes-preset, .changes-show-kept, .change-actions button { background: none; border: 0; padding: 2px 6px; border-radius: 4px; cursor: pointer; color: var(--muted); font: inherit; font-size: 12px; }
+.changes-preset:hover, .changes-show-kept:hover, .change-actions button:hover { color: var(--accent); background: var(--accent-soft); }
+.changes-summary { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; }
+.changes-error { color: var(--warn); }
+.changes-page { margin: 0 0 20px; }
+.changes-page-head { display: flex; align-items: baseline; gap: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
+.changes-page-title { flex: none; background: none; border: 0; padding: 0; cursor: pointer; color: var(--heading); font: 600 14px var(--sans); }
+.changes-page-title:hover { color: var(--accent); }
+.changes-status { flex: 1; font: 400 11.5px var(--mono); color: var(--muted); }
+.change { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; }
+.change-mark { flex: none; width: 1.2em; text-align: center; font: 600 13px var(--mono); }
+.change.added .change-mark { color: var(--accent); }
+.change.removed .change-mark { color: var(--warn); }
+.change.changed .change-mark { color: var(--date); }
+.change-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; color: var(--text); font: inherit; }
+.change-where { font-size: 11.5px; color: var(--muted); }
+.change-old { color: var(--muted); text-decoration: line-through; }
+.change-old, .change-text { white-space: pre-wrap; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.change.removed .change-text { text-decoration: line-through; color: var(--muted); }
+.change.kept { opacity: 0.55; }
+.change-actions { flex: none; display: flex; gap: 2px; }
