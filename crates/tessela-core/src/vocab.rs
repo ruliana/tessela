@@ -31,7 +31,7 @@ pub fn vocabulary(bundle: &Bundle) -> Vec<VocabEntry> {
     let existing = bundle.page_ids();
 
     let mut counts: BTreeMap<String, (usize, BTreeSet<&str>)> = BTreeMap::new();
-    for page in &bundle.pages {
+    for page in bundle.pages.iter().filter(|p| !p.is_template()) {
         for (concept, _) in mentions(page) {
             let entry = counts.entry(concept).or_default();
             entry.0 += 1;

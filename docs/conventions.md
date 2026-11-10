@@ -431,6 +431,18 @@ Every command takes `--api N` for the version the caller was written for.
   pages that lead to the page (§1), the root's first: a shortest path of links from the root
   `home.md` through home pages (`chain_by: "links"`), or else the home pages of the folders
   around it (`"folders"`). Computed on demand, nothing is written.
+- **Templates.** A page `templates/NAME.md` with `type: template` describes the pages of
+  type `NAME`: the front matter keys they should have and their starting text, headings
+  included. `add NAME-OF-PAGE --type NAME` (and `read` of a page that does not exist yet)
+  starts from it: the `type` line becomes `NAME`, the `title` line the page's title, in a
+  journal the `date` line the day, and everything else is copied as it is. A journal day
+  uses `templates/journal.md` and `home.md` uses `templates/home.md`; a type with no
+  template (or a file that is not marked `type: template`) starts as the built-in page.
+  `tessela index --dir templates` lists what a bundle has. Templates are not notes: queries
+  (unless they ask for `--type template`), the vocabulary, related pages and the linter's
+  semantic rules skip them, and only their OKF conformance is checked. `tessela lint` warns
+  (`tessela/template-keys`) when a page lacks a key its template has: like `vocabulary.md`, a
+  template guides and never rejects.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.

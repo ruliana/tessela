@@ -60,6 +60,7 @@ impl Default for Linter {
         linter.add_rule(Box::new(Vocabulary));
         linter.add_rule(Box::new(UnwrittenConcepts));
         linter.add_rule(Box::new(UnusedAttachments));
+        linter.add_rule(Box::new(TemplateKeys));
         linter
     }
 }
@@ -84,6 +85,14 @@ impl Linter {
         }
         // Attachments are not linted as notes, but a rule may still report one.
         out.retain(|d| !is_attachment(&d.path) || d.rule == UNUSED_ATTACHMENT);
+        // A template is a shape, not a note: only its conformance to OKF is checked.
+        let templates: Vec<&str> = bundle
+            .pages
+            .iter()
+            .filter(|p| p.is_template())
+            .map(|p| p.path.as_str())
+            .collect();
+        out.retain(|d| !templates.contains(&d.path.as_str()) || d.rule.starts_with("okf/"));
         out.sort_by(|a, b| (&a.path, a.line, a.rule).cmp(&(&b.path, b.line, b.rule)));
         out
     }
@@ -393,7 +402,11 @@ impl Rule for UnwrittenConcepts {
     fn check(&self, bundle: &Bundle, out: &mut Vec<Diagnostic>) {
         let existing = bundle.page_ids();
         let mut missing: BTreeMap<String, (&str, Option<usize>, usize)> = BTreeMap::new();
-        for page in bundle.pages.iter().filter(|p| !is_attachment(&p.path)) {
+        for page in bundle
+            .pages
+            .iter()
+            .filter(|p| !is_attachment(&p.path) && !p.is_template())
+        {
             for (concept, line) in mentions(page) {
                 if existing.contains(&concept) {
                     continue;
@@ -475,6 +488,52 @@ impl Rule for UnusedAttachments {
                     &file,
                     None,
                     format!("no page links to `{file}`"),
+                ));
+            }
+        }
+    }
+}
+
+/// A page whose type has a template should have the keys the template has. Like
+/// `vocabulary.md`, a template guides and never rejects: a missing key is a warning.
+pub struct TemplateKeys;
+
+impl Rule for TemplateKeys {
+    fn id(&self) -> &'static str {
+        "tessela/template-keys"
+    }
+
+    fn check(&self, bundle: &Bundle, out: &mut Vec<Diagnostic>) {
+        for page in bundle.pages.iter().filter(|p| !p.is_template()) {
+            let Some(kind) = page.kind() else { continue };
+            let template_path = format!("templates/{kind}.md");
+            let Some(template) = bundle
+                .pages
+                .iter()
+                .find(|t| t.path == template_path && t.is_template())
+            else {
+                continue;
+            };
+            let missing: Vec<&str> = template
+                .frontmatter
+                .keys()
+                .filter_map(Value::as_str)
+                .filter(|k| *k != "type" && !page.frontmatter.contains_key(*k))
+                .collect();
+            if !missing.is_empty() {
+                out.push(diag(
+                    "tessela/template-keys",
+                    Severity::Warning,
+                    &page.path,
+                    Some(1),
+                    format!(
+                        "this `{kind}` page lacks {} that `{template_path}` has",
+                        missing
+                            .iter()
+                            .map(|k| format!("`{k}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
                 ));
             }
         }
