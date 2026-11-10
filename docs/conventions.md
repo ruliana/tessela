@@ -291,7 +291,12 @@ agents share. Its rules:
 ## 10. Tools
 
 All tools are Rust binaries built on one shared core library. Each has a
-human-readable output and a `--json` output, which the editor and agents use.
+human-readable output and a `--json` output, which the editor and agents use. Every
+`--json` answer, from every command, is an object with `"api": N` and `"ok": true`; lists
+sit under a name (`hits` and `total` for `query`, `concepts` for `vocab`, `diagnostics`
+for `lint`). A failure is `{"api": N, "ok": false, "error": {"code", "message"}}` with
+exit code 2 (3 for a `conflict`; `lint` keeps 1 for findings, and `ok` stays true then).
+Every command takes `--api N` for the version the caller was written for.
 
 - `tessela lint`: OKF conformance plus Tessela rules (dates, tags, vocabulary, home pages).
   Rules are pluggable, so semantic rules can be added later.
@@ -330,7 +335,8 @@ human-readable output and a `--json` output, which the editor and agents use.
   `invalid-path`, `invalid-patch`, `invalid-input`, `api-mismatch`, `io`. The `api`
   number is the version of this contract (command names, arguments and JSON); callers
   pass `--api N` for the version they were written for, and the tool refuses on a
-  mismatch. `tessela api` prints it. The operations are written against a `PageStore`
+  mismatch. `tessela api` prints it. Any change to command names, arguments or JSON bumps it
+(2: every answer got the `api`/`ok` envelope). The operations are written against a `PageStore`
   in `tessela-core`, so a bundle kept elsewhere (remote, database) needs a new store,
   not new callers.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
@@ -341,7 +347,7 @@ human-readable output and a `--json` output, which the editor and agents use.
 
 An Electron editor (in `editor/`, TypeScript, CodeMirror 6) that uses the same
 tools as everyone else: it runs `tessela query --json` and `tessela vocab --json`
-and `tessela lint --json` (the binary comes from `$TESSELA_BIN`, then the one
+and `tessela lint --json` with `--api` (the binary comes from `$TESSELA_BIN`, then the one
 packaged with the app, then `target/{release,debug}`, then `PATH`). It reads and
 saves pages with `tessela read` and `tessela save` (§9, §10), one call per read and per
 save, so it follows the same rules as agents; it only lists and watches the files itself.

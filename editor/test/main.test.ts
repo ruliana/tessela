@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 
 import { listPages, relativeInside, resolveImage, resolveInside, watchBundle } from "../src/main/files";
-import { addPageVia, findTessela, queryArgv, readPageVia, savePageVia } from "../src/main/tessela";
+import { addPageVia, findTessela, lintArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "../src/main/tessela";
 
 async function bundle(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "tessela-test-"));
@@ -69,6 +69,22 @@ const tool = findTessela({
   exists: existsSync,
 });
 const haveTool = path.isAbsolute(tool) && existsSync(tool);
+
+describe.skipIf(!haveTool)("reading through the tessela tool", () => {
+  it("gets the lists out of the answer envelope", async () => {
+    const root = await bundle();
+    await writeFile(path.join(root, "a.md"), "---\ntype: concept\n---\n\n- one #topic\n");
+    expect(await runJson<unknown[]>(tool, queryArgv(root, { refs: ["topic"] }), "hits")).toHaveLength(1);
+    expect(await runJson<{ concept: string }[]>(tool, vocabArgv(root), "concepts")).toContainEqual(
+      expect.objectContaining({ concept: "topic" }),
+    );
+    expect(Array.isArray(await runJson(tool, lintArgv(root), "diagnostics", [1]))).toBe(true);
+  });
+
+  it("reports a failure the tool describes as JSON", async () => {
+    await expect(runJson(tool, queryArgv("/nowhere/at/all", {}), "hits")).rejects.toThrow(/not a directory/);
+  });
+});
 
 describe.skipIf(!haveTool)("saving through the tessela tool", () => {
   it("offers a template for a page that has no file, and writes it on first save", async () => {
@@ -141,7 +157,7 @@ describe("queryArgv", () => {
     expect(
       queryArgv("/b", { refs: ["a", "b"], any: true, from: "2026-01-01", to: "2026-01-31", limit: 5, text: "x" }),
     ).toEqual([
-      "query", "/b", "--json", "--ref", "a", "--ref", "b", "--any", "--text", "x",
+      "query", "/b", "--json", "--api", "2", "--ref", "a", "--ref", "b", "--any", "--text", "x",
       "--from", "2026-01-01", "--to", "2026-01-31", "--limit", "5",
     ]);
   });

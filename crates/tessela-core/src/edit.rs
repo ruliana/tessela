@@ -22,7 +22,7 @@ use crate::rewrite::{Rewrite, Where};
 
 /// The version of the contract between callers and the tool: command names, arguments and JSON
 /// output. Callers say which one they were written for, and the tool refuses when it differs.
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 2;
 
 /// A short fingerprint of a page's text. Callers hand it back to say what they based a change on.
 pub fn content_hash(text: &str) -> String {
