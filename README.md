@@ -226,6 +226,9 @@ what will change first, and offers to rename the file when its title was edited.
 which blocks are folded in its settings, by page, and never in the notes. `live-lists` draws
 the ```` ```tessela ```` fences of the conventions (`tessela fence`) as rows under the fence, asks again when
 the notes change, and opens the page of a row when it is clicked; nothing it draws is written to the page.
+`unlinked` lists, under the backlinks, the places in other pages that name the open page in plain words
+(`tessela query --unlinked`), each with a Link button that writes the link through `tessela save`;
+it draws into `ctx.slots.mount("side-bottom")`, the element below the backlinks.
 `agenda` turns plain `- [ ]` items and the dates written in them into an agenda: a journal day lists the
 open tasks that name it in a "Due" group at the top of its backlinks (today also lists the overdue ones),
 ticking a task on its tile is written as a one-line patch through `tessela save --patch`, and a month
