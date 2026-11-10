@@ -10,6 +10,7 @@ use crate::blocks::{Block, Heading, TaskState};
 use crate::bundle::Bundle;
 use crate::page::Page;
 use crate::refs::normalize_concept;
+use crate::unlinked::{self, Mention, Spec};
 
 /// All filters that are set must match.
 #[derive(Debug, Default, Clone)]
@@ -35,6 +36,11 @@ pub struct Query {
     pub to: Option<String>,
     /// Only checkbox items, open or done. Headings and pages are never tasks.
     pub task: Option<TaskFilter>,
+    /// A concept written as plain words, not linked: blocks that name it by its title, an
+    /// alias or a `vocabulary.md` term, and do not already reach it through a tag or a
+    /// link, their own or inherited. Each hit lists the `mentions`. Only blocks are
+    /// returned, newest page first, and the concept's own page is left out.
+    pub unlinked: Option<String>,
 }
 
 /// Which checkbox items `--task` keeps.
@@ -94,6 +100,9 @@ pub struct Hit {
     pub parent: Option<String>,
     /// Blocks that are checkbox items: `open` or `done`.
     pub task: Option<TaskState>,
+    /// With `unlinked`: where the concept is named in this block.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub mentions: Vec<Mention>,
     /// The hit is on a `home.md` page. A link from a home page marks the target as
     /// important, so these hits come first (spec §5).
     pub home: bool,
@@ -111,6 +120,7 @@ impl Query {
             .map(|r| bundle.names_for(&normalize_concept(r)))
             .collect();
         let text = self.text.as_ref().map(|t| t.to_lowercase());
+        let unlinked = self.unlinked.as_ref().map(|name| Spec::new(bundle, name));
         let by_date = self.from.is_some() || self.to.is_some();
         let mut hits = Vec::new();
         for page in &bundle.pages {
@@ -134,6 +144,14 @@ impl Query {
                     && (!by_date || page_in_range || hit.dates.iter().any(|d| self.in_range(d)))
             };
 
+            if let Some(spec) = &unlinked {
+                hits.extend(
+                    unlinked_hits(bundle, page, spec)
+                        .into_iter()
+                        .filter(accepts),
+                );
+                continue;
+            }
             let mut found = Vec::new();
             // Pages and headings only exist to hold references, so they are only
             // returned when a concept is asked for.
@@ -145,6 +163,10 @@ impl Query {
             // Document order; the page itself first.
             found.sort_by_key(|h| h.line);
             hits.extend(found.into_iter().filter(accepts));
+        }
+        if unlinked.is_some() {
+            // Newest page first, like backlinks; a page's blocks stay in document order.
+            hits.sort_by_key(|h| Reverse(h.modified));
         }
         // Backlinks from home pages first, the most specific folder's first, then the
         // most recently changed page's. Hits of one page share a time and the sort is
@@ -204,6 +226,25 @@ pub fn dates_in(text: &str) -> Vec<String> {
     found
 }
 
+/// The blocks of a page that name the concept in plain words and do not reach it yet.
+fn unlinked_hits(bundle: &Bundle, page: &Page, spec: &Spec) -> Vec<Hit> {
+    if spec.is_page(page) {
+        return Vec::new();
+    }
+    let file = unlinked::read_file(&bundle.root, page);
+    page.blocks
+        .iter()
+        .filter(|b| !mentions_concept(&b.path_refs, &spec.concept))
+        .filter_map(|b| {
+            let mentions = spec.mentions(page, b, file.as_deref());
+            (!mentions.is_empty()).then(|| Hit {
+                mentions,
+                ..block_hit(page, b)
+            })
+        })
+        .collect()
+}
+
 fn block_hit(page: &Page, block: &Block) -> Hit {
     Hit {
         kind: HitKind::Block,
@@ -219,6 +260,7 @@ fn block_hit(page: &Page, block: &Block) -> Hit {
         path_refs: block.path_refs.clone(),
         parent: block.parent.map(|p| page.blocks[p].handle.clone()),
         task: block.task,
+        mentions: Vec::new(),
         home: page.is_home(),
         modified: page.modified,
     }
@@ -239,6 +281,7 @@ fn heading_hit(page: &Page, heading: &Heading) -> Hit {
         path_refs: heading.path_refs.clone(),
         parent: None,
         task: None,
+        mentions: Vec::new(),
         home: page.is_home(),
         modified: page.modified,
     }
@@ -260,6 +303,7 @@ fn page_hit(page: &Page) -> Hit {
         path_refs: page.refs.clone(),
         parent: None,
         task: None,
+        mentions: Vec::new(),
         home: page.is_home(),
         modified: page.modified,
     }

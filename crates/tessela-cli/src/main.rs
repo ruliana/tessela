@@ -100,6 +100,10 @@ struct QueryArgs {
     /// Only checkbox items (`- [ ]`, `- [x]`): `open`, `done` or `any`
     #[arg(long, value_enum)]
     task: Option<TaskArg>,
+    /// Blocks that write this concept's title, an alias or a vocabulary term as plain
+    /// words without linking it, with where, and the link that would fix it
+    #[arg(long, value_name = "CONCEPT")]
+    unlinked: Option<String>,
     /// Show at most this many blocks
     #[arg(long)]
     limit: Option<usize>,
@@ -134,6 +138,7 @@ impl QueryArgs {
             from: self.from.clone(),
             to: self.to.clone(),
             task: self.task.map(TaskArg::filter),
+            unlinked: self.unlinked.clone(),
         }
     }
 }
@@ -150,6 +155,11 @@ enum Command {
         /// Hide diagnostics below this severity
         #[arg(long, value_parser = ["info", "warning", "error"], default_value = "info")]
         min_severity: String,
+    },
+    /// List every concept page with its title and type
+    Pages {
+        #[command(flatten)]
+        common: Common,
     },
     /// Find backlinks and blocks: by concept, text, page, type or date
     Query {
@@ -316,6 +326,7 @@ fn main() -> ExitCode {
             min_severity,
         } => lint(common, strict, &min_severity),
         Command::Query { common, filters } => run_query(common, filters.query(), filters.limit),
+        Command::Pages { common } => pages(common),
         Command::Index {
             common,
             dir,
@@ -692,6 +703,35 @@ fn lint(common: Common, strict: bool, min_severity: &str) -> ExitCode {
     }
 }
 
+fn pages(common: Common) -> ExitCode {
+    let bundle = match load(&common) {
+        Ok(b) => b,
+        Err(code) => return code,
+    };
+    let mut pages: Vec<_> = bundle.pages.iter().collect();
+    pages.sort_by(|a, b| a.path.cmp(&b.path));
+    if common.json {
+        let rows: Vec<_> = pages
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p.id,
+                    "path": p.path,
+                    "title": p.title(),
+                    "type": p.kind(),
+                })
+            })
+            .collect();
+        print_ok(serde_json::json!({ "pages": rows }));
+    } else {
+        for p in &pages {
+            outln!("{}  {}", p.path, p.title());
+        }
+        eprintln!("{} pages", pages.len());
+    }
+    ExitCode::SUCCESS
+}
+
 fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
     let bundle = match load(&common) {
         Ok(b) => b,
@@ -717,6 +757,10 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
             }
             for line in hit.text.lines() {
                 outln!("  {line}");
+            }
+            for m in &hit.mentions {
+                let column = m.column.map_or(String::new(), |c| format!(":{}", c + 1));
+                outln!("  unlinked: \"{}\" at {}{column}", m.text, m.line);
             }
         }
         if hits.len() < total {

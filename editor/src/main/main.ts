@@ -4,10 +4,10 @@ import path from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, net, protocol, shell } from "electron";
 import { pathToFileURL } from "node:url";
 
-import type { Diagnostic, Hit, OpenFileResult, QueryArgs, VocabEntry } from "../shared/api";
+import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
-import { listPages, relativeInside, resolveImage, resolveInside, watchBundle } from "./files";
-import { addPageVia, cliVia, findTessela, lintArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "./tessela";
+import { relativeInside, resolveImage, resolveInside, watchBundle } from "./files";
+import { addPageVia, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "./tessela";
 import { cliArgv, configFolder, listMods, resolveModFile } from "./mods";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
@@ -120,7 +120,7 @@ function registerIpc(): void {
     useBundle(folder);
     return folder;
   });
-  ipcMain.handle("listPages", () => listPages(needBundle()));
+  ipcMain.handle("listPages", () => runJson<PageEntry[]>(tesselaBin(), pagesArgv(needBundle()), "pages"));
   ipcMain.handle("vocab", () => runJson<VocabEntry[]>(tesselaBin(), vocabArgv(needBundle()), "concepts"));
   ipcMain.handle("query", (_e, args: QueryArgs) =>
     runJson<Hit[]>(tesselaBin(), queryArgv(needBundle(), args), "hits"),

@@ -121,3 +121,45 @@ fn a_bundle_that_is_not_there_is_a_json_error() {
     );
     assert_eq!(json["error"]["code"], "not-found");
 }
+
+#[test]
+fn pages_lists_every_concept_page_with_the_title_it_gives_itself() {
+    let dir = bundle(
+        "pages",
+        &[
+            (
+                "daily-todo.md",
+                "---\ntype: concept\ntitle: \"Daily TODO\"\n---\n\n# Other\n",
+            ),
+            (
+                "reading-list.md",
+                "---\ntype: concept\n---\n\n# Books to read\n",
+            ),
+            ("project/bare-page.md", "no heading"),
+            ("journals/2026-10-27.md", "---\ntype: journal\n---\n\nhi\n"),
+            ("index.md", "reserved"),
+            (".git/hidden.md", "hidden"),
+        ],
+    );
+    let (code, json) = call("pages", &dir, &[]);
+    assert_eq!(code, Some(0));
+    let pages = json["pages"].as_array().unwrap();
+    let row = |path: &str| pages.iter().find(|p| p["path"] == path).unwrap().clone();
+    assert_eq!(row("daily-todo.md")["title"], "Daily TODO");
+    assert_eq!(row("reading-list.md")["title"], "Books to read");
+    assert_eq!(row("project/bare-page.md")["title"], "bare page");
+    assert_eq!(row("project/bare-page.md")["id"], "project/bare-page");
+    assert_eq!(row("journals/2026-10-27.md")["type"], "journal");
+    assert!(row("project/bare-page.md")["type"].is_null());
+    // Sorted by path; reserved and hidden files are not pages.
+    let paths: Vec<_> = pages.iter().map(|p| p["path"].as_str().unwrap()).collect();
+    assert_eq!(
+        paths,
+        [
+            "daily-todo.md",
+            "journals/2026-10-27.md",
+            "project/bare-page.md",
+            "reading-list.md"
+        ]
+    );
+}

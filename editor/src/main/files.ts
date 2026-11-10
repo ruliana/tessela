@@ -1,12 +1,8 @@
-// Finding pages and watching for changes. Reading and writing a page is `tessela`'s job
+// Safe paths inside the bundle, and watching for changes. Reading and writing a page is `tessela`'s job
 // (see tessela.ts), so every writer follows the same rules (spec §9).
 
 import { type FSWatcher, promises as fs, watch } from "node:fs";
 import path from "node:path";
-
-import type { PageEntry } from "../shared/api";
-import { titleOf } from "../shared/linkFlows";
-import { pageId } from "../shared/pages";
 
 /** The absolute path of a page, or an error when `rel` could leave the bundle. */
 export function resolveInside(root: string, rel: string): string {
@@ -45,43 +41,6 @@ export function relativeInside(root: string, file: string): string | null {
   const relative = path.relative(root, file);
   if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
   return relative.split(path.sep).join("/");
-}
-
-const RESERVED = new Set(["index.md", "log.md"]);
-
-/** The title of a page, read from the first few kilobytes of the file (front matter and the top of the text). */
-async function titleAtTop(file: string, rel: string): Promise<string> {
-  let head = "";
-  try {
-    const handle = await fs.open(file, "r");
-    try {
-      const buf = Buffer.alloc(4096);
-      const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
-      head = buf.subarray(0, bytesRead).toString("utf8");
-    } finally {
-      await handle.close();
-    }
-  } catch {
-    // A file that cannot be read is listed by its name.
-  }
-  return titleOf(head, rel);
-}
-
-/** Every concept page in the bundle, like `tessela` itself sees them. */
-export async function listPages(root: string): Promise<PageEntry[]> {
-  const found: PageEntry[] = [];
-  async function walk(dir: string, prefix: string): Promise<void> {
-    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-      if (entry.name.startsWith(".")) continue;
-      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (entry.isDirectory()) await walk(path.join(dir, entry.name), rel);
-      else if (entry.name.endsWith(".md") && !RESERVED.has(entry.name)) {
-        found.push({ id: pageId(rel), path: rel, title: await titleAtTop(path.join(dir, entry.name), rel) });
-      }
-    }
-  }
-  await walk(root, "");
-  return found.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export interface WatchOptions {
