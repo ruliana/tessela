@@ -38,6 +38,8 @@ pub struct FolderEntry {
     pub path: String,
     /// Pages in the folder and everything below it.
     pub pages: usize,
+    /// The folder has a `home.md` of its own.
+    pub has_home: bool,
 }
 
 /// What one folder holds: its sub-folders, and its own pages.
@@ -45,6 +47,12 @@ pub struct FolderEntry {
 pub struct Listing {
     /// The folder's path inside the bundle; empty for the root.
     pub dir: String,
+    /// The folder's `home.md`, hand-written, where reading starts (spec §1).
+    pub home: Option<String>,
+    /// The pages the home page links to or tags, in the order it first mentions them: the
+    /// short list that says where to go from here. For the root it is the pinned pages.
+    /// Pages that do not exist (yet), and the home page itself, are left out.
+    pub links: Vec<PageEntry>,
     pub folders: Vec<FolderEntry>,
     /// The folder's `home.md` first, then the other pages by title.
     pub pages: Vec<PageEntry>,
@@ -70,7 +78,7 @@ fn build(bundle: &Bundle, dir: &str, recursive: bool) -> Listing {
     } else {
         format!("{dir}/")
     };
-    let mut folders: BTreeMap<String, usize> = BTreeMap::new();
+    let mut folders: BTreeMap<String, (usize, bool)> = BTreeMap::new();
     let mut pages = Vec::new();
     let mut journal = Vec::new();
     for page in &bundle.pages {
@@ -80,7 +88,9 @@ fn build(bundle: &Bundle, dir: &str, recursive: bool) -> Listing {
         if let Some((folder, _)) = rest.split_once('/')
             && !recursive
         {
-            *folders.entry(format!("{prefix}{folder}")).or_default() += 1;
+            let entry = folders.entry(format!("{prefix}{folder}")).or_default();
+            entry.0 += 1;
+            entry.1 |= rest == format!("{folder}/home.md");
             continue;
         }
         let entry = entry_of(page);
@@ -101,15 +111,45 @@ fn build(bundle: &Bundle, dir: &str, recursive: bool) -> Listing {
         )
     });
     journal.sort_by(|a, b| b.path.cmp(&a.path));
+    let home = bundle
+        .pages
+        .iter()
+        .find(|p| p.path == format!("{prefix}home.md"));
     Listing {
         dir: dir.to_string(),
+        home: home.map(|p| p.path.clone()),
+        links: home.map_or_else(Vec::new, |h| linked_from(bundle, h)),
         folders: folders
             .into_iter()
-            .map(|(path, pages)| FolderEntry { path, pages })
+            .map(|(path, (pages, has_home))| FolderEntry {
+                path,
+                pages,
+                has_home,
+            })
             .collect(),
         pages,
         journal,
     }
+}
+
+/// The existing pages a page links to or tags, in the order it first mentions them.
+fn linked_from(bundle: &Bundle, page: &Page) -> Vec<PageEntry> {
+    // Frontmatter first, then headings and blocks as they come in the file.
+    let mut mentions: Vec<(usize, &[String])> = vec![(0, &page.refs)];
+    mentions.extend(page.headings.iter().map(|h| (h.line, h.refs.as_slice())));
+    mentions.extend(page.blocks.iter().map(|b| (b.line, b.refs.as_slice())));
+    mentions.sort_by_key(|(line, _)| *line);
+    let mut seen = BTreeSet::new();
+    let mut found = Vec::new();
+    for concept in mentions.into_iter().flat_map(|(_, refs)| refs) {
+        let Some(target) = bundle.page(concept) else {
+            continue;
+        };
+        if target.path != page.path && seen.insert(target.path.clone()) {
+            found.push(entry_of(target));
+        }
+    }
+    found
 }
 
 /// The listings of the root and of every folder below it that holds pages.

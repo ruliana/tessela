@@ -17,7 +17,7 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | Search text, a page or folder, a page type, a date range | `tessela query . --text WORDS`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
 | List tasks (checkbox items), open or done, with their dates | `tessela query . --task open [--from/--to YYYY-MM-DD] [--ref NAME]`; `--task done` and `--task any` too; each hit has `task` |
 | Find text that names a page but does not link it (to link it) | `tessela query . --unlinked NAME --json`: blocks with `mentions` (`text`, `line`, `column`, `link`); skips blocks that already reach the page; fix with a patch through `save` |
-| See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included) |
+| See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included; `--json` also gives the folder's `home` and the pages its home page `links` to, the best place to start reading) |
 | List every page with its title and type | `tessela pages . --json` (`pages`: `id`, `path`, `title`, `type`; sorted by path) |
 | Follow changes as they happen | `tessela watch . --json [--exit-on-stdin-close]` (one JSON line per burst: `{"event":"changed","paths":[...]}`; runs until stopped) |
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
