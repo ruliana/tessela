@@ -73,7 +73,10 @@ suite("Mods in the config folder", files, (test) => {
   test("a mod adds an item to the / menu", async (s) => {
     await s.open("beta");
     await s.type(" /Signat");
-    await s.win.waitForSelector(".cm-tooltip-autocomplete li");
+    // Wait for the item itself: the menu can be open, still listing what the first letters matched.
+    await s.win.waitForSelector(".cm-tooltip-autocomplete li:has-text('Signature')");
+    // CodeMirror ignores Enter for a moment after the menu opens (its `interactionDelay`).
+    await s.win.waitForTimeout(250);
     await s.key("Enter");
     assert.match(await s.body(), /-- me/);
   });

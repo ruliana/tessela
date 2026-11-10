@@ -30,6 +30,7 @@ import "./acceptance/livelists.mjs";
 import "./acceptance/unlinked.mjs";
 import "./acceptance/changes.mjs";
 import "./acceptance/folders.mjs";
+import "./acceptance/searchmod.mjs";
 import "./acceptance/outline.mjs";
 
 await runAll();

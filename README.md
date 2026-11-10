@@ -237,6 +237,10 @@ strip in the sidebar marks the days that have a file and the days that are only 
 one; it is drawn from the saved page, so it follows once the page is saved), adds "Go to heading" to the
 palette, and makes Alt+Up and Alt+Down on a heading line move its section (what is under it, down to the
 next heading of its level) past the neighbour of the same level, without moving it out of its parent.
+`search` replaces the search under the sidebar's search box (through `ctx.override.add("search", ...)`): words in
+any order, "quoted phrases", `#tag`, `type:`, `in:`, `from:`/`to:` and a bare `YYYY-MM-DD` become one `tessela query`,
+page titles and headings are searched with the text, the command is shown, and "Keep as live list" puts it in the
+open page as a ```` ```tessela ```` fence.
 `changes` is the "Changes" row in the sidebar: what differs between the notes and git (the last commit, or
 any revision typed in, `ORIG_HEAD` for before the last pull), block by block, from `tessela changes`. Each
 change is kept (hidden, nothing written; the window remembers) or put back (the page is saved again without
