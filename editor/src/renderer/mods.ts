@@ -11,7 +11,7 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModOverrides, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
 import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { el } from "./dom";
@@ -134,6 +134,11 @@ export interface ModContext {
   };
   /** Groups in the right-hand backlinks of the open page: `first` puts one above the mentions, and `taken` (handles) keeps those mentions from being listed twice. */
   backlinks: { add(group: (page: { path: string }) => BacklinkContent | null | undefined | Promise<BacklinkContent | null | undefined>): void };
+  /**
+   * Replaces a built-in contribution by its id, as `ModOverrides` lists them (today the sidebar
+   * `search`). A mod's command with the id of a built-in one replaces that command in the same way.
+   */
+  override: { add<K extends keyof ModOverrides>(id: K, replacement: ModOverrides[K]): void };
   /** The pages in the window. */
   pages: {
     current(): string | null;
@@ -176,6 +181,7 @@ function contextFor(mod: string): ModContext {
           : { root: slot === "side-bottom" ? sideBottom : sideTop, reveal: () => host.reveal() },
     },
     backlinks: { add: (group) => registry.addBacklinkGroup(mod, group) },
+    override: { add: (id, replacement) => registry.addOverride(mod, id, replacement) },
     pages: {
       current: () => host.current(),
       flush: () => host.flush(),

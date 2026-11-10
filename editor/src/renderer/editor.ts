@@ -31,6 +31,7 @@ import { suggest } from "../shared/complete";
 import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../shared/linkFlows";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { dayAt } from "../shared/dates";
+import type { PropertiesOverride } from "../shared/mods";
 import { journalDest } from "../shared/pages";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
@@ -64,6 +65,10 @@ export interface EditorOptions {
   onTogglePreview?: () => void;
   /** Extensions mods add to every editor. */
   extensions?: () => Extension[];
+  /** What a mod draws in place of the front matter, when one does. */
+  properties?: () => PropertiesOverride | undefined;
+  /** The path of the page the editor shows. */
+  pagePath?: () => string;
 }
 
 export interface EditorHandle {
@@ -256,7 +261,14 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
     else if (/^(https?:|mailto:)/i.test(dest)) opts.onOpenExternal(dest);
   };
   const previewExtension = () =>
-    livePreview({ openLink: openDest, imageUrl, pageName: opts.pageName ?? (() => ""), view: () => view });
+    livePreview({
+      openLink: openDest,
+      imageUrl,
+      pageName: opts.pageName ?? (() => ""),
+      pagePath: opts.pagePath ?? (() => ""),
+      properties: opts.properties ?? (() => undefined),
+      view: () => view,
+    });
   const view = new EditorView({
     parent,
     state: EditorState.create({

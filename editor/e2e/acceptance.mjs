@@ -31,5 +31,6 @@ import "./acceptance/unlinked.mjs";
 import "./acceptance/changes.mjs";
 import "./acceptance/folders.mjs";
 import "./acceptance/outline.mjs";
+import "./acceptance/propertiesmod.mjs";
 
 await runAll();

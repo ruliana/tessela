@@ -2,6 +2,7 @@
 // extensions). This is the registry behind it. It knows nothing of the window, so it is easy to
 // test; the window's side is renderer/mods.ts.
 
+import type { Properties } from "./properties";
 import type { SlashItem } from "./slash";
 
 /** What a command is run with. `view` is the editor in use, when there is one. */
@@ -95,6 +96,42 @@ export interface BacklinkContent {
 /** Draws a group for the open page, or nothing (null) when the page has none. */
 export type BacklinkGroup = (page: { path: string }) => BacklinkContent | null | undefined | Promise<BacklinkContent | null | undefined>;
 
+/** What the window tells a mod that draws the front matter of a page. */
+export interface PropertiesArg {
+  /** The page the front matter belongs to. */
+  path: string;
+  /** What the front matter says, read the way the built-in drawing reads it. */
+  props: Properties;
+  /** The title to draw above the properties, or null when the page's own heading already is one. */
+  title: string | null;
+  /** The front matter as written, from the opening `---` to the closing one. */
+  source: string;
+  /** Puts the cursor at the start of the text (a click on the title means "write here"). */
+  toBody(): void;
+  /** Shows the YAML to edit it. */
+  editYaml(): void;
+  /** Follows a link as clicking it in the page would (`/journals/2026-10-27.md`). */
+  openLink(dest: string): void;
+}
+
+/** Draws a page's front matter in place of the built-in title and row of properties. */
+export interface PropertiesOverride {
+  /** The element to show. It is drawn again, as a new one, whenever the front matter changes. */
+  draw(arg: PropertiesArg): HTMLElement;
+}
+
+/**
+ * The built-in contributions a mod can replace, by id (`ctx.override.add(id, replacement)`). A
+ * built-in command is replaced by adding a command with its id; these are the ones that are not
+ * commands.
+ */
+export interface ModOverrides {
+  /** The title and properties drawn in place of a page's front matter. */
+  properties: PropertiesOverride;
+}
+
+export type OverrideId = keyof ModOverrides;
+
 export interface ModFailure {
   mod: string;
   message: string;
@@ -128,6 +165,7 @@ export class ModRegistry<V = unknown, E = unknown> {
   private viewById = new Map<string, Owned<ModView>>();
   private backlinkGroups: Owned<{ group: BacklinkGroup }>[] = [];
   private fenceRenders = new Map<string, Owned<{ render: FenceRender }>>();
+  private overrides = new Map<OverrideId, Owned<{ replacement: ModOverrides[OverrideId] }>>();
   readonly loaded: string[] = [];
   readonly failures: ModFailure[] = [];
   /** Told about every failure, so the window can say so. */
@@ -182,6 +220,21 @@ export class ModRegistry<V = unknown, E = unknown> {
       }),
     );
     return made.filter((c): c is BacklinkContent => c !== null);
+  }
+
+  /** A mod replaces a built-in contribution (see `ModOverrides`). Of two mods that replace the same one, the one loaded last wins. */
+  addOverride<K extends OverrideId>(mod: string, id: K, replacement: ModOverrides[K]): void {
+    this.overrides.set(id, { replacement, mod });
+  }
+
+  /** The mod that holds the override `id`. */
+  overrideOwner(id: OverrideId): string | undefined {
+    return this.overrides.get(id)?.mod;
+  }
+
+  /** What a mod put in place of the built-in contribution `id`, if one did. */
+  override<K extends OverrideId>(id: K): ModOverrides[K] | undefined {
+    return this.overrides.get(id)?.replacement as ModOverrides[K] | undefined;
   }
 
   /** A mod draws the code fences whose info string is `info`. Another mod's renderer for it is replaced. */
@@ -281,6 +334,7 @@ export class ModRegistry<V = unknown, E = unknown> {
     for (const [id, v] of this.viewById) if (v.mod === mod) this.viewById.delete(id);
     this.backlinkGroups = this.backlinkGroups.filter((g) => g.mod !== mod);
     for (const [info, f] of this.fenceRenders) if (f.mod === mod) this.fenceRenders.delete(info);
+    for (const [id, o] of this.overrides) if (o.mod === mod) this.overrides.delete(id);
   }
 
   fail(mod: string, message: string): void {
