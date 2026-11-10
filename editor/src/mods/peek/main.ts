@@ -91,7 +91,9 @@ export default function (ctx: ModContext): void {
     open.addEventListener("click", () => void goThere());
     closeButton.addEventListener("click", () => close(true));
     root.addEventListener("keydown", (e) => {
-      if (document.querySelector(".cm-tooltip-autocomplete")) return;
+      // Esc in an editor of the peek is for its completion menu first; a menu left over in the page does not count.
+      const inEditor = e.target instanceof Element && e.target.closest(".cm-editor") !== null;
+      if (inEditor && document.querySelector(".cm-tooltip-autocomplete")) return;
       if (e.key === "Escape") {
         e.preventDefault();
         close(true);
