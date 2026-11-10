@@ -11,7 +11,7 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
 import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { el } from "./dom";
@@ -55,6 +55,8 @@ export interface ModHost {
   card(path: string, options?: { menu?: boolean }): Card;
   /** Makes the right column visible. */
   reveal(): void;
+  /** Shows a mod's view in the middle of the window. */
+  showView(id: string, arg?: string): Promise<void>;
 }
 
 export const host: ModHost = {
@@ -67,6 +69,7 @@ export const host: ModHost = {
     throw new Error("The window has no cards yet");
   },
   reveal: () => {},
+  showView: async () => {},
 };
 
 /** A page open for editing, as a mod gets it: put `root` somewhere, `load` it, `destroy` it when done. */
@@ -142,6 +145,12 @@ export interface ModContext {
     /** A card for a page beside the window's own, to put in a slot; `menu: false` leaves out the page menu. */
     card(path: string, options?: { menu?: boolean }): PageCard;
   };
+  /** Views of a mod's own: each has a row in the sidebar and fills the middle of the window, as the journals do. */
+  views: {
+    add(view: ModView): void;
+    /** Shows the view, handing it `arg`; going back in the window returns to what was shown before. */
+    open(id: string, arg?: string): Promise<void>;
+  };
   /** The notes folder, or null while none is open. */
   bundle(): Promise<string | null>;
   /** The CodeMirror packages the editor uses, so a mod does not bundle its own copy. */
@@ -175,6 +184,7 @@ function contextFor(mod: string): ModContext {
       card: (path, options) => host.card(path, options),
     },
     cli: (argv, options) => api.cli(argv, options?.input),
+    views: { add: (view) => registry.addView(mod, view), open: (id, arg) => host.showView(id, arg) },
     bundle: () => api.bundle(),
     cm,
   };
