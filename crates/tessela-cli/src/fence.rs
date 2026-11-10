@@ -264,6 +264,7 @@ fn first_stage(bundle: &Bundle, words: &[String]) -> Result<Vec<Source>, EditErr
         Command::Api { .. } => Err(not_a_fence_command("api")),
         Command::Read { .. } => Err(not_a_fence_command("read")),
         Command::Add { .. } => Err(not_a_fence_command("add")),
+        Command::Attach { .. } => Err(not_a_fence_command("attach")),
         Command::Save { .. } => Err(not_a_fence_command("save")),
         Command::Rename { .. } => Err(not_a_fence_command("rename")),
         Command::Move { .. } => Err(not_a_fence_command("move")),

@@ -47,6 +47,7 @@ All of them take `--bundle DIR` (default `.`) and the page as a path relative to
 | Rename (same folder) | `tessela rename -b . PAGE NEW-NAME [--dry-run]` |
 | Move to another folder or path | `tessela move -b . PAGE folder/ [--dry-run]` or `... PAGE new/path` |
 | Delete | `tessela remove -b . PAGE --expect HASH` |
+| Store a picture or file | `tessela attach -b . PAGE [--file F \| < bytes] [--ext png]`, then link it as `![what it shows](/assets/NAME)` (named after the page plus a hash of the content) |
 
 ### The workflow for every change
 

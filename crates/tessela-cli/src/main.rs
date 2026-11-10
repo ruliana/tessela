@@ -175,6 +175,19 @@ enum Command {
         #[arg(long)]
         stdin: bool,
     },
+    /// Store a file (a picture, a PDF) in assets/, named after the page that uses it
+    Attach {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page that will link to the file, e.g. `project/tessela.md`; it need not exist yet
+        page: String,
+        /// Read the file from here instead of stdin
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// The file's extension, when it is not in the file's name or recognised from its bytes
+        #[arg(long)]
+        ext: Option<String>,
+    },
     /// Replace a page, or change it with a unified diff, based on a hash from `read`
     Save {
         #[command(flatten)]
@@ -327,6 +340,44 @@ fn main() -> ExitCode {
             Ok(Done::new(
                 &saved,
                 |s| format!("created {} ({})", s.path, s.hash),
+                false,
+            ))
+        }),
+        Command::Attach {
+            edit,
+            page,
+            file,
+            ext,
+        } => run_edit(&edit, |store| {
+            let path = edit::existing_path(&page)?;
+            let bytes = read_bytes(file.as_deref())?;
+            let ext = ext
+                .or_else(|| {
+                    file.as_deref()
+                        .and_then(|f| f.extension())
+                        .map(|e| e.to_string_lossy().into_owned())
+                })
+                .or_else(|| edit::sniff_extension(&bytes).map(String::from))
+                .ok_or_else(|| {
+                    EditError::new(
+                        ErrorCode::InvalidInput,
+                        "cannot tell what kind of file this is: pass --ext, for example --ext png",
+                    )
+                })?;
+            let attached = edit::attach(store, &path, &bytes, &ext)?;
+            Ok(Done::new(
+                &attached,
+                |a| {
+                    format!(
+                        "{} {}",
+                        if a.created {
+                            "stored"
+                        } else {
+                            "already stored"
+                        },
+                        a.path
+                    )
+                },
                 false,
             ))
         }),
@@ -513,6 +564,34 @@ fn read_input(file: Option<&Path>) -> Result<String, EditError> {
         )
     })?;
     Ok(text)
+}
+
+/// The most an attachment may weigh, so a stray pipe cannot fill the disk.
+const MAX_ATTACHMENT: u64 = 64 * 1024 * 1024;
+
+fn read_bytes(file: Option<&Path>) -> Result<Vec<u8>, EditError> {
+    let mut bytes = Vec::new();
+    let read = match file {
+        Some(f) => {
+            std::fs::File::open(f).and_then(|f| f.take(MAX_ATTACHMENT + 1).read_to_end(&mut bytes))
+        }
+        None => std::io::stdin()
+            .take(MAX_ATTACHMENT + 1)
+            .read_to_end(&mut bytes),
+    };
+    read.map_err(|e| {
+        EditError::new(
+            ErrorCode::InvalidInput,
+            format!("cannot read the input: {e}"),
+        )
+    })?;
+    if bytes.len() as u64 > MAX_ATTACHMENT {
+        return Err(EditError::new(
+            ErrorCode::InvalidInput,
+            "the file is larger than 64 MiB",
+        ));
+    }
+    Ok(bytes)
 }
 
 fn api(json: bool) -> ExitCode {
