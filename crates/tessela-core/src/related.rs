@@ -12,7 +12,7 @@ use crate::query::{mentions_any, mentions_concept};
 use crate::refs::normalize_concept;
 
 /// A concept that is mentioned together with the asked one.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Together {
     pub concept: String,
     /// The page of the concept, when there is one.
@@ -28,7 +28,7 @@ pub struct Together {
 }
 
 /// How the chain of home pages was found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChainBy {
     /// Each home page links to the next, starting at the root `home.md`.
@@ -37,7 +37,7 @@ pub enum ChainBy {
     Folders,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Related {
     pub concept: String,
     pub page: Option<PageEntry>,
