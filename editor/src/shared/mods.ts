@@ -62,6 +62,20 @@ export interface FenceArg {
 /** Draws a fence's body: the result (text or a DOM node, or a promise of one) is shown under the fence. */
 export type FenceRender = (fence: FenceArg) => unknown;
 
+/**
+ * What a mod puts in the backlinks of a page: a node of its own, drawn above the mentions page by
+ * page (`first`) or below them. `taken` are handles of mentions it shows itself, so they are not
+ * listed a second time.
+ */
+export interface BacklinkContent {
+  node: unknown;
+  first?: boolean;
+  taken?: string[];
+}
+
+/** Draws a group for the open page, or nothing (null) when the page has none. */
+export type BacklinkGroup = (page: { path: string }) => BacklinkContent | null | undefined | Promise<BacklinkContent | null | undefined>;
+
 export interface ModFailure {
   mod: string;
   message: string;
@@ -92,6 +106,7 @@ export class ModRegistry<V = unknown, E = unknown> {
   private extensions: Owned<{ extension: E }>[] = [];
   private pageMenu: Owned<PageMenuItem>[] = [];
   private listeners: Listener[] = [];
+  private backlinkGroups: Owned<{ group: BacklinkGroup }>[] = [];
   private fenceRenders = new Map<string, Owned<{ render: FenceRender }>>();
   readonly loaded: string[] = [];
   readonly failures: ModFailure[] = [];
@@ -112,6 +127,28 @@ export class ModRegistry<V = unknown, E = unknown> {
 
   addPageMenuItem(mod: string, item: PageMenuItem): void {
     this.pageMenu.push({ ...item, mod });
+  }
+
+  addBacklinkGroup(mod: string, group: BacklinkGroup): void {
+    this.backlinkGroups.push({ group, mod });
+  }
+
+  /**
+   * What the mods put in the backlinks of the page at `path`, in the order they were added. A mod
+   * whose group fails is reported, and the others still show.
+   */
+  async backlinkContent(path: string): Promise<BacklinkContent[]> {
+    const made = await Promise.all(
+      this.backlinkGroups.map(async (g) => {
+        try {
+          return (await g.group({ path })) ?? null;
+        } catch (e) {
+          this.fail(g.mod, `backlinks: ${messageOf(e)}`);
+          return null;
+        }
+      }),
+    );
+    return made.filter((c): c is BacklinkContent => c !== null);
   }
 
   /** A mod draws the code fences whose info string is `info`. Another mod's renderer for it is replaced. */
@@ -208,6 +245,7 @@ export class ModRegistry<V = unknown, E = unknown> {
     this.extensions = this.extensions.filter((e) => e.mod !== mod);
     this.pageMenu = this.pageMenu.filter((i) => i.mod !== mod);
     this.listeners = this.listeners.filter((l) => l.mod !== mod);
+    this.backlinkGroups = this.backlinkGroups.filter((g) => g.mod !== mod);
     for (const [info, f] of this.fenceRenders) if (f.mod === mod) this.fenceRenders.delete(info);
   }
 

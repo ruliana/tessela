@@ -226,7 +226,7 @@ export function cliInput(input: unknown): string | Uint8Array {
 }
 
 /** The commands that take the folder as their first argument; the others take `--bundle`. */
-const POSITIONAL = new Set(["lint", "query", "index", "vocab"]);
+const POSITIONAL = new Set(["lint", "query", "index", "vocab", "pages"]);
 
 /**
  * Runs any `tessela` command for a mod, adding the folder, `--json` and the API version. The answer

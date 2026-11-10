@@ -419,3 +419,26 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .tessela-link:hover { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .tessela-empty { color: var(--muted); }
 .tessela-error { color: var(--warn); }
+
+/* The agenda mod: the Due group in the backlinks, and the month strip in the sidebar. */
+.bl-group.due h3 { font: 600 15px/1.25 var(--serif); }
+.bl-group.due .task { display: flex; align-items: flex-start; gap: 6px; }
+.bl-group.due .task-box { flex: none; margin: 11px 0 0; accent-color: var(--accent); cursor: pointer; }
+.bl-group.due .task .hit { flex: 1; min-width: 0; width: auto; }
+.bl-group.due .task.overdue .where { color: var(--warn); }
+.bl-group.due .task.done .text { text-decoration: line-through; color: var(--muted); }
+.side-mods:empty { display: none; }
+#month-strip { gap: 6px; }
+#month-strip .month-head { display: flex; align-items: baseline; gap: 6px; padding-inline: 6px; }
+#month-strip .month-title { flex: 1; font: 600 12px var(--sans); color: var(--text); }
+#month-strip .month-today { font-size: 11px; }
+#month-strip .month-prev, #month-strip .month-next { font-size: 14px; line-height: 1; }
+#month-strip .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; text-align: center; }
+#month-strip .dow { font: 500 10px var(--sans); color: var(--muted); padding-bottom: 2px; }
+#month-strip .day { position: relative; background: none; border: 0; border-radius: 4px; padding: 3px 0 5px; font: 400 11.5px var(--sans); font-variant-numeric: tabular-nums; color: var(--text); cursor: pointer; }
+#month-strip .day:hover { background: var(--accent-soft); }
+#month-strip .day.file { font-weight: 600; }
+#month-strip .day.file::after, #month-strip .day.mention::after { content: ""; position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; }
+#month-strip .day.file::after { background: var(--accent); }
+#month-strip .day.mention::after { border: 1px solid var(--date); }
+#month-strip .day.is-today { outline: 1px solid var(--accent); }
