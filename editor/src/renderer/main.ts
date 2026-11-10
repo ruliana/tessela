@@ -32,7 +32,7 @@ import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
 import { describeMods } from "../shared/mods";
-import { host, modExtensions, modsInfo, loadMods, registry, sideTop, sidebarSlot, type ModHost } from "./mods";
+import { host, modExtensions, modsInfo, loadMods, registry, sideBottom, sideTop, sidebarSlot, type ModHost } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -498,7 +498,7 @@ function buildShell(bundle: string): void {
 
   stackEl = el("div", { class: "stack", id: "stack" });
   backlinksBody = el("div", { class: "backlinks-body" });
-  backlinksEl = el("aside", { class: "backlinks", id: "backlinks" }, sideTop, backlinksBody);
+  backlinksEl = el("aside", { class: "backlinks", id: "backlinks" }, sideTop, backlinksBody, sideBottom);
   shellEl = el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl, strip, problemsEl);
   app.replaceChildren(shellEl);
   applyLayout();
