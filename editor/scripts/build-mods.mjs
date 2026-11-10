@@ -29,6 +29,19 @@ const sharedCodeMirror = {
   },
 };
 
+// Big libraries a mod loads only when a page needs them: src/mods/<id>/lazy/NAME.ts becomes
+// dist/mods/<id>/NAME.js, minified and complete in itself (the mod imports it from its own folder).
+const lazy = Object.fromEntries(
+  ids.flatMap((id) => {
+    const dir = join(source, id, "lazy");
+    return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".ts")).map((f) => [`${id}/${f.replace(/\.ts$/, "")}`, join(dir, f)]) : [];
+  }),
+);
+
+if (Object.keys(lazy).length > 0) {
+  await build({ entryPoints: lazy, outdir: join(root, "dist/mods"), bundle: true, minify: true, format: "esm", platform: "browser", target: "es2022", logLevel: "warning", legalComments: "none" });
+}
+
 await build({
   entryPoints: Object.fromEntries(ids.map((id) => [`${id}/main`, join(source, id, "main.ts")])),
   outdir: join(root, "dist/mods"),

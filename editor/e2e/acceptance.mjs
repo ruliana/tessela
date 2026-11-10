@@ -34,5 +34,6 @@ import "./acceptance/searchmod.mjs";
 import "./acceptance/outline.mjs";
 import "./acceptance/propertiesmod.mjs";
 import "./acceptance/newpage.mjs";
+import "./acceptance/gfm.mjs";
 
 await runAll();

@@ -257,6 +257,14 @@ the page that editor shows.
 `new-page` takes the place of the window's name box for New page (Ctrl+N, the sidebar button, the palette):
 it asks for a name and a type, the types being the bundle's `templates/NAME.md` with "Page" first, and
 makes the page with `tessela add NAME --type TYPE`. A mod's command with the id `new-page` replaces it.
+`gfm-extras` draws the GitHub-flavored Markdown the editor did not: `> [!NOTE]` (also TIP, IMPORTANT, WARNING,
+CAUTION) as a callout, footnotes (`[^1]` as its number, numbered by first use, with the note as its tooltip; a click goes to
+the definition and back), `$x$` inline math and `$$` blocks, and ```` ```math ```` and ```` ```mermaid ```` fences as
+formulas and diagrams under the source. Where the cursor is, the Markdown shows as written, and nothing it draws is written
+to the page, so the page reads the same on GitHub. KaTeX (as MathML, so no fonts) and Mermaid are loaded the first time a
+page has one. Its palette commands are "Copy link to this heading" (`[Text](/page.md#anchor)`, which the editor follows),
+"Copy as quote" (the selection, or the line, as a quote with a link to its page) and "Insert footnote"; the `/` menu has
+Callout, Math block and Diagram.
 
 To build an app that carries its own `tessela` binary:
 

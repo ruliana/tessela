@@ -535,6 +535,8 @@ export function frontMatterGuard(): Extension {
 
 export function livePreview(opts: PreviewOptions): Extension {
   return [
+    // Lets what mods draw know the Markdown is shown rendered.
+    EditorView.editorAttributes.of({ class: "cm-preview" }),
     frontMatterGuard(),
     tables(opts),
     ViewPlugin.fromClass(
