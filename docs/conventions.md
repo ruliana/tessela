@@ -317,6 +317,10 @@ Every command takes `--api N` for the version the caller was written for.
   `--task open|done|any` keeps only checkbox items (§3), so a task is a plain `- [ ]` and its
   due date is a date written in it: `--task open --to 2026-11-15` lists what is open on
   journal days up to the 15th or names a date up to it. Hits carry `task`.
+  `--text PHRASE` may be given several times (every phrase must be in the block) and
+  `--words "a b c"` needs each word, in any order. `--meta` also searches what is not block
+  text: page titles and every front matter value (`role`, `team`, tags...), which come
+  back as `page` hits, and headings, as `heading` hits.
   `--unlinked CONCEPT` finds text that names a concept without linking it: blocks that
   write the page's title, one of its aliases or a `vocabulary.md` term that says `use:` it
   as plain words, and do not already reach it through a tag or link, their own or inherited

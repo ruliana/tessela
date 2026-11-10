@@ -106,7 +106,7 @@ fn child_hit_points_to_its_parent() {
 fn text_type_and_page_filters() {
     let b = bundle();
     let by_text = Query {
-        text: Some("LINTER".into()),
+        text: vec!["LINTER".into()],
         ..Query::default()
     };
     assert_eq!(texts(&by_text.run(&b)), ["Wrote the linter in #rust."]);
@@ -333,7 +333,7 @@ fn pages_and_headings_are_only_returned_when_a_concept_is_asked_for() {
     let all = Query::default().run(&bundle());
     assert!(all.iter().all(|h| h.kind == HitKind::Block));
     let by_text = Query {
-        text: Some("work".into()),
+        text: vec!["work".into()],
         ..Query::default()
     };
     assert!(by_text.run(&bundle()).is_empty());
@@ -416,7 +416,7 @@ fn backlinks_from_home_pages_come_first_and_the_deepest_home_wins() {
 #[test]
 fn hit_order_is_unchanged_when_no_concept_is_asked_for() {
     let hits = Query {
-        text: Some("rust".into()),
+        text: vec!["rust".into()],
         ..Query::default()
     }
     .run(&home_bundle());

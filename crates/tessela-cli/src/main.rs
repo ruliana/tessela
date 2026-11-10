@@ -87,9 +87,16 @@ struct QueryArgs {
     /// Ignore refs inherited from parent items and headings
     #[arg(long)]
     own: bool,
-    /// Text the block contains (case-insensitive)
+    /// A phrase the block contains (case-insensitive); repeat it to need several
     #[arg(long, short = 't')]
-    text: Option<String>,
+    text: Vec<String>,
+    /// Words the block contains, in any order (case-insensitive): `--words "rust linter"`
+    #[arg(long)]
+    words: Vec<String>,
+    /// With --text or --words, also search page titles, every front matter value and
+    /// headings, and return them as page and heading hits
+    #[arg(long)]
+    meta: bool,
     /// Only pages with this frontmatter `type`
     #[arg(long = "type")]
     kind: Option<String>,
@@ -137,7 +144,17 @@ impl QueryArgs {
             refs: self.refs.clone(),
             any: self.any,
             own: self.own,
-            text: self.text.clone(),
+            text: self
+                .text
+                .iter()
+                .cloned()
+                .chain(
+                    self.words
+                        .iter()
+                        .flat_map(|w| w.split_whitespace().map(String::from)),
+                )
+                .collect(),
+            meta: self.meta,
             kind: self.kind.clone(),
             page: self.page.clone(),
             from: self.from.clone(),

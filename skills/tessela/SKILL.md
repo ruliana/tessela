@@ -14,7 +14,7 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | You want to | Run |
 | --- | --- |
 | Find where a topic is mentioned (backlinks) | `tessela query . --ref NAME [--json]` |
-| Search text, a page or folder, a page type, a date range | `tessela query . --text WORDS`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
+| Search text, a page or folder, a page type, a date range | `tessela query . --text PHRASE` (repeatable), `--words "a b c"`, `--meta`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
 | List tasks (checkbox items), open or done, with their dates | `tessela query . --task open [--from/--to YYYY-MM-DD] [--ref NAME]`; `--task done` and `--task any` too; each hit has `task` |
 | Find text that names a page but does not link it (to link it) | `tessela query . --unlinked NAME --json`: blocks with `mentions` (`text`, `line`, `column`, `link`); skips blocks that already reach the page; fix with a patch through `save` |
 | See what changed in the notes since a commit or the last pull (by git or by another agent) | `tessela changes -b . --json [--since REV]` (`ORIG_HEAD` after a pull): pages added/modified/deleted with block-level `changes` (`raw`, `old_raw`, `line`); read-only |
@@ -33,8 +33,7 @@ Search with `tessela query` before you reach for `rg` or `grep`: each hit is a b
 
 What `tessela query` does not do, so `rg` over the Markdown files is the fallback:
 
-- `--text` is one literal phrase, case-insensitive: no regex, no words in any order, and only one `--text` per query.
-- `--text` reads block text, not frontmatter, so `title`, `role`, `team` and other keys are not searched by words. `--ref` does match a page's `tags` and the links in its other frontmatter text.
+- `--text` is a literal phrase, case-insensitive, with no regex. Repeat `--text` or use `--words "a b c"` when every word must be there in any order. By default it reads block text only; add `--meta` to search page titles, every front matter value (`role`, `team`, ...) and headings too, returned as `page` and `heading` hits.
 - `--type` returns blocks, so a page with no body text is missing. `tessela index . --dir FOLDER --recursive --json` lists every page below a folder, with its title and type.
 - `--ref NAME` takes a page id, a title or an alias from a page's frontmatter `aliases`. An alias finds the page's backlinks plus the blocks that use the alias itself, but the page id does not find blocks that use an alias, and an alias that several pages share finds all of them. It also matches concepts nested under it (`--ref project` finds `project/tessela`). `--own` drops blocks that only inherit it from a parent item or heading.
 

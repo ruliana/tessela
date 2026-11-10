@@ -23,8 +23,13 @@ pub struct Query {
     pub any: bool,
     /// Match only a block's own refs, not those inherited from parent items and headings.
     pub own: bool,
-    /// Case-insensitive substring of the block text.
-    pub text: Option<String>,
+    /// Case-insensitive substrings the block text must all contain, so several phrases, or
+    /// words in any order, narrow the search. Empty means no text filter.
+    pub text: Vec<String>,
+    /// With `text`: also search what is not block text, and return it as `page` and
+    /// `heading` hits. A page matches on its title and every value in its front matter, a
+    /// heading on its text.
+    pub meta: bool,
     /// The page's frontmatter `type`.
     pub kind: Option<String>,
     /// A page ID, or a folder prefix when it ends with `/`.
@@ -119,7 +124,8 @@ impl Query {
             .iter()
             .map(|r| bundle.names_for(&normalize_concept(r)))
             .collect();
-        let text = self.text.as_ref().map(|t| t.to_lowercase());
+        let text: Vec<String> = self.text.iter().map(|t| t.to_lowercase()).collect();
+        let search_meta = self.meta && !text.is_empty();
         let unlinked = self.unlinked.as_ref().map(|name| Spec::new(bundle, name));
         let by_date = self.from.is_some() || self.to.is_some();
         let mut hits = Vec::new();
@@ -127,6 +133,7 @@ impl Query {
             if !self.page_matches(page) {
                 continue;
             }
+            let meta = search_meta.then(|| page.meta_text().to_lowercase());
             let page_in_range = by_date && page_date(page).is_some_and(|d| self.in_range(&d));
             let accepts = |hit: &Hit| {
                 let have = if self.own { &hit.refs } else { &hit.path_refs };
@@ -138,9 +145,13 @@ impl Query {
                     };
                 refs_ok
                     && self.task.is_none_or(|t| t.accepts(hit.task))
-                    && text
-                        .as_ref()
-                        .is_none_or(|t| hit.text.to_lowercase().contains(t))
+                    && {
+                        let have = match (&meta, hit.kind) {
+                            (Some(meta), HitKind::Page) => meta.clone(),
+                            _ => hit.text.to_lowercase(),
+                        };
+                        text.iter().all(|t| have.contains(t))
+                    }
                     && (!by_date || page_in_range || hit.dates.iter().any(|d| self.in_range(d)))
             };
 
@@ -155,7 +166,7 @@ impl Query {
             let mut found = Vec::new();
             // Pages and headings only exist to hold references, so they are only
             // returned when a concept is asked for.
-            if !wanted.is_empty() {
+            if !wanted.is_empty() || search_meta {
                 found.push(page_hit(page));
                 found.extend(page.headings.iter().map(|h| heading_hit(page, h)));
             }

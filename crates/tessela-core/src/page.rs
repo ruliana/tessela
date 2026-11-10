@@ -141,6 +141,24 @@ impl Page {
             .collect()
     }
 
+    /// The words of the frontmatter, for searching: every value (a title, a role, a list of
+    /// tags, numbers), one per line, without the keys.
+    pub fn meta_text(&self) -> String {
+        fn collect(value: &Value, out: &mut Vec<String>) {
+            match value {
+                Value::String(s) => out.push(s.clone()),
+                Value::Number(n) => out.push(n.to_string()),
+                Value::Bool(b) => out.push(b.to_string()),
+                Value::Sequence(items) => items.iter().for_each(|v| collect(v, out)),
+                Value::Mapping(m) => m.values().for_each(|v| collect(v, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.frontmatter.values().for_each(|v| collect(v, &mut out));
+        out.join("\n")
+    }
+
     /// Frontmatter `aliases` as written: the other names to look for in text.
     pub fn alias_names(&self) -> Vec<String> {
         match self.get("aliases") {
