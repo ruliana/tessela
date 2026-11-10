@@ -51,6 +51,15 @@ export interface PageMenuItem {
   run: (page: { path: string }) => unknown;
 }
 
+/** What a fence renderer is told: the text between the fence's lines and the page it is in. */
+export interface FenceArg {
+  body: string;
+  path: string;
+}
+
+/** Draws a fence's body: the result (text or a DOM node, or a promise of one) is shown under the fence. */
+export type FenceRender = (fence: FenceArg) => unknown;
+
 /**
  * What a mod puts in the backlinks of a page: a node of its own, drawn above the mentions page by
  * page (`first`) or below them. `taken` are handles of mentions it shows itself, so they are not
@@ -96,6 +105,7 @@ export class ModRegistry<V = unknown, E = unknown> {
   private pageMenu: Owned<PageMenuItem>[] = [];
   private listeners: Listener[] = [];
   private backlinkGroups: Owned<{ group: BacklinkGroup }>[] = [];
+  private fenceRenders = new Map<string, Owned<{ render: FenceRender }>>();
   readonly loaded: string[] = [];
   readonly failures: ModFailure[] = [];
   /** Told about every failure, so the window can say so. */
@@ -137,6 +147,20 @@ export class ModRegistry<V = unknown, E = unknown> {
       }),
     );
     return made.filter((c): c is BacklinkContent => c !== null);
+  }
+
+  /** A mod draws the code fences whose info string is `info`. Another mod's renderer for it is replaced. */
+  addFence(mod: string, info: string, render: FenceRender): void {
+    this.fenceRenders.set(info, { render, mod });
+  }
+
+  /** The renderer for the fences named `info`, if a mod gave one. */
+  fenceRenderer(info: string): FenceRender | undefined {
+    return this.fenceRenders.get(info)?.render;
+  }
+
+  hasFences(): boolean {
+    return this.fenceRenders.size > 0;
   }
 
   /** The mods' entries for the menu in a page's head. */
@@ -220,6 +244,7 @@ export class ModRegistry<V = unknown, E = unknown> {
     this.pageMenu = this.pageMenu.filter((i) => i.mod !== mod);
     this.listeners = this.listeners.filter((l) => l.mod !== mod);
     this.backlinkGroups = this.backlinkGroups.filter((g) => g.mod !== mod);
+    for (const [info, f] of this.fenceRenders) if (f.mod === mod) this.fenceRenders.delete(info);
   }
 
   fail(mod: string, message: string): void {

@@ -11,9 +11,10 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type BacklinkContent, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
 import { el } from "./dom";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
+import { fenceExtension, refreshFences } from "./fences";
 
 /** An extension a mod gives for each editor, told which page the editor shows. */
 export type PageExtension = (page: { path: string }) => Extension;
@@ -41,11 +42,15 @@ export interface ModHost {
   flush(): Promise<void>;
   /** A page changed place (`to`) or was deleted (`to` null): the window follows it. */
   moved(from: string, to: string | null): Promise<void>;
-  /** Shows a page in the window, at `line` when given. */
+  /** Shows a page, at `line` when given. */
   open(path: string, line?: number): Promise<void>;
 }
 
 export const host: ModHost = { toast: () => {}, current: () => null, flush: async () => {}, moved: async () => {}, open: async () => {} };
+
+// Whatever a fence's renderer shows may come from other pages: ask again when the notes change.
+registry.on("fences", "changed", () => refreshFences());
+registry.on("fences", "page-saved", () => refreshFences());
 
 function settingsOf(mod: string) {
   const key = `tessela.mod.${mod}`;
@@ -86,6 +91,8 @@ export interface ModContext {
   };
   /** What happens in the window; `on` returns the way to stop listening. */
   events: { on<N extends ModEventName>(name: N, listener: (payload: ModEvents[N]) => unknown): () => void };
+  /** Code fences drawn by a mod: under each closed fence whose info string is `info`, the editor shows what `render` gives for its body (a DOM node or text, or a promise of one). Nothing is written to the page. */
+  fences: { add(info: string, render: (fence: FenceArg) => Node | string | Promise<Node | string>): void };
   /**
    * Named places in the window. `add("page-menu", ...)` puts an entry in the menu in a page's head.
    * `mount("sidebar")` gives the element in the sidebar, under the places and above the recent pages
@@ -101,6 +108,8 @@ export interface ModContext {
   pages: {
     current(): string | null;
     flush(): Promise<void>;
+    /** Shows a page (at `line` when given), as clicking a link to it would. */
+    open(path: string, line?: number): Promise<void>;
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
     /** Shows a page (at `line` when given), as clicking a link to it would. */
@@ -122,6 +131,7 @@ function contextFor(mod: string): ModContext {
     settings: settingsOf(mod),
     ui: { dialog: (options) => openDialog(options), toast: (text, action) => host.toast(text, action) },
     events: { on: (name, listener) => registry.on(mod, name, listener) },
+    fences: { add: (info, render) => registry.addFence(mod, info, render) },
     slots: { add: (_slot, item) => registry.addPageMenuItem(mod, item), mount: () => ({ root: sidebarSlot }) },
     backlinks: { add: (group) => registry.addBacklinkGroup(mod, group) },
     pages: { current: () => host.current(), flush: () => host.flush(), open: (path, line) => host.open(path, line), moved: (from, to) => host.moved(from, to) },
@@ -157,5 +167,6 @@ export function modExtensions(path: string): Extension[] {
       return true;
     },
   }));
-  return [Prec.high(keymap.of(keys)), ...registry.editorExtensions().map((e) => (typeof e === "function" ? e({ path }) : e))];
+  const own = registry.hasFences() ? [fenceExtension(path, (info) => registry.fenceRenderer(info))] : [];
+  return [Prec.high(keymap.of(keys)), ...own, ...registry.editorExtensions().map((e) => (typeof e === "function" ? e({ path }) : e))];
 }

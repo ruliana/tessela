@@ -25,5 +25,6 @@ import "./acceptance/pages.mjs";
 import "./acceptance/attach.mjs";
 import "./acceptance/folding.mjs";
 import "./acceptance/agenda.mjs";
+import "./acceptance/livelists.mjs";
 
 await runAll();

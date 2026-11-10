@@ -393,6 +393,15 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .dialog-actions button:disabled { opacity: 0.45; cursor: default; }
 .dialog-actions .primary.danger { background: var(--warn); }
 
+/* Live lists (the live-lists mod): rows drawn under a ```tessela fence. */
+.tessela-live { margin: 2px 0 10px; padding: 4px 0 4px 10px; border-left: 2px solid var(--accent); font: 12.5px/1.55 var(--mono); color: var(--text); }
+.tessela-live:empty { display: none; }
+.tessela-row { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tessela-link { cursor: pointer; }
+.tessela-link:hover { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.tessela-empty { color: var(--muted); }
+.tessela-error { color: var(--warn); }
+
 /* The agenda mod: the Due group in the backlinks, and the month strip in the sidebar. */
 .bl-group.due h3 { font: 600 15px/1.25 var(--serif); }
 .bl-group.due .task { display: flex; align-items: flex-start; gap: 6px; }
