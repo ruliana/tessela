@@ -2,24 +2,22 @@
 // command (and filters); the editor draws the rows under it and never writes them into the page.
 // `tessela fence` runs the body, the same way an agent would run it.
 
+import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { type ListView, listOf } from "./list";
 
-const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ""): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), { className, textContent: text });
-
 export default function (ctx: ModContext): void {
   const draw = (view: ListView): HTMLElement => {
-    if (view.kind === "error") return node("div", "tessela-error", view.message);
-    if (view.kind === "empty") return node("div", "tessela-empty", "No rows.");
-    const list = node("div", "tessela-rows");
+    if (view.kind === "error") return el("div", { class: "tessela-error" }, view.message);
+    if (view.kind === "empty") return el("div", { class: "tessela-empty" }, "No rows.");
+    const list = el("div", { class: "tessela-rows" });
     for (const row of view.rows) {
-      const el = node("div", row.open ? "tessela-row tessela-link" : "tessela-row", row.text);
+      const item = el("div", { class: row.open ? "tessela-row tessela-link" : "tessela-row" }, row.text);
       const { open } = row;
-      if (open) el.addEventListener("click", () => void ctx.pages.open(open.path, open.line));
-      list.append(el);
+      if (open) item.addEventListener("click", () => void ctx.pages.open(open.path, open.line));
+      list.append(item);
     }
-    if (view.more > 0) list.append(node("div", "tessela-empty", `and ${view.more} more`));
+    if (view.more > 0) list.append(el("div", { class: "tessela-empty" }, `and ${view.more} more`));
     return list;
   };
 

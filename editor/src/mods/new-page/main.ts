@@ -3,13 +3,11 @@
 // copies the template. It takes the place of the window's own name box under the id `new-page`, so
 // the sidebar button, Ctrl+N and the palette all come here. Nothing is remembered between times.
 
+import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { newPagePath } from "../../shared/pages";
 import { cliOf } from "../kit";
 import { type PageKind, type TemplateEntry, PLAIN, kindsFrom, moveChoice } from "./plan";
-
-const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), { className, textContent: text });
 
 export default function (ctx: ModContext): void {
   /** The types to choose from, read when the dialog opens so a template written since is there. */
@@ -34,14 +32,14 @@ export default function (ctx: ModContext): void {
     const list = await kinds();
     let chosen = PLAIN;
 
-    const input = node("input", "search");
+    const input = el("input", { class: "search" });
     input.id = "newpage-input";
     input.placeholder = "Name, e.g. project/idea";
     input.spellcheck = false;
-    const error = node("p", "error");
+    const error = el("p", { class: "error" });
     error.id = "newpage-error";
     error.hidden = true;
-    const picker = node("div", "newpage-types");
+    const picker = el("div", { class: "newpage-types" });
     picker.setAttribute("role", "radiogroup");
 
     const rows = new Map<string, HTMLButtonElement>();
@@ -54,11 +52,11 @@ export default function (ctx: ModContext): void {
     };
     if (list.length > 1) {
       for (const k of list) {
-        const row = node("button", "newpage-type");
+        const row = el("button", { class: "newpage-type" });
         row.type = "button";
         row.setAttribute("role", "radio");
-        row.append(node("span", "newpage-name", k.label));
-        if (k.description) row.append(node("span", "newpage-description", k.description));
+        row.append(el("span", { class: "newpage-name" }, k.label));
+        if (k.description) row.append(el("span", { class: "newpage-description" }, k.description));
         row.addEventListener("click", () => {
           choose(k.type);
           input.focus();
@@ -69,12 +67,12 @@ export default function (ctx: ModContext): void {
       mark();
     }
 
-    const body = node("div", "newpage-body");
+    const body = el("div", { class: "newpage-body" });
     body.append(
       input,
-      node("small", "", "Use / for folders. Enter creates the page, Esc cancels."),
+      el("small", {}, "Use / for folders. Enter creates the page, Esc cancels."),
       error,
-      ...(list.length > 1 ? [node("p", "newpage-label", "Type"), picker] : []),
+      ...(list.length > 1 ? [el("p", { class: "newpage-label" }, "Type"), picker] : []),
     );
     const dialog = ctx.ui.dialog({ title: "New page", content: body, actions: [{ id: "ok", label: "Create", primary: true, disabled: true }] });
 

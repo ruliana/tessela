@@ -4,12 +4,10 @@
 // A page that is new can be deleted and one that was deleted written again, each page as a whole.
 // Everything is read and written through `ctx.cli`; note text goes in as text, never as HTML.
 
+import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { cliOf, failureText } from "../kit";
 import { type Change, type ChangesAnswer, type PageChange, keptKey, putBack, remember, restoredPage, summary } from "./plan";
-
-const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), { className, textContent: text });
 
 const MARKS = { added: "+", removed: "−", changed: "~" } as const;
 
@@ -25,7 +23,7 @@ export default function (ctx: ModContext): void {
   let redraw: () => Promise<void> = async () => {};
 
   const button = (className: string, text: string, run: () => void, title?: string): HTMLButtonElement => {
-    const b = node("button", className, text);
+    const b = el("button", { class: className }, text);
     if (title) b.title = title;
     b.addEventListener("click", run);
     return b;
@@ -68,7 +66,7 @@ export default function (ctx: ModContext): void {
     if (!read.exists || !read.hash) return redraw();
     const dialog = ctx.ui.dialog({
       title: `Delete ${page.path}?`,
-      content: node("p", "The page is new since the notes were compared with git, so putting it back means deleting it."),
+      content: el("p", {}, "The page is new since the notes were compared with git, so putting it back means deleting it."),
       actions: [{ id: "ok", label: "Delete", primary: true, danger: true }],
     });
     if ((await dialog.closed) !== "ok") return;
@@ -82,26 +80,26 @@ export default function (ctx: ModContext): void {
     const whole = page.status !== "modified";
     const where = [...change.heading_path, ...(change.unit === "properties" ? ["Properties"] : [])].join(" › ");
     const main = button("change-main", "", () => void ctx.pages.open(page.path, change.line), `${page.path}:${change.line}`);
-    if (where) main.append(node("span", "change-where", where));
-    if (change.kind === "changed" && change.old_text !== undefined) main.append(node("span", "change-old", change.old_text));
-    main.append(node("span", "change-text", change.text));
-    const actions = node("div", "change-actions");
+    if (where) main.append(el("span", { class: "change-where" }, where));
+    if (change.kind === "changed" && change.old_text !== undefined) main.append(el("span", { class: "change-old" }, change.old_text));
+    main.append(el("span", { class: "change-text" }, change.text));
+    const actions = el("div", { class: "change-actions" });
     if (!whole) {
       if (!kept) actions.append(button("change-keep", "Keep", () => keep([keptKey(page.path, change)]), "Leave it as it is and hide it"));
       actions.append(button("change-revert", "Put back", () => void revert(page.path, change), "Write the page again without this change"));
     }
-    const box = node("div", `change ${change.kind}${kept ? " kept" : ""}`);
-    box.append(node("span", "change-mark", MARKS[change.kind]), main, actions);
+    const box = el("div", { class: `change ${change.kind}${kept ? " kept" : ""}` });
+    box.append(el("span", { class: "change-mark" }, MARKS[change.kind]), main, actions);
     return box;
   }
 
   function section(page: PageChange, shown: { change: Change; kept: boolean }[]): HTMLElement {
-    const box = node("section", "changes-page");
+    const box = el("section", { class: "changes-page" });
     box.dataset.path = page.path;
-    const head = node("div", "changes-page-head");
+    const head = el("div", { class: "changes-page-head" });
     const title = button("changes-page-title", page.path.replace(/\.md$/, ""), () => void ctx.pages.open(page.path), page.path);
-    head.append(title, node("span", `changes-status ${page.status}`, { added: "new", modified: "modified", deleted: "deleted" }[page.status]));
-    const actions = node("div", "change-actions");
+    head.append(title, el("span", { class: `changes-status ${page.status}` }, { added: "new", modified: "modified", deleted: "deleted" }[page.status]));
+    const actions = el("div", { class: "change-actions" });
     const keys = shown.filter((s) => !s.kept).map((s) => keptKey(page.path, s.change));
     if (keys.length > 0) actions.append(button("changes-page-keep", "Keep all", () => keep(keys), "Leave the page as it is and hide its changes"));
     if (page.status === "added") actions.append(button("changes-page-revert", "Put back", () => void discard(page), "Delete the page"));
@@ -112,15 +110,15 @@ export default function (ctx: ModContext): void {
   }
 
   function header(since: string): HTMLElement {
-    const input = Object.assign(node("input", "changes-since"), { value: since, spellcheck: false, placeholder: "HEAD" });
+    const input = el("input", { class: "changes-since", value: since, spellcheck: false, placeholder: "HEAD" });
     input.setAttribute("aria-label", "Compare with");
     const apply = (rev: string) => void ctx.views.open("changes", rev.trim() === "" ? "HEAD" : rev.trim());
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") apply(input.value);
     });
-    const box = node("div", "changes-head");
+    const box = el("div", { class: "changes-head" });
     box.append(
-      node("span", "changes-label", "Compared with"),
+      el("span", { class: "changes-label" }, "Compared with"),
       input,
       button("changes-preset", "Last commit", () => apply("HEAD"), "What is not committed yet"),
       button("changes-preset", "Before last pull", () => apply("ORIG_HEAD"), "Since before the last pull or merge"),
@@ -139,12 +137,12 @@ export default function (ctx: ModContext): void {
     let body = container.querySelector<HTMLElement>(".changes-body");
     // The head is made once, so a redraw while a revision is being typed does not take the input away.
     if (!body || !container.querySelector(".changes-since")) {
-      body = node("div", "changes-body");
+      body = el("div", { class: "changes-body" });
       container.replaceChildren(header(since), body);
     }
     const answer = await cli<ChangesAnswer>(["changes", "--since", since]);
     if (mine !== run) return;
-    if (!answer.ok) return void body.replaceChildren(node("p", "changes-error", failureText(answer)));
+    if (!answer.ok) return void body.replaceChildren(el("p", { class: "changes-error" }, failureText(answer)));
 
     const kept = new Set(keptNow());
     const pages = answer.pages
@@ -156,7 +154,7 @@ export default function (ctx: ModContext): void {
       .map((p) => ({ page: p.page, shown: showKept ? p.all : p.all.filter((c) => !c.kept) }))
       .filter((p) => p.shown.length > 0);
 
-    const line = node("p", "changes-summary", summary(visible.length, open, hidden));
+    const line = el("p", { class: "changes-summary" }, summary(visible.length, open, hidden));
     if (hidden > 0) {
       const toggle = button("changes-show-kept", showKept ? "Hide kept" : "Show kept", () => {
         showKept = !showKept;
