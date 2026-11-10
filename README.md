@@ -218,6 +218,10 @@ The app's own features are mods too (`editor/src/mods/NAME/main.ts`, built to `d
 of the same name in the config folder replaces them. `pages` renames, moves and deletes the open
 page ("Rename page…", "Move page…" and "Delete page…" in the palette and in the page's ⋯ menu), shows
 what will change first, and offers to rename the file when its title was edited.
+`fold` folds and zooms (Ctrl+Up and Ctrl+Down, Ctrl+Alt+Right and Left; see conventions §11): it keeps
+which blocks are folded in its settings, by page, and never in the notes. A mod can hand
+`ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
+the page that editor shows.
 
 To build an app that carries its own `tessela` binary:
 
