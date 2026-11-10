@@ -95,6 +95,29 @@ export interface BacklinkContent {
 /** Draws a group for the open page, or nothing (null) when the page has none. */
 export type BacklinkGroup = (page: { path: string }) => BacklinkContent | null | undefined | Promise<BacklinkContent | null | undefined>;
 
+/** What the window asks of a mod that takes the sidebar search over. */
+export interface SearchOverride {
+  /**
+   * Fills `results` for what was typed in the search box. Answer true to have `results` shown, false
+   * to hide it. `stale()` turns true once something else has been typed, so a slow answer can stop.
+   */
+  run(arg: { input: string; results: HTMLElement; stale: () => boolean }): boolean | Promise<boolean>;
+  /** The part of what was typed that filters the page names in the sidebar (all of it when left out). */
+  names?(input: string): string;
+}
+
+/**
+ * The built-in contributions a mod can replace, by id (`ctx.override.add(id, replacement)`). A
+ * built-in command is replaced by adding a command with its id; these are the ones that are not
+ * commands.
+ */
+export interface ModOverrides {
+  /** The search under the sidebar's search box. */
+  search: SearchOverride;
+}
+
+export type OverrideId = keyof ModOverrides;
+
 export interface ModFailure {
   mod: string;
   message: string;
@@ -128,6 +151,7 @@ export class ModRegistry<V = unknown, E = unknown> {
   private viewById = new Map<string, Owned<ModView>>();
   private backlinkGroups: Owned<{ group: BacklinkGroup }>[] = [];
   private fenceRenders = new Map<string, Owned<{ render: FenceRender }>>();
+  private overrides = new Map<OverrideId, Owned<{ replacement: ModOverrides[OverrideId] }>>();
   readonly loaded: string[] = [];
   readonly failures: ModFailure[] = [];
   /** Told about every failure, so the window can say so. */
@@ -182,6 +206,21 @@ export class ModRegistry<V = unknown, E = unknown> {
       }),
     );
     return made.filter((c): c is BacklinkContent => c !== null);
+  }
+
+  /** A mod replaces a built-in contribution (see `ModOverrides`). Of two mods that replace the same one, the one loaded last wins. */
+  addOverride<K extends OverrideId>(mod: string, id: K, replacement: ModOverrides[K]): void {
+    this.overrides.set(id, { replacement, mod });
+  }
+
+  /** The mod that holds the override `id`. */
+  overrideOwner(id: OverrideId): string | undefined {
+    return this.overrides.get(id)?.mod;
+  }
+
+  /** What a mod put in place of the built-in contribution `id`, if one did. */
+  override<K extends OverrideId>(id: K): ModOverrides[K] | undefined {
+    return this.overrides.get(id)?.replacement as ModOverrides[K] | undefined;
   }
 
   /** A mod draws the code fences whose info string is `info`. Another mod's renderer for it is replaced. */
@@ -281,6 +320,7 @@ export class ModRegistry<V = unknown, E = unknown> {
     for (const [id, v] of this.viewById) if (v.mod === mod) this.viewById.delete(id);
     this.backlinkGroups = this.backlinkGroups.filter((g) => g.mod !== mod);
     for (const [info, f] of this.fenceRenders) if (f.mod === mod) this.fenceRenders.delete(info);
+    for (const [id, o] of this.overrides) if (o.mod === mod) this.overrides.delete(id);
   }
 
   fail(mod: string, message: string): void {

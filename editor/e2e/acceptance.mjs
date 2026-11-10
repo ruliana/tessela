@@ -29,5 +29,6 @@ import "./acceptance/agenda.mjs";
 import "./acceptance/livelists.mjs";
 import "./acceptance/changes.mjs";
 import "./acceptance/folders.mjs";
+import "./acceptance/searchmod.mjs";
 
 await runAll();

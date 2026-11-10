@@ -11,7 +11,7 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModOverrides, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
 import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { el } from "./dom";
@@ -52,6 +52,8 @@ export interface ModHost {
   card(path: string, options?: { menu?: boolean }): Card;
   /** Makes the right column visible. */
   reveal(): void;
+  /** Puts `text` in the page being worked on, at the cursor; false when there is no page to put it in. */
+  insert(text: string, options?: { block?: boolean }): boolean;
   /** Shows a mod's view in the middle of the window. */
   showView(id: string, arg?: string): Promise<void>;
 }
@@ -66,6 +68,7 @@ export const host: ModHost = {
     throw new Error("The window has no cards yet");
   },
   reveal: () => {},
+  insert: () => false,
   showView: async () => {},
 };
 
@@ -130,9 +133,16 @@ export interface ModContext {
   };
   /** Groups in the right-hand backlinks of the open page: `first` puts one above the mentions, and `taken` (handles) keeps those mentions from being listed twice. */
   backlinks: { add(group: (page: { path: string }) => BacklinkContent | null | undefined | Promise<BacklinkContent | null | undefined>): void };
+  /**
+   * Replaces a built-in contribution by its id, as `ModOverrides` lists them (today the sidebar
+   * `search`). A mod's command with the id of a built-in one replaces that command in the same way.
+   */
+  override: { add<K extends keyof ModOverrides>(id: K, replacement: ModOverrides[K]): void };
   /** The pages in the window. */
   pages: {
     current(): string | null;
+    /** Puts `text` in the page being worked on, at the cursor; false when no page is open. With `block`, `text` starts a line of its own. */
+    insert(text: string, options?: { block?: boolean }): boolean;
     flush(): Promise<void>;
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
@@ -169,8 +179,10 @@ function contextFor(mod: string): ModContext {
       mount: (slot) => (slot === "sidebar" ? { root: sidebarSlot, reveal: () => {} } : { root: sideTop, reveal: () => host.reveal() }),
     },
     backlinks: { add: (group) => registry.addBacklinkGroup(mod, group) },
+    override: { add: (id, replacement) => registry.addOverride(mod, id, replacement) },
     pages: {
       current: () => host.current(),
+      insert: (text, options) => host.insert(text, options),
       flush: () => host.flush(),
       moved: (from, to) => host.moved(from, to),
       open: (path, line) => host.open(path, line),
