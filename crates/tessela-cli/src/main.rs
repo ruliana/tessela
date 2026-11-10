@@ -12,6 +12,7 @@ use std::process::ExitCode;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use serde::Serialize;
 use tessela_core::edit::{self, API_VERSION, EditError, ErrorCode, Expect, FsStore, PageStore};
+use tessela_core::related;
 use tessela_core::{
     Bundle, HitKind, Linter, Query, Severity, TaskFilter, index, logseq, vocabulary,
 };
@@ -321,6 +322,16 @@ enum Command {
         #[arg(long, default_value = "HEAD")]
         since: String,
     },
+    /// Pages mentioned together with a page, and the home pages that lead to it
+    Related {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page or concept, e.g. `project/tessela` or `machine learning`
+        name: String,
+        /// List at most this many related pages
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
     /// Run the body of a ```tessela fence (a live list): a read-only command, then filters
     Fence {
         #[command(flatten)]
@@ -486,6 +497,26 @@ fn main() -> ExitCode {
             let from = edit::existing_path(&page)?;
             let to = edit::move_target(&from, &dest)?;
             moved(store, &from, &to, expect.as_deref(), dry_run)
+        }),
+        Command::Related { edit, name, limit } => run_edit(&edit, |_| {
+            let bundle = Bundle::load(&edit.bundle)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
+            let related = related::related(&bundle, &name, limit);
+            Ok(Done::new(
+                &related,
+                |r| {
+                    let mut out = String::new();
+                    for h in &r.chain {
+                        out.push_str(&format!("home: {} ({})\n", h.title, h.path));
+                    }
+                    for t in &r.together {
+                        let at = t.page.as_ref().map_or("no page", |p| p.path.as_str());
+                        out.push_str(&format!("{}  ({at})  {}\n", t.concept, t.reason));
+                    }
+                    out
+                },
+                true,
+            ))
         }),
         Command::Changes { edit, since } => run_edit(&edit, |_| {
             let out = changes::run(&edit.bundle, &since)?;

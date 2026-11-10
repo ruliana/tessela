@@ -331,6 +331,7 @@ fn the_schema_describes_what_the_commands_print() {
         "move",
         json(&["move", "fresh.md", "later/", "-b", d, "--json"]),
     );
+    check("related", json(&["related", "tessela", "-b", d, "--json"]));
     check("schema", doc.clone());
 
     // `changes` needs a git repository with something changed in it.
