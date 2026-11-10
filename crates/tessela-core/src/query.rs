@@ -101,7 +101,7 @@ pub struct Hit {
     /// Blocks that are checkbox items: `open` or `done`.
     pub task: Option<TaskState>,
     /// With `unlinked`: where the concept is named in this block.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mentions: Vec<Mention>,
     /// The hit is on a `home.md` page. A link from a home page marks the target as
     /// important, so these hits come first (spec §5).
