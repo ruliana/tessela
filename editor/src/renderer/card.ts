@@ -31,6 +31,8 @@ export interface CardDeps {
   /** Whether Markdown is shown rendered outside the block being edited. */
   livePreview: () => boolean;
   onTogglePreview: () => void;
+  /** Which blocks of a page are folded, as the window remembers them. */
+  folds: { read: (path: string) => string[]; write: (path: string, keys: string[]) => void };
 }
 
 export interface Card {
@@ -48,6 +50,10 @@ export interface Card {
   /** The number of words in the page, front matter excluded. */
   words(): number;
   setLivePreview(on: boolean): void;
+  /** Shows the outline down to a level (1 is the top lines only); null opens every fold. */
+  foldToLevel(level: number | null): void;
+  zoomIn(): void;
+  zoomOut(): void;
   destroy(): void;
 }
 
@@ -113,6 +119,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     pageName: () => pageId(path).split("/").pop() ?? "",
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
+    folds: { read: () => deps.folds.read(path), write: (keys) => deps.folds.write(path, keys) },
   });
 
   function setStatus(state: "saved" | "dirty" | "conflict", text: string): void {
@@ -214,6 +221,9 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       return (body.match(/\S+/g) ?? []).length;
     },
     setLivePreview: (on) => editor.setLivePreview(on),
+    foldToLevel: (level) => editor.foldToLevel(level),
+    zoomIn: () => editor.zoomIn(),
+    zoomOut: () => editor.zoomOut(),
     destroy() {
       gone = true;
       window.clearTimeout(saveTimer);

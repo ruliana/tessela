@@ -175,6 +175,31 @@ function remember(path: string): void {
   }
 }
 
+const FOLDS_KEY = "tessela.folds";
+
+/** The folded blocks of every page of this notes folder, by page path. Kept with the window, not in the notes. */
+function readFolds(): Record<string, string[]> {
+  try {
+    const all: unknown = JSON.parse(localStorage.getItem(`${FOLDS_KEY}:${root}`) ?? "{}");
+    return all && typeof all === "object" && !Array.isArray(all) ? (all as Record<string, string[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const folds = {
+  read(path: string): string[] {
+    const keys = readFolds()[path];
+    return Array.isArray(keys) ? keys.filter((k): k is string => typeof k === "string") : [];
+  },
+  write(path: string, keys: string[]): void {
+    const all = readFolds();
+    if (keys.length > 0) all[path] = keys;
+    else delete all[path];
+    store(`${FOLDS_KEY}:${root}`, JSON.stringify(all));
+  },
+};
+
 function setRecentShown(value: string): void {
   recentShown = recentCount(value);
   recentSize.value = String(recentShown);
@@ -725,6 +750,12 @@ function commandList(): Command[] {
     { id: "root", label: "Change the notes folder…", hint: `${key} Shift O`, run: () => void changeRoot() },
     { id: "preview", label: livePreview ? "Show the Markdown as written" : "Show the Markdown rendered", hint: `${key} Alt M`, run: togglePreview },
     { id: "focus", label: focusMode ? "Leave focus mode" : "Focus on the current block", hint: `${key} .`, run: toggleFocus },
+    { id: "fold-1", label: "Fold the page to level 1", run: () => active?.foldToLevel(1) },
+    { id: "fold-2", label: "Fold the page to level 2", run: () => active?.foldToLevel(2) },
+    { id: "fold-3", label: "Fold the page to level 3", run: () => active?.foldToLevel(3) },
+    { id: "unfold-all", label: "Unfold the whole page", run: () => active?.foldToLevel(null) },
+    { id: "zoom-in", label: "Zoom in on the current block", hint: `${key} Alt →`, run: () => active?.zoomIn() },
+    { id: "zoom-out", label: "Zoom out", hint: `${key} Alt ←`, run: () => active?.zoomOut() },
     { id: "sidebar", label: panels.sidebar ? "Hide the sidebar" : "Show the sidebar", hint: `${key} \\`, run: () => togglePanel("sidebar") },
     { id: "backlinks", label: panels.backlinks ? "Hide the backlinks" : "Show the backlinks", hint: `${key} Shift \\`, run: () => togglePanel("backlinks") },
     { id: "theme", label: `Theme: ${label(theme)}, change`, run: cycleTheme },
@@ -803,6 +834,7 @@ function cardDeps() {
     onOpenExternal: (url: string) => void api.openExternal(url),
     livePreview: () => livePreview,
     onTogglePreview: togglePreview,
+    folds,
   };
 }
 
