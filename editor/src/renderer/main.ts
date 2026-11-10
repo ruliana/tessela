@@ -32,7 +32,7 @@ import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
 import { describeMods } from "../shared/mods";
-import { host, modExtensions, modsInfo, loadMods, registry, sidebarSlot } from "./mods";
+import { host, modExtensions, modsInfo, loadMods, registry, sideTop, sidebarSlot, type ModHost } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -198,6 +198,8 @@ function setRecentShown(value: string): void {
 type View = { kind: "page"; path: string } | { kind: "journals"; count: number };
 let view: View | null = null;
 let cards: Card[] = [];
+/** Cards that mods keep beside these (a peek): they save and follow the disk like the others. */
+const modCards = new Set<Card>();
 /** The card the user is working in; backlinks follow it. */
 let active: Card | null = null;
 
@@ -212,6 +214,8 @@ async function start(): Promise<void> {
   stopListening?.();
   stopListening = undefined;
   if (cards.length > 0) await closeCards();
+  registry.emit("bundle-opened", {});
+  for (const c of [...modCards]) c.destroy();
   pages = [];
   vocab = [];
   problems = [];
@@ -273,6 +277,7 @@ let problemsToggle: HTMLButtonElement;
 let problemsOpen = false;
 let stackEl: HTMLElement;
 let backlinksEl: HTMLElement;
+let backlinksBody: HTMLElement;
 let previewButton: HTMLElement | undefined;
 let recentEl: HTMLElement;
 let recentList: HTMLElement;
@@ -490,7 +495,8 @@ function buildShell(bundle: string): void {
   );
 
   stackEl = el("div", { class: "stack", id: "stack" });
-  backlinksEl = el("aside", { class: "backlinks", id: "backlinks" });
+  backlinksBody = el("div", { class: "backlinks-body" });
+  backlinksEl = el("aside", { class: "backlinks", id: "backlinks" }, sideTop, backlinksBody);
   shellEl = el("div", { class: "shell" }, sidebar, el("main", { class: "pane" }, stackEl), backlinksEl, strip, problemsEl);
   app.replaceChildren(shellEl);
   applyLayout();
@@ -923,7 +929,7 @@ async function openAt(hit: Hit): Promise<void> {
 async function onChanged(paths: string[]): Promise<void> {
   registry.emit("changed", { paths });
   void refreshIndex();
-  await Promise.all(cards.map((c) => c.diskChanged(paths)));
+  await Promise.all([...cards, ...modCards].map((c) => c.diskChanged(paths)));
   await renderBacklinks();
 }
 
@@ -967,7 +973,7 @@ async function renderBacklinks(): Promise<void> {
   const head = el("h2", { class: "title" }, `Backlinks (${total + claimed})`);
   const nodes = (first: boolean) => contents.filter((c) => !!c.first === first).map((c) => c.node as Node);
   if (total + claimed === 0 && contents.length === 0) {
-    backlinksEl.replaceChildren(head, el("p", { class: "empty" }, "Nothing mentions this page yet."));
+    backlinksBody.replaceChildren(head, el("p", { class: "empty" }, "Nothing mentions this page yet."));
     return;
   }
   const pages = byPage.size;
@@ -998,7 +1004,7 @@ async function renderBacklinks(): Promise<void> {
       }),
     );
   });
-  backlinksEl.replaceChildren(head, ...nodes(true), sub, ...groups, ...nodes(false));
+  backlinksBody.replaceChildren(head, ...nodes(true), sub, ...groups, ...nodes(false));
 }
 
 /** Where in its page a hit sits: the headings above it, or what the hit is when it is not a paragraph. */
@@ -1029,10 +1035,25 @@ async function pageMoved(from: string, to: string | null): Promise<void> {
 Object.assign(host, {
   toast: showNotice,
   current: currentPath,
-  flush: async () => void (await Promise.all(cards.map((c) => c.flush()))),
+  flush: async () => void (await Promise.all([...cards, ...modCards].map((c) => c.flush()))),
   moved: pageMoved,
-  open: (path: string, line?: number) => showPage(path, line),
-});
+  open: showPage,
+  card(path, options) {
+    const card = createCard(path, cardDeps(), options);
+    modCards.add(card);
+    const destroy = card.destroy;
+    return Object.assign(card, {
+      destroy() {
+        modCards.delete(card);
+        destroy();
+      },
+    });
+  },
+  reveal() {
+    if (panels.backlinks) return;
+    togglePanel("backlinks");
+  },
+} satisfies ModHost);
 
 // A command of a mod that fails is said so; the rest of the window goes on.
 registry.onFailure = (f) => {

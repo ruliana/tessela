@@ -41,6 +41,8 @@ export interface ModEvents {
   "title-edited": { path: string; from: string; to: string };
   /** Pages changed on disk (by an agent, git or the CLI). */
   changed: { paths: string[] };
+  /** A notes folder was opened (or another one chosen): what a mod holds of the old one is stale. */
+  "bundle-opened": Record<string, never>;
 }
 
 export type ModEventName = keyof ModEvents;
