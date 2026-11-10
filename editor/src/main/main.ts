@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
 import { relativeInside, resolveImage, resolveInside } from "./files";
-import { addPageVia, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
+import { addPageVia, cliInput, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
 import { cliArgv, configFolder, listMods, resolveModFile } from "./mods";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
@@ -144,7 +144,7 @@ function registerIpc(): void {
   ipcMain.handle("mods", () => listMods(config(), modsDisabled, bundledMods));
   // For mods: any tessela command on the open folder (see Api.cli).
   ipcMain.handle("cli", (_e, argv: unknown, input: unknown) =>
-    cliVia(tesselaBin(), needBundle(), cliArgv(argv), typeof input === "string" ? input : ""),
+    cliVia(tesselaBin(), needBundle(), cliArgv(argv), cliInput(input)),
   );
 }
 
