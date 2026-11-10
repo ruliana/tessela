@@ -75,3 +75,41 @@ describe("the mods that come with the app", () => {
     expect(() => resolveModFile(config, "other", "../pages/main.js", bundled)).toThrow();
   });
 });
+
+describe("AGENTS.md in the config folder", () => {
+  it("is written when missing, kept up to date while it carries the marker, and left alone once the person owns it", async () => {
+    const { mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { AGENTS_MARKER, installAgents } = await import("../src/main/mods");
+    const folder = path.join(mkdtempSync(path.join(tmpdir(), "tessela-agents-")), "not-yet-there");
+    const file = path.join(folder, "AGENTS.md");
+    installAgents(folder, "# Mods v1\n");
+    expect(readFileSync(file, "utf8")).toBe(`${AGENTS_MARKER}\n\n# Mods v1\n`);
+    installAgents(folder, "# Mods v2\n");
+    expect(readFileSync(file, "utf8")).toBe(`${AGENTS_MARKER}\n\n# Mods v2\n`);
+    writeFileSync(file, "# My own notes for agents\n");
+    installAgents(folder, "# Mods v3\n");
+    expect(readFileSync(file, "utf8")).toBe("# My own notes for agents\n");
+  });
+
+  it("does not throw when the folder cannot be written", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { installAgents } = await import("../src/main/mods");
+    const plainFile = path.join(mkdtempSync(path.join(tmpdir(), "tessela-agents-")), "file");
+    writeFileSync(plainFile, "");
+    expect(() => installAgents(path.join(plainFile, "inside"), "x")).not.toThrow();
+  });
+
+  it("is the mod-writing skill without its front matter", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const { agentsText } = await import("../src/main/mods");
+    const skill = readFileSync(path.resolve(import.meta.dirname, "../../skills/tessela-mods/SKILL.md"), "utf8");
+    const text = agentsText(skill);
+    expect(text.startsWith("# Writing a mod for the Tessela editor")).toBe(true);
+    expect(text).not.toContain("name: tessela-mods");
+  });
+});
