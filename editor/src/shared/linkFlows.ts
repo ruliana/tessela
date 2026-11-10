@@ -71,6 +71,32 @@ export function choicesFor(pages: LinkPage[], query: string, limit = 8): LinkCho
   return (ranked[0]?.s ?? 0) >= 60 ? [...found, create] : [create, ...found];
 }
 
+export interface BracketSearch {
+  /** Where the `[` is in the text before the cursor. */
+  start: number;
+  /** What was typed after it, to look for a page by. */
+  query: string;
+  /** How many characters after the cursor go with the brackets: the rest of the text and the `]` closeBrackets added. */
+  closing: number;
+}
+
+/**
+ * A single `[` followed by letters is a search for a page: `[dai` offers "Daily TODO", and the
+ * choice becomes `[Daily TODO](/daily-todo.md)`. It is not one for a task box (`[ ]`, `[x]`),
+ * an image (`![`), text already followed by `(` (an existing link), or a tag.
+ */
+export function bracketSearch(before: string, after: string): BracketSearch | null {
+  const m = /\[([^\][\n]*)$/.exec(before);
+  if (!m) return null;
+  const query = m[1] ?? "";
+  const prev = before[m.index - 1] ?? "";
+  if (prev === "[" || prev === "!") return null;
+  if (query.trim() === "" || /^[xX]$/.test(query.trim()) || query.startsWith("#")) return null;
+  const rest = /^[^\][\n]*\]/.exec(after);
+  if (rest !== null && after[rest[0].length] === "(") return null;
+  return { start: m.index, query, closing: rest?.[0].length ?? 0 };
+}
+
 const WEB_ADDRESS = /^(?:https?:\/\/|mailto:)\S+$/i;
 
 /** Pasting an address over selected text makes the selection the link text. */

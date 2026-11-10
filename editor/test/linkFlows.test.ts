@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { choicesFor, linkPages, pasteLink, titleOf } from "../src/shared/linkFlows";
+import { bracketSearch, choicesFor, linkPages, pasteLink, titleOf } from "../src/shared/linkFlows";
 import { PAGES, SCENARIOS, WAYS, measure, slips, table, type Way } from "./support/bench";
 
 const way = (id: string): Way => WAYS.find((w) => w.id === id)!;
@@ -37,7 +37,7 @@ describe("the measurement itself", () => {
 });
 
 /** The ways that are new: each must beat typing it all, wherever it claims to help. */
-const NEW_WAYS = ["wikilink", "ctrlL", "titleFirst", "paste"];
+const NEW_WAYS = ["bracket", "ctrlL", "paste"];
 
 describe.each(NEW_WAYS)("%s", (id) => {
   const helpedIn = SCENARIOS.filter((sc) => measure(way(id), sc).helps);
@@ -61,7 +61,7 @@ describe.each(NEW_WAYS)("%s", (id) => {
 });
 
 describe("a page that does not exist yet", () => {
-  it.each(["wikilink", "ctrlL", "titleFirst"])("%s links to it, and the path comes from the words", (id) => {
+  it.each(["bracket", "ctrlL"])("%s links to it, and the path comes from the words", (id) => {
     const m = measure(way(id), scenario("newPage"));
     expect(m.works).toBe(true);
     expect(m.pathLetters).toBe(0);
@@ -76,10 +76,9 @@ describe("a page that does not exist yet", () => {
 });
 
 describe("a page whose file name is not its title", () => {
-  it("is found by its title with the new pickers, and only by its file name today", () => {
-    expect(measure(way("wikilink"), scenario("titleDiffers")).neededFileName).toBe(false);
+  it("is found by its title with the new searches, and only by its file name today", () => {
+    expect(measure(way("bracket"), scenario("titleDiffers")).neededFileName).toBe(false);
     expect(measure(way("ctrlL"), scenario("titleDiffers")).neededFileName).toBe(false);
-    expect(measure(way("titleFirst"), scenario("titleDiffers")).neededFileName).toBe(false);
     expect(measure(way("current"), scenario("titleDiffers")).neededFileName).toBe(true);
   });
 });
@@ -95,6 +94,22 @@ describe("web addresses", () => {
     expect(pasteLink("", "https://example.com")).toBeNull();
     expect(pasteLink("two\nlines", "https://example.com")).toBeNull();
     expect(pasteLink("here", " https://example.com ")).toBe("[here](https://example.com)");
+  });
+});
+
+describe("bracketSearch", () => {
+  it("a single [ and letters is a search for a page", () => {
+    expect(bracketSearch("see [dai", "]")).toEqual({ start: 4, query: "dai", closing: 1 });
+    expect(bracketSearch("[Daily TODO", "] more")).toEqual({ start: 0, query: "Daily TODO", closing: 1 });
+    // The cursor in the middle of the text: the rest of it goes with the brackets.
+    expect(bracketSearch("[Dai", "ly]")).toEqual({ start: 0, query: "Dai", closing: 3 });
+    expect(bracketSearch("[dai", "")).toEqual({ start: 0, query: "dai", closing: 0 });
+  });
+
+  it("is not one for task boxes, images, tags, `[[`, or the text of a link that exists", () => {
+    for (const [before, after] of [["- [", "]"], ["- [ ", "]"], ["- [x", "]"], ["![alt", "]"], ["[#pro", "]"], ["[[dai", "]]"], ["[Dai", "ly](/daily-todo.md)"], ["[]", ""], ["[a] b", ""]]) {
+      expect(bracketSearch(before!, after!), `${before}|${after}`).toBeNull();
+    }
   });
 });
 

@@ -2,7 +2,7 @@
 
 import type { VocabEntry } from "../../src/shared/api";
 import { slugFirst, suggest } from "../../src/shared/complete";
-import { type LinkChoice, type LinkPage, choicesFor, markdownLink, pasteLink } from "../../src/shared/linkFlows";
+import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../../src/shared/linkFlows";
 import { type Doc, type Flow, type Option } from "./typing";
 
 function replace(doc: Doc, from: number, to: number, insert: string, cursor = from + insert.length): Doc {
@@ -60,26 +60,22 @@ function choiceOptions(choices: LinkChoice[], take: (c: LinkChoice) => Doc): Opt
   return choices.map((c) => option(c.fresh ? `new: ${c.text}` : c.text, () => take(c)));
 }
 
-/** `daily|my todo list`: what to search for, and the text to show for the link when it is not the title. */
-function splitAlias(typed: string): { search: string; alias: string | null } {
-  const bar = typed.indexOf("|");
-  return bar < 0 ? { search: typed, alias: null } : { search: typed.slice(0, bar), alias: typed.slice(bar + 1) };
-}
-
-/**
- * `[[` opens a picker over the page titles; the choice becomes a normal Markdown link. Measured
- * only: `[[` is not part of the format (docs/conventions.md §4), so the editor does not have it.
- */
-export function wikilink(pages: LinkPage[]): Flow {
+/** A single `[` and a few letters picks a page; the choice is written as `[Title](/path.md)`. */
+export function bracket(pages: LinkPage[]): Flow {
   return {
-    name: "`[[` picker",
+    name: "`[` search",
     popup(doc) {
-      const before = doc.text.slice(0, doc.cursor);
-      const m = /\[\[([^\][\n]*)$/.exec(before);
-      if (!m || !doc.text.startsWith("]]", doc.cursor)) return null;
-      const { search, alias } = splitAlias(m[1] ?? "");
-      return choiceOptions(choicesFor(pages, search), (c) =>
-        replace(doc, m.index, doc.cursor + 2, markdownLink(alias ?? c.text, c.dest)),
+      const t = inTarget(doc);
+      if (t) {
+        // Typing `](` goes on from the same search; with nothing typed yet it is searched by the link text.
+        return choiceOptions(choicesFor(pages, t.typed || t.label), (c) =>
+          replace(doc, t.from, doc.cursor + closing(doc), `${c.dest})`),
+        );
+      }
+      const found = bracketSearch(doc.text.slice(0, doc.cursor), doc.text.slice(doc.cursor));
+      if (!found) return null;
+      return choiceOptions(choicesFor(pages, found.query), (c) =>
+        replace(doc, found.start, doc.cursor + found.closing, markdownLink(c.text, c.dest)),
       );
     },
   };
@@ -103,29 +99,6 @@ export function ctrlL(pages: LinkPage[]): Flow {
       return choiceOptions(choicesFor(pages, t.typed), (c) =>
         replace(doc, t.open, doc.cursor + closing(doc), markdownLink(t.label || c.text, c.dest)),
       );
-    },
-  };
-}
-
-/** Text that is a task box or a lone mark is not a link title. */
-const NOT_A_TITLE = /^\s*[xX]?\s*$/;
-
-/** Typing `[Title]` offers the page of that title, or a new one, for the target. */
-export function titleFirst(pages: LinkPage[]): Flow {
-  return {
-    name: "`[Title]` then Enter",
-    popup(doc) {
-      const before = doc.text.slice(0, doc.cursor);
-      const t = inTarget(doc);
-      if (t) {
-        // Typing `(` goes on from the same list; with nothing typed yet it is searched by the link text.
-        return choiceOptions(choicesFor(pages, t.typed || t.label), (c) =>
-          replace(doc, t.from, doc.cursor + closing(doc), `${c.dest})`),
-        );
-      }
-      const m = /\[([^\][\n]*)\]$/.exec(before);
-      if (!m || NOT_A_TITLE.test(m[1] ?? "") || doc.text[doc.cursor] === "(") return null;
-      return choiceOptions(choicesFor(pages, m[1] ?? ""), (c) => replace(doc, doc.cursor, doc.cursor, `(${c.dest})`, doc.cursor + c.dest.length + 2));
     },
   };
 }

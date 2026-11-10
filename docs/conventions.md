@@ -387,7 +387,10 @@ Choosing one fills in the target, and the text too when it is empty. With nothin
 yet, the pages are searched by the link text, so `[Daily TODO](` offers that page first.
 
 Titles come from the `title:` of the front matter, else the first `#` heading, else the
-file name. The same search opens after typing `](` by hand.
+file name. The same search opens after typing `](` by hand, and after a single `[` and a
+few letters: `[dai` offers "Daily TODO", and choosing it writes `[Daily TODO](/daily-todo.md)`.
+A `[` that is a task box (`[ ]`, `[x]`), an image (`![`) or the text of a link that already
+exists does not search.
 
 An address (`https://...`, `mailto:...`) pasted over selected text makes the text its link,
 so a title and an address are not typed twice. With nothing selected, or inside code, a

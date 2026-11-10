@@ -28,7 +28,7 @@ import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
 import { suggest } from "../shared/complete";
-import { type LinkChoice, type LinkPage, choicesFor, pasteLink } from "../shared/linkFlows";
+import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../shared/linkFlows";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { dayAt } from "../shared/dates";
 import { journalDest } from "../shared/pages";
@@ -179,6 +179,24 @@ function completions(vocab: () => VocabEntry[], pages: () => LinkPage[]) {
           view.dispatch({
             changes: [...(fill ? [{ from: link.from, insert: fill }] : []), { from: link.from + 2, to: context.pos + tail, insert: dest }],
             selection: { anchor: link.from + 2 + fill.length + dest.length },
+            userEvent: "input.complete",
+          });
+        }),
+      };
+    }
+    // A single `[` and a few letters: the page is picked, and the link written with its title.
+    const line = context.state.doc.lineAt(context.pos);
+    const bracket = bracketSearch(line.text.slice(0, context.pos - line.from), line.text.slice(context.pos - line.from));
+    if (bracket && !inCode(context.state, context.pos)) {
+      const open = line.from + bracket.start;
+      return {
+        from: open + 1,
+        filter: false,
+        options: choiceOptions(choicesFor(pages(), bracket.query, 12), (view, c) => {
+          const text = markdownLink(c.text, c.dest);
+          view.dispatch({
+            changes: { from: open, to: context.pos + bracket.closing, insert: text },
+            selection: { anchor: open + text.length },
             userEvent: "input.complete",
           });
         }),

@@ -4,7 +4,7 @@
 
 import type { LinkPage } from "../../src/shared/linkFlows";
 import { newPagePath } from "../../src/shared/pages";
-import { ctrlL, currentEditor, pasteToLink, titleFirst, typeItAll, wikilink } from "./flows";
+import { bracket, ctrlL, currentEditor, pasteToLink, typeItAll } from "./flows";
 import { type Flow, run } from "./typing";
 
 /** The pages of a small notes folder. */
@@ -101,15 +101,15 @@ export const WAYS: Way[] = [
           },
   },
   {
-    id: "wikilink",
-    flow: wikilink,
+    id: "bracket",
+    flow: bracket,
     script: (sc) => {
       if (sc.clipboard !== undefined) return null;
-      if (sc.id === "newPage") return { steps: () => [...syntax("[["), ...chars(sc.text, "label"), ...press("Enter")], search: null };
+      if (sc.id === "newPage") return { steps: () => [...syntax("["), ...chars(sc.text, "label"), ...press("Enter")], search: null };
       if (sc.id === "customText") {
-        return { steps: (q) => [...syntax("[["), ...chars(q, "search"), ...syntax("|"), ...chars(sc.text, "label"), ...press("Enter")], search: { minLetters: 1 } };
+        return { steps: (q) => [...syntax("["), ...chars(sc.text, "label"), ...syntax("]("), ...chars(q, "search"), ...press("Enter")], search: { minLetters: 1 } };
       }
-      return { steps: (q) => [...syntax("[["), ...chars(q, "search"), ...press("Enter")], search: { minLetters: 1 } };
+      return { steps: (q) => [...syntax("["), ...chars(q, "search"), ...press("Enter")], search: { minLetters: 1 } };
     },
   },
   {
@@ -125,20 +125,6 @@ export const WAYS: Way[] = [
         };
       }
       return { steps: (q) => [...press("Ctrl+L"), ...chars(q, "search"), ...press("Enter")], search: { minLetters: 1 } };
-    },
-  },
-  {
-    id: "titleFirst",
-    flow: titleFirst,
-    script: (sc) => {
-      if (sc.clipboard !== undefined) return null;
-      if (sc.id === "customText") {
-        return {
-          steps: (q) => [...syntax("["), ...chars(sc.text, "label"), ...syntax("]("), ...chars(q, "search"), ...press("Enter")],
-          search: { minLetters: 1 },
-        };
-      }
-      return { steps: () => [...syntax("["), ...chars(sc.text, "label"), ...syntax("]"), ...press("Enter")], search: null };
     },
   },
   {
