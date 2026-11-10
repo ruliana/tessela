@@ -35,6 +35,7 @@ async function pageWith(s, name, body, marker) {
 }
 
 const peek = (s) => s.win.locator("#side-top #peek");
+const focused = (s) => s.win.waitForFunction(() => document.activeElement?.id === "peek");
 const gone = (s) => s.win.waitForFunction(() => !document.querySelector("#side-top #peek"));
 
 suite("Peek mod", files, (test) => {
@@ -58,7 +59,7 @@ suite("Peek mod", files, (test) => {
   test("Escape closes the peek and puts the cursor back; Enter goes to the page", async (s) => {
     await pageWith(s, "peek-b", "Read [t](/peek-target.md) now.\n", "(/peek");
     await runCommand(s, "Peek at the link under the cursor");
-    await peek(s).waitFor();
+    await focused(s);
     await s.key("Escape");
     await gone(s);
     // The cursor is back in the page being written.
@@ -67,7 +68,7 @@ suite("Peek mod", files, (test) => {
     await s.key("Backspace");
     await runCommand(s, "Peek at the link under the cursor");
     await peek(s).waitFor();
-    await s.win.waitForSelector("#peek .card .cm-content");
+    await focused(s);
     await s.key("Enter");
     await s.win.waitForFunction(() => document.querySelector(".pane .card-title")?.textContent === "peek-target");
     await gone(s);
@@ -94,7 +95,7 @@ suite("Peek mod", files, (test) => {
     assert.ok(hits.some((h) => /Also see/.test(h)), hits.join("|"));
   });
 
-  test("with the cursor outside a link it says so, and a second peek replaces the first", async (s) => {
+  test("with the cursor outside a link it says so and opens nothing", async (s) => {
     await pageWith(s, "peek-e", "Plain words and [t](/peek-target.md) and #peek-ghost.\n", "Plain");
     await runCommand(s, "Peek at the link under the cursor");
     await s.win.waitForFunction(() => /link/.test(document.querySelector("#notice")?.textContent ?? ""));
@@ -103,6 +104,7 @@ suite("Peek mod", files, (test) => {
     await s.key("ArrowLeft");
     await runCommand(s, "Peek at the link under the cursor");
     await peek(s).waitFor();
+    await focused(s);
     assert.match(await s.win.textContent("#peek"), /not written yet/);
     await s.key("Escape");
     await gone(s);

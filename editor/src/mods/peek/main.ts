@@ -105,6 +105,8 @@ export default function (ctx: ModContext): void {
     shown = { target, root, card, origin };
     slot.root.append(root);
     slot.reveal();
+    // At once, so Esc and Enter work while the page is still loading.
+    if (focus) root.focus();
     if (card) {
       root.append(card.root);
       loading = true;
@@ -117,7 +119,6 @@ export default function (ctx: ModContext): void {
     const hits = listed ? await mentions(target) : [];
     if (shown?.root !== root) return;
     if (listed) root.append(mentionList(hits));
-    if (focus) root.focus();
   }
 
   /** Peeks at what the cursor is in; `view` is the editor in use. */
