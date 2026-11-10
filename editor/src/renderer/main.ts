@@ -24,7 +24,7 @@ import {
   type History,
   type Place,
 } from "../shared/nav";
-import { conceptPath, isJournalPath, journalDays, journalPath, newestFirst, newPagePath, pageId } from "../shared/pages";
+import { conceptPath, isJournalPath, journalDays, journalPath, newestFirst, newPagePath, newPageTitle, pageId } from "../shared/pages";
 import { summary, visibleProblems } from "../shared/problems";
 import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
@@ -709,7 +709,7 @@ async function createPage(): Promise<void> {
     newPageError.textContent = "Give the page a name that is not empty and does not start with a dot.";
     return;
   }
-  const title = name.trim().replace(/\.md$/i, "").split("/").pop()?.trim();
+  const title = newPageTitle(name);
   try {
     // A page that already exists is simply opened.
     await api.addPage(path, title);

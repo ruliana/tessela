@@ -7,7 +7,7 @@ import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
 import { canGoBack, canGoForward, emptyHistory, RECENT_DEFAULT, RECENT_MAX, recentCount, step, touch, visit, type Place } from "../src/shared/nav";
-import { conceptFor, conceptPath, dirOf, isJournalPath, journalDays, journalDest, localDay, newPagePath } from "../src/shared/pages";
+import { conceptFor, conceptPath, dirOf, isJournalPath, journalDays, journalDest, localDay, newPagePath, newPageTitle } from "../src/shared/pages";
 import { smartLink } from "../src/shared/smartLink";
 
 describe("smartLink", () => {
@@ -174,6 +174,7 @@ describe("newPagePath", () => {
     expect(newPagePath("My Idea")).toBe("my-idea.md");
     expect(newPagePath("  project/New Thing ")).toBe("project/new-thing.md");
     expect(newPagePath("notes.md")).toBe("notes.md");
+    expect(newPageTitle(" project/New Thing.md ")).toBe("New Thing");
   });
 
   it("refuses names that cannot be a page", () => {
