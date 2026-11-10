@@ -333,6 +333,25 @@ fn the_schema_describes_what_the_commands_print() {
     );
     check("schema", doc.clone());
 
+    // `changes` needs a git repository with something changed in it.
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-C", d])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "first"]);
+    std::fs::write(
+        dir.join("ideas.md"),
+        "---\ntype: concept\n---\n\n# Ideas\n\n- New #tessela line\n",
+    )
+    .unwrap();
+    check("changes", json(&["changes", "-b", d, "--json"]));
+
     // The two that read their input from stdin.
     let with_stdin = |args: &[&str], input: &str| -> Value {
         use std::io::Write;

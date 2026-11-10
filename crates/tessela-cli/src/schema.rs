@@ -28,6 +28,7 @@ pub fn answer(name: &str, g: &mut SchemaGenerator) -> Option<Schema> {
         "read" => g.subschema_for::<PageRead>(),
         "add" | "save" => g.subschema_for::<Saved>(),
         "rename" | "move" => g.subschema_for::<Moved>(),
+        "changes" => g.subschema_for::<crate::changes::Output>(),
         "attach" => g.subschema_for::<Attached>(),
         "fence" => g.subschema_for::<crate::fence::Output>(),
         "remove" => g.subschema_for::<Removed>(),

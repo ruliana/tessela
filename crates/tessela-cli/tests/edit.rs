@@ -22,12 +22,7 @@ fn run(dir: &Path, args: &[&str], stdin: &str) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok(); // the tool may refuse before it reads its input
     child.wait_with_output().unwrap()
 }
 

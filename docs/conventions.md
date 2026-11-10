@@ -334,6 +334,10 @@ Every command takes `--api N` for the version the caller was written for.
   bundles read by tools that do not compute listings. Generated files carry a
   marker line; one that does not (a hand-written `index.md`) is kept unless
   `--force` is given.
+  For a folder page, the listing also names the folder's `home` (its `home.md`) and the
+  `links`: the existing pages that home page links to or tags, in the order it first
+  mentions them (for the root these are the pinned pages), and each sub-folder says
+  whether it has a `home` of its own (`has_home`).
 - `tessela read | add | save | rename | move | remove`: the edit commands (§9), with
   `attach` below. They
   take the bundle with `--bundle DIR` (default `.`) and the page as a path relative to
@@ -402,6 +406,18 @@ Every command takes `--api N` for the version the caller was written for.
   (from the types that print it), the envelope, the failure shape and the exit codes. A test
   checks that real answers validate against it and that every command describes its
   answer, so it cannot drift from the tool.
+- `tessela changes [--since REV]`: what differs between the notes on disk and git, so "what
+  changed while I was away" has an exact answer. `REV` is any git revision (default `HEAD`,
+  the last commit; `ORIG_HEAD` is where the last pull or merge started from). It reads git
+  (`diff`, `show`, `ls-files`) and writes nothing, and needs the bundle to be in a git
+  repository (a folder of a larger one sees only its own pages). The answer lists the pages
+  that were `added`, `modified` or `deleted` (with `hash`, to base a patch on) and for each
+  the `changes`: `added`, `removed` or `changed` units, where a unit is a block, a heading
+  or the `properties` (front matter). A change has `handle`, `heading_path`, `line`, `text`
+  and `raw` (the source lines) as they are now, and for a `changed` one `old_text`,
+  `old_line` and `old_raw`, which is what a client needs to keep a change or put the old
+  text back with `save --patch`. A removed unit has the line it had before. This is the
+  honest form of OKF's `log.md`: computed when asked, never a file.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
