@@ -65,7 +65,9 @@ export async function launch(bundle, { rendered = false, mods = {}, args = [] } 
     await win.reload();
     await win.waitForSelector(".cm-content");
   }
-  return new Session(app, win, bundle);
+  const session = new Session(app, win, bundle);
+  session.profile = profile; // the config folder
+  return session;
 }
 
 export class Session {

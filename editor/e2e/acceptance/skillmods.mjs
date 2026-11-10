@@ -53,3 +53,11 @@ suite("The mods in the mod-writing skill", files, (test) => {
     await s.win.waitForFunction(() => document.querySelector(".bl-group.neighbours h3")?.textContent === "Neighbours");
   });
 }, { mods });
+
+suite("AGENTS.md in the config folder", files, (test) => {
+  test("the app writes the mod-writing guide next to the mods, and it describes ctx", async (s) => {
+    const text = readFileSync(resolve(s.profile, "AGENTS.md"), "utf8");
+    assert.ok(text.startsWith("<!-- "), text.slice(0, 80));
+    assert.ok(text.includes("# Writing a mod for the Tessela editor") && text.includes("ctx.commands.add"));
+  });
+});

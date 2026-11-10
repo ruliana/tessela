@@ -5,7 +5,7 @@
 // reads from there. Two copies of those packages would not agree on what a state field is.
 
 import { build } from "esbuild";
-import { readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync, copyFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -52,3 +52,8 @@ await build({
   logLevel: "warning",
   plugins: [sharedCodeMirror],
 });
+
+// The guide to writing mods (skills/tessela-mods/SKILL.md) goes with the app; the editor puts it in the
+// config folder as AGENTS.md.
+mkdirSync(join(root, "dist"), { recursive: true });
+copyFileSync(join(root, "../skills/tessela-mods/SKILL.md"), join(root, "dist/mods-guide.md"));

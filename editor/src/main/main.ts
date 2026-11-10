@@ -8,7 +8,7 @@ import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry 
 import { journalPath, localDay } from "../shared/pages";
 import { relativeInside, resolveImage, resolveInside } from "./files";
 import { addPageVia, cliInput, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
-import { cliArgv, configFolder, listMods, resolveModFile } from "./mods";
+import { agentsText, cliArgv, configFolder, installAgents, listMods, resolveModFile } from "./mods";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
 // userData is pinned first: the name feeds its default, and the saved bundle lives there.
@@ -203,6 +203,11 @@ function serveImages(): void {
 void app.whenReady().then(() => {
   serveImages();
   serveMods();
+  try {
+    installAgents(config(), agentsText(readFileSync(path.join(__dirname, "mods-guide.md"), "utf8")));
+  } catch {
+    // The guide is only a help.
+  }
   useBundle(loadBundle());
   registerIpc();
   // macOS ignores the window icon and takes the Dock one from the app bundle. Packaged builds
