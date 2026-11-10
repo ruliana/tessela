@@ -5,6 +5,7 @@
 
 import type { EditorView } from "@codemirror/view";
 
+import { el } from "../../renderer/dom";
 import type { ModContext, PageCard } from "../../renderer/mods";
 import { cliOf } from "../kit";
 import { countMentions, mentionsOf, peekAt, type PeekTarget } from "./plan";
@@ -15,9 +16,6 @@ interface Hit {
   line: number;
   text: string;
 }
-
-const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "", props: Partial<HTMLElementTagNameMap[K]> = {}): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), { textContent: text }, props);
 
 const dirOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
@@ -60,11 +58,11 @@ export default function (ctx: ModContext): void {
 
   /** The list of mentions. Note text goes in as text, never as HTML. */
   function mentionList(hits: Hit[]): HTMLElement {
-    const box = node("div", "", { className: "peek-mentions" });
-    box.append(node("h3", countMentions(hits.length)));
+    const box = el("div", { class: "peek-mentions" });
+    box.append(el("h3", {}, countMentions(hits.length)));
     for (const hit of hits) {
-      const button = node("button", "", { className: "hit", title: `${hit.path}:${hit.line}` });
-      button.append(node("span", hit.path.replace(/\.md$/, ""), { className: "where" }), node("span", hit.text.trim(), { className: "text" }));
+      const button = el("button", { class: "hit", title: `${hit.path}:${hit.line}` });
+      button.append(el("span", { class: "where" }, hit.path.replace(/\.md$/, "")), el("span", { class: "text" }, hit.text.trim()));
       button.addEventListener("click", () => {
         close();
         void ctx.pages.open(hit.path, hit.line);
@@ -81,11 +79,11 @@ export default function (ctx: ModContext): void {
     const written = exists.ok && exists.exists;
     const withCard = written || target.kind === "day";
 
-    const open = node("button", "Open ↵", { className: "peek-open", title: "Go to the page (Enter)" });
-    const closeButton = node("button", "×", { className: "peek-close", title: "Close (Esc)", ariaLabel: "Close the peek" });
-    const head = node("div", "", { className: "peek-head" });
-    head.append(node("span", "Peek", { className: "peek-label" }), open, closeButton);
-    const root = node("div", "", { id: "peek", tabIndex: -1 });
+    const open = el("button", { class: "peek-open", title: "Go to the page (Enter)" }, "Open ↵");
+    const closeButton = el("button", { class: "peek-close", title: "Close (Esc)", ariaLabel: "Close the peek" }, "×");
+    const head = el("div", { class: "peek-head" });
+    head.append(el("span", { class: "peek-label" }, "Peek"), open, closeButton);
+    const root = el("div", { id: "peek", tabIndex: -1 });
     root.append(head);
     open.addEventListener("click", () => void goThere());
     closeButton.addEventListener("click", () => close(true));
@@ -113,7 +111,7 @@ export default function (ctx: ModContext): void {
       loading = true;
       await card.load().finally(() => (loading = false));
     } else {
-      root.append(node("p", `${target.id} is not written yet.`, { className: "peek-note" }));
+      root.append(el("p", { class: "peek-note" }, `${target.id} is not written yet.`));
     }
     // A day shows what mentions it beside its page; a concept shows them only in place of the page it lacks.
     const listed = target.kind === "day" || !written;

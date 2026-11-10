@@ -2,18 +2,16 @@
 // first (the CLI's own dry run for rename and move, a query for the mentions of a deleted page),
 // and only changes anything once the dialog is confirmed. All the changes go through `ctx.cli`.
 
+import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { cliOf, failureText } from "../kit";
 import { changedPages, describeChange, folderOf, mentioning, nameForTitle, stemOf, type MoveAnswer } from "./plan";
 
-const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "", props: Partial<HTMLElementTagNameMap[K]> = {}): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), { textContent: text }, props);
-
 /** A list of pages, shortened to `limit`. Note text goes in as text, never as HTML. */
 function pageList(paths: string[], limit = 8): HTMLElement {
-  const list = node("ul");
-  for (const p of paths.slice(0, limit)) list.append(node("li", p));
-  if (paths.length > limit) list.append(node("li", `and ${paths.length - limit} more`));
+  const list = el("ul");
+  for (const p of paths.slice(0, limit)) list.append(el("li", {}, p));
+  if (paths.length > limit) list.append(el("li", {}, `and ${paths.length - limit} more`));
   return list;
 }
 
@@ -23,17 +21,17 @@ export default function (ctx: ModContext): void {
   /** Rename (a new name in the same folder) or move (a folder ending in `/`, or a new path). */
   async function relocate(mode: "rename" | "move", path: string, initial: string): Promise<void> {
     await ctx.pages.flush();
-    const input = node("input", "", { id: "pages-name", className: "search", value: initial, spellcheck: false });
-    const preview = node("div", "", { id: "pages-preview" });
+    const input = el("input", { id: "pages-name", class: "search", value: initial, spellcheck: false });
+    const preview = el("div", { id: "pages-preview" });
     const rename = mode === "rename";
     const dialog = ctx.ui.dialog({
       title: rename ? `Rename ${path}` : `Move ${path}`,
-      content: node("div", "", {}),
+      content: el("div"),
       actions: [{ id: "ok", label: rename ? "Rename" : "Move", primary: true, disabled: true }],
     });
     const body = document.querySelector("#dialog .dialog-body");
     body?.replaceChildren(
-      node("p", rename ? "New name, in the same folder:" : "A folder ending in /, or the new path:"),
+      el("p", {}, rename ? "New name, in the same folder:" : "A folder ending in /, or the new path:"),
       input,
       preview,
     );
@@ -45,16 +43,16 @@ export default function (ctx: ModContext): void {
     const check = async (): Promise<void> => {
       const mine = ++run;
       const name = input.value.trim();
-      if (name === "") return void preview.replaceChildren(node("p", "Type a name."));
-      preview.replaceChildren(node("p", "Looking at what would change…"));
+      if (name === "") return void preview.replaceChildren(el("p", {}, "Type a name."));
+      preview.replaceChildren(el("p", {}, "Looking at what would change…"));
       const answer = await cli<MoveAnswer>([mode, path, name, "--dry-run"]);
       if (mine !== run) return;
-      if (!answer.ok) return void preview.replaceChildren(node("p", failureText(answer), { className: "error" }));
+      if (!answer.ok) return void preview.replaceChildren(el("p", { class: "error" }, failureText(answer)));
       preview.replaceChildren(
-        node("p", `${answer.from} → ${answer.to}`),
-        node("p", describeChange(answer)),
+        el("p", {}, `${answer.from} → ${answer.to}`),
+        el("p", {}, describeChange(answer)),
         pageList(changedPages(answer)),
-        ...answer.warnings.map((w) => node("p", `Check by hand: ${w}`, { className: "error" })),
+        ...answer.warnings.map((w) => el("p", { class: "error" }, `Check by hand: ${w}`)),
       );
       dialog.setDisabled("ok", false);
     };
@@ -84,10 +82,11 @@ export default function (ctx: ModContext): void {
     if (!page.exists || !page.hash) return ctx.ui.toast(`${path} has no file yet, so there is nothing to delete.`);
     const hash = page.hash;
     const { pages, mentions } = refs.ok ? mentioning(refs.hits, path) : { pages: [], mentions: 0 };
-    const preview = node("div", "", { id: "pages-preview" });
+    const preview = el("div", { id: "pages-preview" });
     preview.append(
-      node(
+      el(
         "p",
+        {},
         pages.length === 0
           ? "No other page mentions it."
           : `${mentions} ${mentions === 1 ? "mention" : "mentions"} in ${pages.length} ${pages.length === 1 ? "page" : "pages"} will point to a page that is gone:`,

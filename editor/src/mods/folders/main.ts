@@ -3,35 +3,33 @@
 // notes by `tessela index --dir`: sub-folders, pages with their descriptions, journal days.
 // Nothing is saved: a folder without a home page only offers to write one.
 
+import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { cliOf, failureText } from "../kit";
 import { type Listing, type PageEntry, cleanDir, folderOf, homePath, homeTitle, JOURNAL_SHOWN, leaf, pagesIn, trail } from "./plan";
-
-const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), { className, textContent: text });
 
 export default function (ctx: ModContext): void {
   const openFolder = (dir: string) => void ctx.views.open("folders", dir);
   const openPage = (path: string) => void ctx.pages.open(path);
 
   const button = (className: string, text: string, run: () => void): HTMLButtonElement => {
-    const b = node("button", className, text);
+    const b = el("button", { class: className }, text);
     b.addEventListener("click", run);
     return b;
   };
 
   const pageRow = (page: PageEntry): HTMLElement => {
     const row = button("folders-page", "", () => openPage(page.path));
-    row.append(node("span", "folders-title", leaf(page.path).replace(/\.md$/, "")));
-    if (page.type) row.append(node("span", "folders-type", page.type));
-    if (page.description) row.append(node("span", "folders-description", page.description));
+    row.append(el("span", { class: "folders-title" }, leaf(page.path).replace(/\.md$/, "")));
+    if (page.type) row.append(el("span", { class: "folders-type" }, page.type));
+    if (page.description) row.append(el("span", { class: "folders-description" }, page.description));
     return row;
   };
 
   const section = (className: string, heading: string, ...children: HTMLElement[]): HTMLElement => {
-    const el = node("section", `folders-section ${className}`);
-    el.append(node("h3", "", heading), ...children);
-    return el;
+    const box = el("section", { class: `folders-section ${className}` });
+    box.append(el("h3", {}, heading), ...children);
+    return box;
   };
 
   async function writeHome(dir: string): Promise<void> {
@@ -42,19 +40,19 @@ export default function (ctx: ModContext): void {
 
   function draw(container: HTMLElement, listing: Listing): void {
     const dir = listing.dir;
-    const crumbs = node("nav", "folders-crumbs");
+    const crumbs = el("nav", { class: "folders-crumbs" });
     const ancestors = trail(dir).slice(0, -1);
     for (const [i, c] of ancestors.entries()) {
-      if (i > 0) crumbs.append(node("span", "folders-sep", "›"));
+      if (i > 0) crumbs.append(el("span", { class: "folders-sep" }, "›"));
       crumbs.append(button("folders-crumb", c.name === "" ? "Notes" : c.name, () => openFolder(c.path)));
     }
-    const here = node("h2", "folders-here", dir === "" ? "Notes" : dir);
+    const here = el("h2", { class: "folders-here" }, dir === "" ? "Notes" : dir);
 
     const where: HTMLElement[] = [];
     if (listing.home) {
       const home = listing.home;
       const open = button("folders-open-home", `Open ${home}`, () => openPage(home));
-      const start = node("div", "folders-start");
+      const start = el("div", { class: "folders-start" });
       for (const page of listing.links) start.append(pageRow(page));
       where.push(section("folders-where", "Start here", open, ...(listing.links.length > 0 ? [start] : [])));
     } else {
@@ -62,7 +60,7 @@ export default function (ctx: ModContext): void {
         section(
           "folders-where",
           "Start here",
-          node("p", "folders-empty", "This folder has no home page yet."),
+          el("p", { class: "folders-empty" }, "This folder has no home page yet."),
           button("folders-write-home", `Write ${homePath(dir)}`, () => void writeHome(dir)),
         ),
       );
@@ -70,13 +68,13 @@ export default function (ctx: ModContext): void {
 
     const folders = listing.folders.map((f) => {
       const row = button("folders-folder", "", () => openFolder(f.path));
-      row.append(node("span", "folders-title", `${leaf(f.path)}/`), node("span", "folders-count", pagesIn(f.pages)));
-      if (f.has_home) row.append(node("span", "folders-type", "home"));
+      row.append(el("span", { class: "folders-title" }, `${leaf(f.path)}/`), el("span", { class: "folders-count" }, pagesIn(f.pages)));
+      if (f.has_home) row.append(el("span", { class: "folders-type" }, "home"));
       return row;
     });
     const journal = listing.journal.slice(0, JOURNAL_SHOWN).map(pageRow);
     const more = listing.journal.length - journal.length;
-    if (more > 0) journal.push(node("p", "folders-empty", `and ${more} more`));
+    if (more > 0) journal.push(el("p", { class: "folders-empty" }, `and ${more} more`));
 
     container.replaceChildren(
       crumbs,
@@ -99,7 +97,7 @@ export default function (ctx: ModContext): void {
       const mine = ++run;
       const answer = await cliOf(ctx)<Listing>(["index", "--dir", dir]);
       if (mine !== run) return;
-      if (!answer.ok) return void container.replaceChildren(node("p", "folders-error", failureText(answer)));
+      if (!answer.ok) return void container.replaceChildren(el("p", { class: "folders-error" }, failureText(answer)));
       draw(container, answer);
     },
   });

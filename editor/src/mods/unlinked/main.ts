@@ -3,12 +3,10 @@
 // page, puts the link where the words are and saves it, all through `ctx.cli`, so a changed page
 // is never overwritten: the save names the hash it read, and a conflict only refreshes the list.
 
+import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { cliOf } from "../kit";
 import { conceptFor, countUnlinked, entriesOf, linked, type Entry, type UnlinkedHit } from "./plan";
-
-const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "", props: Partial<HTMLElementTagNameMap[K]> = {}): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), { textContent: text }, props);
 
 /** How long after a save or a change on disk before the list is asked for again. */
 const PAUSE = 400;
@@ -38,25 +36,25 @@ export default function (ctx: ModContext): void {
   }
 
   function draw(entries: Entry[]): HTMLElement {
-    const root = node("div", "", { id: "unlinked" });
-    root.append(node("h3", countUnlinked(entries.length), { className: "unlinked-title" }));
+    const root = el("div", { id: "unlinked" });
+    root.append(el("h3", { class: "unlinked-title" }, countUnlinked(entries.length)));
     let page = "";
     for (const entry of entries) {
       if (entry.path !== page) {
         page = entry.path;
-        const open = node("button", entry.path.replace(/\.md$/, ""));
+        const open = el("button", {}, entry.path.replace(/\.md$/, ""));
         open.addEventListener("click", () => void ctx.pages.open(entry.path));
-        root.append(node("p", "", { className: "unlinked-page" }));
+        root.append(el("p", { class: "unlinked-page" }));
         root.lastElementChild?.append(open);
       }
-      const text = node("button", "", { className: "unlinked-text", title: `${entry.path}:${entry.mention.line}` });
+      const text = el("button", { class: "unlinked-text", title: `${entry.path}:${entry.mention.line}` });
       // The note's words go in as text, never as HTML.
-      if (entry.parts) text.append(entry.parts[0], node("mark", entry.parts[1]), entry.parts[2]);
+      if (entry.parts) text.append(entry.parts[0], el("mark", {}, entry.parts[1]), entry.parts[2]);
       else text.append(entry.hit.text);
       text.addEventListener("click", () => void ctx.pages.open(entry.path, entry.mention.line));
-      const button = node("button", "Link", { className: "unlinked-link", title: `Write it as ${entry.mention.link}` });
+      const button = el("button", { class: "unlinked-link", title: `Write it as ${entry.mention.link}` }, "Link");
       button.addEventListener("click", () => void link(entry));
-      const row = node("div", "", { className: "unlinked-hit" });
+      const row = el("div", { class: "unlinked-hit" });
       row.append(text, button);
       root.append(row);
     }
