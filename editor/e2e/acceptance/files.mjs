@@ -17,8 +17,8 @@ const cardTitle = (s) => s.win.waitForFunction(() => document.querySelector(".ca
 
 async function newPage(s, name) {
   await s.win.click("#new-page");
-  await s.win.fill("#new-page-name", name);
-  await s.win.press("#new-page-name", "Enter");
+  await s.win.fill("#newpage-input", name);
+  await s.win.press("#newpage-input", "Enter");
 }
 
 function bundle() {
@@ -39,7 +39,7 @@ suite("Files and the notes folder", bundle, (test) => {
   test("New page creates the file at once, with a title from the name", async (s) => {
     await newPage(s, "My Big Idea");
     await s.win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "my-big-idea");
-    assert.equal(await s.win.isHidden("#new-page-form"), true);
+    assert.equal(await s.win.$("#dialog"), null);
     const text = read(s.bundle, "my-big-idea.md");
     assert.match(text, /^---\ntype: concept\ntitle: "My Big Idea"\n---\n/);
     // The new page is listed and the cursor is in it, so typing goes there.
@@ -65,23 +65,24 @@ suite("Files and the notes folder", bundle, (test) => {
   });
 
   test("New page refuses an empty or hidden name and says why", async (s) => {
+    await s.win.click("#new-page");
     for (const bad of ["   ", ".secret/x", "../escape"]) {
-      await newPage(s, bad);
-      await s.win.waitForSelector("#new-page-error:not([hidden])");
-      assert.match(await s.win.textContent("#new-page-error"), /name/);
-      await s.win.click("#new-page-name", { clickCount: 3 });
+      await s.win.fill("#newpage-input", bad);
+      await s.win.press("#newpage-input", "Enter");
+      await s.win.waitForSelector("#newpage-error:not([hidden])");
+      assert.match(await s.win.textContent("#newpage-error"), /name/);
     }
     assert.equal(existsSync(join(s.bundle, ".secret")), false);
     assert.equal(existsSync(join(s.bundle, "..", "escape.md")), false);
     await s.key("Escape");
-    assert.equal(await s.win.isHidden("#new-page-form"), true);
+    assert.equal(await s.win.$("#dialog"), null);
   });
 
   test("Ctrl+N asks for a new page and Ctrl+O opens a file", async (s) => {
     await s.win.click(".cm-content");
     await s.key("Control+n");
-    await s.win.waitForSelector("#new-page-name", { state: "visible" });
-    assert.equal(await s.win.evaluate(() => document.activeElement?.id), "new-page-name");
+    await s.win.waitForSelector("#newpage-input", { state: "visible" });
+    assert.equal(await s.win.evaluate(() => document.activeElement?.id), "newpage-input");
     await s.key("Escape");
     await answerDialog(s, join(s.bundle, "log.md"));
     await s.key("Control+o");

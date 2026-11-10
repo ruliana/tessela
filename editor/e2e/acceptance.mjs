@@ -33,5 +33,6 @@ import "./acceptance/changes.mjs";
 import "./acceptance/folders.mjs";
 import "./acceptance/searchmod.mjs";
 import "./acceptance/outline.mjs";
+import "./acceptance/newpage.mjs";
 
 await runAll();
