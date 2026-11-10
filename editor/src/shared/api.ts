@@ -57,12 +57,13 @@ export interface QueryArgs {
   limit?: number;
 }
 
-/** A page file in the bundle. `path` is relative, with `/` separators. */
+/** A page of the bundle, from `tessela pages --json`. `path` is relative, with `/` separators. */
 export interface PageEntry {
   id: string;
   path: string;
-  /** What the page calls itself (front matter `title:`, else its first `#` heading). Absent from older callers. */
+  /** What the page calls itself (front matter `title:`, else its first `#` heading, else its file name). */
   title?: string;
+  type?: string | null;
 }
 
 export interface PageFile {

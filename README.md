@@ -78,6 +78,12 @@ page, line, heading path, refs and parent handle. Text output is for people;
 `{"api": 2, "ok": true, "hits": [...], "total": N}` (`vocab` answers with `concepts`,
 `lint` with `diagnostics`), and `--api 2` makes the tool refuse when it speaks another version.
 
+### Pages
+
+```
+tessela pages . --json     # every page: id, path, title, type
+```
+
 ### Vocabulary
 
 ```

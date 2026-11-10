@@ -341,9 +341,13 @@ Every command takes `--api N` for the version the caller was written for.
   number is the version of this contract (command names, arguments and JSON); callers
   pass `--api N` for the version they were written for, and the tool refuses on a
   mismatch. `tessela api` prints it. Any change to command names, arguments or JSON bumps it
-(2: every answer got the `api`/`ok` envelope). The operations are written against a `PageStore`
+  (2: every answer got the `api`/`ok` envelope). The operations are written against a `PageStore`
   in `tessela-core`, so a bundle kept elsewhere (remote, database) needs a new store,
   not new callers.
+- `tessela pages`: every concept page, sorted by path, with its `id`, `path`, `title` and
+  `type`. The title is what the page calls itself: its frontmatter `title`, else its
+  first `#` heading, else its file name with the dashes turned into spaces. Reserved
+  files (`index.md`, `log.md`) and hidden folders are not pages.
 - `tessela fence`: runs a live list. A page may hold a code fence with the info string
   `tessela` whose body is one read-only command (`query`, `index`, `vocab` or `lint`, with
   the bundle left out), optionally followed by filters:
@@ -387,7 +391,8 @@ tools as everyone else: it runs `tessela query --json` and `tessela vocab --json
 and `tessela lint --json` with `--api` (the binary comes from `$TESSELA_BIN`, then the one
 packaged with the app, then `target/{release,debug}`, then `PATH`). It reads and
 saves pages with `tessela read` and `tessela save` (§9, §10), one call per read and per
-save, so it follows the same rules as agents; it only lists and watches the files itself.
+save, so it follows the same rules as agents; it lists the pages with `tessela pages`
+and only watches the files itself.
 
 - The root is the folder it opens: `--bundle PATH`, or the last one used, or the one
   chosen in the window (the folder button at the top of the sidebar, Ctrl+Shift+O, or

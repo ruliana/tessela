@@ -7,8 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { existsSync } from "node:fs";
 
-import { listPages, relativeInside, resolveImage, resolveInside, watchBundle } from "../src/main/files";
-import { addPageVia, findTessela, lintArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "../src/main/tessela";
+import { relativeInside, resolveImage, resolveInside, watchBundle } from "../src/main/files";
+import { addPageVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "../src/main/tessela";
 
 async function bundle(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "tessela-test-"));
@@ -21,22 +21,6 @@ async function bundle(): Promise<string> {
 }
 
 describe("files", () => {
-  it("lists concept pages but not reserved or hidden files", async () => {
-    const root = await bundle();
-    expect((await listPages(root)).map((p) => p.id)).toEqual(["journals/2026-10-27"]);
-  });
-
-  it("lists each page with the title it gives itself", async () => {
-    const root = await bundle();
-    await writeFile(path.join(root, "daily-todo.md"), '---\ntype: concept\ntitle: "Daily TODO"\n---\n\n# Other\n');
-    await writeFile(path.join(root, "reading-list.md"), "---\ntype: concept\n---\n\n# Books to read\n");
-    await writeFile(path.join(root, "bare-page.md"), "no heading");
-    const titles = Object.fromEntries((await listPages(root)).map((p) => [p.path, p.title]));
-    expect(titles["daily-todo.md"]).toBe("Daily TODO");
-    expect(titles["reading-list.md"]).toBe("Books to read");
-    expect(titles["bare-page.md"]).toBe("bare page");
-  });
-
   it("shows pictures of the bundle and nothing else", () => {
     expect(resolveImage("/tmp/b", "assets/a b.PNG")).toBe(path.resolve("/tmp/b/assets/a b.PNG"));
     for (const bad of ["../a.png", "/etc/a.png", ".hidden/a.png", "notes.md", "a.png/../../x.txt", "a\0.png", ""]) {
@@ -79,6 +63,19 @@ describe.skipIf(!haveTool)("reading through the tessela tool", () => {
       expect.objectContaining({ concept: "topic" }),
     );
     expect(Array.isArray(await runJson(tool, lintArgv(root), "diagnostics", [1]))).toBe(true);
+  });
+
+  it("lists concept pages, not reserved or hidden files, with the title each gives itself", async () => {
+    const root = await bundle();
+    await writeFile(path.join(root, "daily-todo.md"), '---\ntype: concept\ntitle: "Daily TODO"\n---\n\n# Other\n');
+    await writeFile(path.join(root, "reading-list.md"), "---\ntype: concept\n---\n\n# Books to read\n");
+    await writeFile(path.join(root, "bare-page.md"), "no heading");
+    const pages = await runJson<{ path: string; title: string }[]>(tool, pagesArgv(root), "pages");
+    const titles = Object.fromEntries(pages.map((p) => [p.path, p.title]));
+    expect(Object.keys(titles).sort()).toEqual(["bare-page.md", "daily-todo.md", "journals/2026-10-27.md", "reading-list.md"]);
+    expect(titles["daily-todo.md"]).toBe("Daily TODO");
+    expect(titles["reading-list.md"]).toBe("Books to read");
+    expect(titles["bare-page.md"]).toBe("bare page");
   });
 
   it("reports a failure the tool describes as JSON", async () => {
@@ -146,7 +143,6 @@ describe.skipIf(!haveTool)("saving through the tessela tool", () => {
   it("leaves no temporary files behind", async () => {
     const root = await bundle();
     await savePageVia(tool, root, "a.md", "x", null);
-    expect((await listPages(root)).map((p) => p.path)).toContain("a.md");
     const { readdir } = await import("node:fs/promises");
     expect((await readdir(root)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
   });
