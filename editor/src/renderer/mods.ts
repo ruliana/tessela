@@ -11,10 +11,11 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
 import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { el } from "./dom";
+import { fenceExtension, refreshFences } from "./fences";
 
 /** An extension a mod gives for each editor, told which page the editor shows. */
 export type PageExtension = (page: { path: string }) => Extension;
@@ -65,6 +66,10 @@ export const host: ModHost = {
 /** A page open for editing, as a mod gets it: put `root` somewhere, `load` it, `destroy` it when done. */
 export type PageCard = Pick<Card, "root" | "path" | "view" | "load" | "flush" | "focus" | "destroy">;
 
+// Whatever a fence's renderer shows may come from other pages: ask again when the notes change.
+registry.on("fences", "changed", () => refreshFences());
+registry.on("fences", "page-saved", () => refreshFences());
+
 function settingsOf(mod: string) {
   const key = `tessela.mod.${mod}`;
   const read = (): Record<string, unknown> => {
@@ -104,6 +109,8 @@ export interface ModContext {
   };
   /** What happens in the window; `on` returns the way to stop listening. */
   events: { on<N extends ModEventName>(name: N, listener: (payload: ModEvents[N]) => unknown): () => void };
+  /** Code fences drawn by a mod: under each closed fence whose info string is `info`, the editor shows what `render` gives for its body (a DOM node or text, or a promise of one). Nothing is written to the page. */
+  fences: { add(info: string, render: (fence: FenceArg) => Node | string | Promise<Node | string>): void };
   /**
    * Named places in the window. `add("page-menu", ...)` puts an entry in the menu in a page's head.
    * `mount("side-top")` gives the element at the top of the right column, above the backlinks (empty
@@ -117,6 +124,8 @@ export interface ModContext {
   pages: {
     current(): string | null;
     flush(): Promise<void>;
+    /** Shows a page (at `line` when given), as clicking a link to it would. */
+    open(path: string, line?: number): Promise<void>;
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
     /** Goes to a page, as a click on a link does. */
@@ -140,6 +149,7 @@ function contextFor(mod: string): ModContext {
     settings: settingsOf(mod),
     ui: { dialog: (options) => openDialog(options), toast: (text, action) => host.toast(text, action) },
     events: { on: (name, listener) => registry.on(mod, name, listener) },
+    fences: { add: (info, render) => registry.addFence(mod, info, render) },
     slots: {
       add: (_slot, item) => registry.addPageMenuItem(mod, item),
       mount: () => ({ root: sideTop, reveal: () => host.reveal() }),
@@ -183,5 +193,6 @@ export function modExtensions(path: string): Extension[] {
       return true;
     },
   }));
-  return [Prec.high(keymap.of(keys)), ...registry.editorExtensions().map((e) => (typeof e === "function" ? e({ path }) : e))];
+  const own = registry.hasFences() ? [fenceExtension(path, (info) => registry.fenceRenderer(info))] : [];
+  return [Prec.high(keymap.of(keys)), ...own, ...registry.editorExtensions().map((e) => (typeof e === "function" ? e({ path }) : e))];
 }
