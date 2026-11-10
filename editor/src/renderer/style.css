@@ -420,6 +420,26 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .tessela-empty { color: var(--muted); }
 .tessela-error { color: var(--warn); }
 
+/* A view a mod gave (folders and others) fills the middle of the window. */
+.mod-view { max-width: 760px; margin: 0 auto; padding: 18px 28px 48px; }
+.folders-crumbs { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--muted); min-height: 1.4em; }
+.folders-crumb { background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted); font: inherit; }
+.folders-crumb:hover { color: var(--accent); }
+.folders-here { margin: 2px 0 14px; font-size: 22px; font-weight: 600; color: var(--heading); }
+.folders-section { margin: 0 0 20px; display: flex; flex-direction: column; gap: 1px; }
+.folders-section h3 { margin: 0 0 4px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.folders-page, .folders-folder { display: flex; align-items: baseline; gap: 10px; width: 100%; background: none; border: 0; border-radius: 4px; padding: 4px 8px; text-align: left; cursor: pointer; color: var(--text); font: inherit; }
+.folders-page:hover, .folders-folder:hover { background: var(--accent-soft); }
+.folders-title { flex: none; font-weight: 500; }
+.folders-count, .folders-type { flex: none; font: 400 11.5px var(--mono); color: var(--muted); }
+.folders-description { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.folders-open-home, .folders-write-home { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; margin-bottom: 4px; cursor: pointer; color: var(--text); font: inherit; }
+.folders-open-home:hover, .folders-write-home:hover { border-color: var(--accent); }
+.folders-start { display: flex; flex-direction: column; gap: 1px; }
+.folders-empty { margin: 2px 8px; color: var(--muted); font-size: 12.5px; }
+.folders-error { color: var(--warn); }
+.row[aria-current="page"] { background: var(--accent-soft); font-weight: 600; }
+
 /* The agenda mod: the Due group in the backlinks, and the month strip in the sidebar. */
 .bl-group.due h3 { font: 600 15px/1.25 var(--serif); }
 .bl-group.due .task { display: flex; align-items: flex-start; gap: 6px; }
@@ -442,25 +462,6 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 #month-strip .day.file::after { background: var(--accent); }
 #month-strip .day.mention::after { border: 1px solid var(--date); }
 #month-strip .day.is-today { outline: 1px solid var(--accent); }
-/* A view a mod gave (folders and others) fills the middle of the window. */
-.mod-view { max-width: 760px; margin: 0 auto; padding: 18px 28px 48px; }
-.folders-crumbs { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--muted); min-height: 1.4em; }
-.folders-crumb { background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted); font: inherit; }
-.folders-crumb:hover { color: var(--accent); }
-.folders-here { margin: 2px 0 14px; font-size: 22px; font-weight: 600; color: var(--heading); }
-.folders-section { margin: 0 0 20px; display: flex; flex-direction: column; gap: 1px; }
-.folders-section h3 { margin: 0 0 4px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.folders-page, .folders-folder { display: flex; align-items: baseline; gap: 10px; width: 100%; background: none; border: 0; border-radius: 4px; padding: 4px 8px; text-align: left; cursor: pointer; color: var(--text); font: inherit; }
-.folders-page:hover, .folders-folder:hover { background: var(--accent-soft); }
-.folders-title { flex: none; font-weight: 500; }
-.folders-count, .folders-type { flex: none; font: 400 11.5px var(--mono); color: var(--muted); }
-.folders-description { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.folders-open-home, .folders-write-home { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; margin-bottom: 4px; cursor: pointer; color: var(--text); font: inherit; }
-.folders-open-home:hover, .folders-write-home:hover { border-color: var(--accent); }
-.folders-start { display: flex; flex-direction: column; gap: 1px; }
-.folders-empty { margin: 2px 8px; color: var(--muted); font-size: 12.5px; }
-.folders-error { color: var(--warn); }
-.row[aria-current="page"] { background: var(--accent-soft); font-weight: 600; }
 
 /* The changes mod: what differs from git, page by page and block by block. */
 .changes-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12.5px; color: var(--muted); }
