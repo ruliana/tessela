@@ -65,7 +65,7 @@ export interface ModContext {
   editor: { extend(extension: Extension): void };
   settings: { get(name: string): unknown; set(name: string, value: unknown): void };
   /** Runs a tessela command on the open notes folder and returns its `{api, ok, ...}` JSON (see Api.cli). */
-  cli(argv: string[], options?: { input?: string }): Promise<unknown>;
+  cli(argv: string[], options?: { input?: string | Uint8Array }): Promise<unknown>;
   /** Parts of the window every mod looks alike with. */
   ui: {
     dialog(options: DialogOptions): Dialog;
