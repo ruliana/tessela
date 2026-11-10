@@ -388,6 +388,15 @@ Every command takes `--api N` for the version the caller was written for.
   `size` and `created`. It takes `--bundle`, `--json` and `--api` like the edit commands. The
   page need not exist yet. `tessela lint` reports attachments no page mentions as
   `tessela/unused-attachment` (informational).
+- `tessela watch`: a read-only stream of the pages that change on disk, for clients that
+  keep a view of the bundle (the editor). With `--json` it prints one JSON line per
+  event: `ready` (with the `mode`, `native` or `polling`), `changed` (the `paths` of the
+  pages that were created, changed or removed, sorted, a moment after the last change, so
+  a burst is one line), and `mode` when it switches between the system's watcher and looking
+  at the files every few seconds (the system can run out of watchers; it is tried again
+  every minute). `--poll` always looks at the files, for folders the system cannot watch.
+  Hidden folders and files that are not Markdown are not reported. `--exit-on-stdin-close`
+  ends it when its caller goes away. It is not a server: saves stay one call each.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
@@ -399,8 +408,8 @@ tools as everyone else: it runs `tessela query --json` and `tessela vocab --json
 and `tessela lint --json` with `--api` (the binary comes from `$TESSELA_BIN`, then the one
 packaged with the app, then `target/{release,debug}`, then `PATH`). It reads and
 saves pages with `tessela read` and `tessela save` (§9, §10), one call per read and per
-save, so it follows the same rules as agents; it lists the pages with `tessela pages`
-and only watches the files itself.
+save, so it follows the same rules as agents; it lists the pages with `tessela pages` and
+follows changes with `tessela watch`, so it reads nothing from the folder itself.
 
 - The root is the folder it opens: `--bundle PATH`, or the last one used, or the one
   chosen in the window (the folder button at the top of the sidebar, Ctrl+Shift+O, or

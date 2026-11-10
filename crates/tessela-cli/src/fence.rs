@@ -251,5 +251,6 @@ fn first_stage(bundle: &Bundle, words: &[String]) -> Result<Vec<Source>, EditErr
         Command::Remove { .. } => Err(not_a_fence_command("remove")),
         Command::Fence { .. } => Err(not_a_fence_command("fence")),
         Command::Pages { .. } => Err(not_a_fence_command("pages")),
+        Command::Watch { .. } => Err(not_a_fence_command("watch")),
     }
 }

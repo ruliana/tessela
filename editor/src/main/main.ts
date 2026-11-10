@@ -6,8 +6,8 @@ import { pathToFileURL } from "node:url";
 
 import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
-import { relativeInside, resolveImage, resolveInside, watchBundle } from "./files";
-import { addPageVia, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "./tessela";
+import { relativeInside, resolveImage, resolveInside } from "./files";
+import { addPageVia, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
 import { cliArgv, configFolder, listMods, resolveModFile } from "./mods";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
@@ -63,7 +63,7 @@ function useBundle(dir: string | null): void {
     } catch {
       // Remembering the bundle is a convenience.
     }
-    stopWatching = watchBundle(dir, (paths) => win?.webContents.send("changed", paths));
+    stopWatching = watchVia(tesselaBin(), dir, (paths) => win?.webContents.send("changed", paths));
   }
 }
 

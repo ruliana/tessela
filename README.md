@@ -84,6 +84,15 @@ page, line, heading path, refs and parent handle. Text output is for people;
 tessela pages . --json     # every page: id, path, title, type
 ```
 
+### Watching
+
+```
+tessela watch . --json     # one line per burst of changes: {"event":"changed","paths":["a.md"]}
+```
+
+A read-only stream for tools that keep a view of the bundle. Hidden folders and other
+files are not reported; `--poll` looks at the files instead of asking the system.
+
 ### Vocabulary
 
 ```
