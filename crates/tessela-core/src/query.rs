@@ -16,6 +16,7 @@ use crate::refs::normalize_concept;
 pub struct Query {
     /// Concepts the block must mention. Names are normalized (`#Foo Bar` is `foo-bar`).
     /// A concept also matches the ones below it: `project` matches `project/tessela`.
+    /// A name that a page lists in its frontmatter `aliases` also matches that page's ID.
     pub refs: Vec<String>,
     /// Match blocks that mention any of `refs` instead of all of them.
     pub any: bool,
@@ -70,11 +71,19 @@ pub struct Hit {
     /// The hit is on a `home.md` page. A link from a home page marks the target as
     /// important, so these hits come first (spec §5).
     pub home: bool,
+    /// When the page's file was last changed, in milliseconds since the Unix epoch.
+    /// Backlinks are ordered by it, newest first. Absent when unknown.
+    pub modified: Option<u64>,
 }
 
 impl Query {
     pub fn run(&self, bundle: &Bundle) -> Vec<Hit> {
-        let wanted: Vec<String> = self.refs.iter().map(|r| normalize_concept(r)).collect();
+        // Each asked concept with the other names that mean it (page aliases).
+        let wanted: Vec<Vec<String>> = self
+            .refs
+            .iter()
+            .map(|r| bundle.names_for(&normalize_concept(r)))
+            .collect();
         let text = self.text.as_ref().map(|t| t.to_lowercase());
         let by_date = self.from.is_some() || self.to.is_some();
         let mut hits = Vec::new();
@@ -87,9 +96,9 @@ impl Query {
                 let have = if self.own { &hit.refs } else { &hit.path_refs };
                 let refs_ok = wanted.is_empty()
                     || if self.any {
-                        wanted.iter().any(|w| mentions_concept(have, w))
+                        wanted.iter().any(|w| mentions_any(have, w))
                     } else {
-                        wanted.iter().all(|w| mentions_concept(have, w))
+                        wanted.iter().all(|w| mentions_any(have, w))
                     };
                 refs_ok
                     && text
@@ -110,12 +119,17 @@ impl Query {
             found.sort_by_key(|h| h.line);
             hits.extend(found.into_iter().filter(accepts));
         }
-        // Backlinks from home pages first, the most specific folder's first. The sort is
-        // stable, so everything else keeps its order.
+        // Backlinks from home pages first, the most specific folder's first, then the
+        // most recently changed page's. Hits of one page share a time and the sort is
+        // stable, so a page's hits stay together in document order, and pages changed at
+        // the same time (or at an unknown time) keep their path order.
         if !wanted.is_empty() {
-            hits.sort_by_key(|h| match h.home {
-                true => (0, Reverse(h.path.matches('/').count())),
-                false => (1, Reverse(0)),
+            hits.sort_by_key(|h| {
+                let rank = match h.home {
+                    true => (0, Reverse(h.path.matches('/').count())),
+                    false => (1, Reverse(0)),
+                };
+                (rank, Reverse(h.modified))
             });
         }
         hits
@@ -178,6 +192,7 @@ fn block_hit(page: &Page, block: &Block) -> Hit {
         path_refs: block.path_refs.clone(),
         parent: block.parent.map(|p| page.blocks[p].handle.clone()),
         home: page.is_home(),
+        modified: page.modified,
     }
 }
 
@@ -196,6 +211,7 @@ fn heading_hit(page: &Page, heading: &Heading) -> Hit {
         path_refs: heading.path_refs.clone(),
         parent: None,
         home: page.is_home(),
+        modified: page.modified,
     }
 }
 
@@ -215,7 +231,12 @@ fn page_hit(page: &Page) -> Hit {
         path_refs: page.refs.clone(),
         parent: None,
         home: page.is_home(),
+        modified: page.modified,
     }
+}
+
+fn mentions_any(refs: &[String], concepts: &[String]) -> bool {
+    concepts.iter().any(|c| mentions_concept(refs, c))
 }
 
 /// Whether `refs` has the concept or one nested under it (`project/tessela` is under `project`).

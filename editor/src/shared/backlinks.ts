@@ -1,5 +1,6 @@
 // The order of the backlinks panel (spec §5). A link from a home page says "this page matters",
-// so those mentions come first, the most specific folder's home first. Everything else keeps its order.
+// so those mentions come first, the most specific folder's home first. After them, the most
+// recently changed page comes first. Pages changed at the same time, or at an unknown time, keep their order.
 
 import type { Hit } from "./api";
 
@@ -13,12 +14,12 @@ export function isHomeHit(hit: Hit): boolean {
   return hit.home ?? isHomePath(hit.path);
 }
 
-/** Home hits first, deepest folder first; the rest in their order. */
+/** Home hits first, deepest folder first; then newest file first; ties in their order. */
 export function orderBacklinks(hits: Hit[]): Hit[] {
   const depth = (hit: Hit) => hit.path.split("/").length - 1;
   const rank = (hit: Hit) => (isHomeHit(hit) ? -(depth(hit) + 1) : 1);
   return hits
     .map((hit, i) => ({ hit, i }))
-    .sort((a, b) => rank(a.hit) - rank(b.hit) || a.i - b.i)
+    .sort((a, b) => rank(a.hit) - rank(b.hit) || (b.hit.modified ?? -1) - (a.hit.modified ?? -1) || a.i - b.i)
     .map(({ hit }) => hit);
 }

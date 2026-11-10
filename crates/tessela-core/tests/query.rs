@@ -2,8 +2,20 @@ use std::path::PathBuf;
 
 use tessela_core::{Bundle, Hit, HitKind, Query, vocabulary};
 
+/// Backlinks sort by file time (checkout or write time here), so every page gets one
+/// shared time and ties keep the path order. `TimedBundle` sets real times.
+fn pinned(mut bundle: Bundle) -> Bundle {
+    for page in &mut bundle.pages {
+        page.modified = Some(0);
+    }
+    bundle
+}
+
 fn bundle() -> Bundle {
-    Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/query")).unwrap()
+    pinned(
+        Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/query"))
+            .unwrap(),
+    )
 }
 
 fn texts(hits: &[Hit]) -> Vec<&str> {
@@ -199,7 +211,7 @@ fn temp_bundle(name: &str, files: &[(&str, &str)]) -> (Bundle, PathBuf) {
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(file, content).unwrap();
     }
-    (Bundle::load(&dir).unwrap(), dir)
+    (pinned(Bundle::load(&dir).unwrap()), dir)
 }
 
 fn range(from: Option<&str>, to: Option<&str>) -> Query {
@@ -380,7 +392,10 @@ fn date_filter_applies_to_backlink_hits_too() {
 }
 
 fn home_bundle() -> Bundle {
-    Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/home")).unwrap()
+    pinned(
+        Bundle::load(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/home"))
+            .unwrap(),
+    )
 }
 
 #[test]
@@ -415,4 +430,152 @@ fn hit_order_is_unchanged_when_no_concept_is_asked_for() {
             "notes/learning.md"
         ]
     );
+}
+
+/// A bundle in the temp folder where each page has the given modification time
+/// (seconds after an arbitrary start). The folder is removed when dropped.
+struct TimedBundle(PathBuf);
+
+impl TimedBundle {
+    fn new(name: &str, pages: &[(&str, &str, u64)]) -> TimedBundle {
+        let root = std::env::temp_dir().join(format!("tessela-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (path, text, secs) in pages {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, text).unwrap();
+            let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000 + secs);
+            std::fs::File::options()
+                .write(true)
+                .open(&file)
+                .unwrap()
+                .set_modified(time)
+                .unwrap();
+        }
+        TimedBundle(root)
+    }
+
+    fn load(&self) -> Bundle {
+        Bundle::load(&self.0).unwrap()
+    }
+}
+
+impl Drop for TimedBundle {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn backlinks_come_newest_first_with_home_pages_still_on_top() {
+    let page = |title: &str| {
+        format!("---\ntype: concept\ntitle: {title}\n---\n\nSee #rust.\n\nAlso #rust again.\n")
+    };
+    let home = "---\ntype: home\ntitle: Home\n---\n\nStart with #rust.\n";
+    let dir = TimedBundle::new(
+        "recency",
+        &[
+            ("a-old.md", &page("Old"), 10),
+            ("b-new.md", &page("New"), 300),
+            ("c-mid.md", &page("Mid"), 100),
+            // The oldest file of all, but a home page.
+            ("home.md", home, 1),
+        ],
+    );
+    let hits = refs(&["rust"]).run(&dir.load());
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            "home.md", "b-new.md", "b-new.md", "c-mid.md", "c-mid.md", "a-old.md", "a-old.md"
+        ]
+    );
+    // The hits of one page stay in document order.
+    assert!(hits[1].line < hits[2].line);
+}
+
+#[test]
+fn deeper_home_pages_win_over_newer_ones() {
+    let home = |title: &str| format!("---\ntype: home\ntitle: {title}\n---\n\nStart with #rust.\n");
+    let dir = TimedBundle::new(
+        "home-depth",
+        &[
+            ("home.md", &home("Root"), 500),
+            ("notes/home.md", &home("Notes"), 5),
+        ],
+    );
+    let hits = refs(&["rust"]).run(&dir.load());
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(paths, ["notes/home.md", "home.md"]);
+}
+
+#[test]
+fn pages_changed_at_the_same_time_keep_their_path_order() {
+    let page = "---\ntype: concept\n---\n\nSee #rust.\n";
+    let dir = TimedBundle::new(
+        "same-time",
+        &[("c.md", page, 7), ("a.md", page, 7), ("b.md", page, 7)],
+    );
+    let hits = refs(&["rust"]).run(&dir.load());
+    let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+    assert_eq!(paths, ["a.md", "b.md", "c.md"]);
+}
+
+#[test]
+fn a_page_alias_finds_what_the_page_name_finds() {
+    let (b, dir) = temp_bundle(
+        "aliases",
+        &[
+            (
+                "agent-start-here.md",
+                "---\ntype: resource\ntitle: Agent Start Here\naliases: [\"Agent Home\", AI Start Here]\n---\n\nA map.\n",
+            ),
+            ("a.md", "---\ntype: concept\n---\n\nSee #agent-start-here\n"),
+            (
+                "b.md",
+                "---\ntype: concept\n---\n\nSee [it](/agent-start-here.md)\n\nNot it: #agent-home-page\n",
+            ),
+            ("c.md", "---\ntype: concept\n---\n\nWrote #agent-home\n"),
+        ],
+    );
+    let page_name = refs(&["Agent Start Here"]).run(&b);
+    assert_eq!(
+        texts(&page_name),
+        ["See #agent-start-here", "See [it](/agent-start-here.md)"]
+    );
+    // The alias finds the page's backlinks, and the blocks that use the alias itself.
+    let alias = refs(&["Agent Home"]).run(&b);
+    assert_eq!(
+        texts(&alias),
+        [
+            "See #agent-start-here",
+            "See [it](/agent-start-here.md)",
+            "Wrote #agent-home"
+        ]
+    );
+    assert_eq!(refs(&["#ai-start-here"]).run(&b).len(), page_name.len());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn an_alias_works_with_any_and_with_a_single_string() {
+    let (b, dir) = temp_bundle(
+        "aliases-any",
+        &[
+            ("rust.md", "---\ntype: concept\naliases: rustlang\n---\n"),
+            (
+                "a.md",
+                "---\ntype: concept\n---\n\nUses #rust\n\nUses #okf\n",
+            ),
+        ],
+    );
+    let all = refs(&["rustlang", "okf"]).run(&b);
+    assert!(all.is_empty(), "no block has both: {all:?}");
+    let any = Query {
+        any: true,
+        ..refs(&["rustlang", "okf"])
+    }
+    .run(&b);
+    assert_eq!(texts(&any), ["Uses #rust", "Uses #okf"]);
+    std::fs::remove_dir_all(dir).unwrap();
 }

@@ -9,6 +9,11 @@ import { journalPath, localDay } from "../shared/pages";
 import { listPages, relativeInside, resolveImage, resolveInside, watchBundle } from "./files";
 import { addPageVia, findTessela, lintArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "./tessela";
 
+// Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
+// userData is pinned first: the name feeds its default, and the saved bundle lives there.
+app.setPath("userData", app.getPath("userData"));
+app.setName("Tessela");
+
 let bundle: string | null = null;
 let stopWatching: (() => void) | undefined;
 let win: BrowserWindow | undefined;
@@ -57,12 +62,7 @@ function useBundle(dir: string | null): void {
     } catch {
       // Remembering the bundle is a convenience.
     }
-    try {
-      stopWatching = watchBundle(dir, (paths) => win?.webContents.send("changed", paths));
-    } catch (err) {
-      // Without a watcher the editor still works, it just misses outside changes.
-      console.warn(`cannot watch ${dir}: ${err instanceof Error ? err.message : err}`);
-    }
+    stopWatching = watchBundle(dir, (paths) => win?.webContents.send("changed", paths));
   }
 }
 
@@ -170,6 +170,9 @@ void app.whenReady().then(() => {
   serveImages();
   useBundle(loadBundle());
   registerIpc();
+  // macOS ignores the window icon and takes the Dock one from the app bundle. Packaged builds
+  // have build/icon.icns there, so this is for running unpackaged.
+  if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, "renderer", "icon.png"));
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

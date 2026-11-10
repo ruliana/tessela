@@ -21,6 +21,7 @@ my-notes/
 ├── machine-learning.md   # concept pages, anywhere in the tree
 ├── project/
 │   └── tessela.md
+├── assets/               # attachments: images, PDFs, other files
 └── .tessela/             # rebuildable caches and indexes; gitignored
 ```
 
@@ -32,6 +33,9 @@ my-notes/
   bundle declare its version (`okf_version: "0.2"`); a bundle without one is read
   as the version the tool understands.
 - `home.md` is reserved by Tessela, see below.
+- `assets/` at the root holds attachments that pages link to. `tessela lint` skips
+  everything under it, Markdown files included, because an attachment is a file
+  as it arrived (an export, a pasted document), not a note written to these rules.
 - Everything under `.tessela/` can be deleted at any time. Tools rebuild it from the
   Markdown files. It is never committed.
 
@@ -49,7 +53,8 @@ from the home pages above it, and tools never write it.
 - It is an ordinary page of the graph, not hidden: the links, tags and
   headings in it are references like any other (§4).
 - A link from a home page says "this page matters". Backlinks from home pages
-  come first, the most specific folder's first, and clients mark them (§5).
+  come first, the most specific folder's first, and clients mark them (§5). The
+  other backlinks follow, most recently changed first.
 - `home` is not a name for a concept. The Logseq importer writes a page called
   "Home" as `home-page.md` (§12).
 - A computed index (`tessela index`) lists everything; a home page is the
@@ -187,9 +192,11 @@ Headings and pages only exist to hold references, so they are returned only when
 a concept is asked for.
 
 Backlinks from a home page (§1) come first, the most specific folder's home first,
-and each such hit has `home: true`. The rest keep their order. A link from a home
-page is how the notes say a page is important, so a client shows these first and
-marks them.
+and each such hit has `home: true`. The rest come most recently changed first,
+by the modification time of the page's file (each hit carries it as `modified`,
+in milliseconds since the epoch); a page's own hits stay in document order. A link
+from a home page is how the notes say a page is important, so a client shows these
+first and marks them.
 
 ## 6. Journals
 
@@ -296,12 +303,17 @@ human-readable output and a `--json` output, which the editor and agents use.
   date range. Refs match path refs unless `--own` is given (§3). A date range
   keeps what is on journal days in the range and anything, on any page, whose
   text contains a date in the range (§7). A concept also matches the ones nested
-  under it: `#project` matches `#project/tessela`, but not `#projector`.
+  under it: `#project` matches `#project/tessela`, but not `#projector`. A name
+  that a page lists in its frontmatter `aliases` also matches that page's ID, so
+  `--ref <alias>` finds the page's backlinks, plus the blocks that use the alias
+  itself. It does not work the other way: `--ref <page>` does not find blocks that
+  use one of its aliases.
 - `tessela index`: what a folder holds, as an OKF `index.md` (§6 of OKF):
   sub-folders, then the folder's own pages (its `home.md` first) with their
   `description` or first line, then its journal days, newest first. It prints to
-  stdout (`--json` gives the same as data; `--dir` picks a folder) and writes
-  nothing. `--write` writes an `index.md` into the root and every folder for
+  stdout (`--json` gives the same as data; `--dir` picks a folder; `--recursive`
+  lists every page below the folder, sub-folders included, as one flat list) and
+  writes nothing. `--write` writes an `index.md` into the root and every folder for
   bundles read by tools that do not compute listings. Generated files carry a
   marker line; one that does not (a hand-written `index.md`) is kept unless
   `--force` is given.
@@ -352,7 +364,7 @@ save, so it follows the same rules as agents; it only lists and watches the file
 - The right panel shows the backlinks of the open page (`query --ref PAGE`; for a
   journal, also anything that mentions its date), grouped by page. Groups from a
   home page (§1) come first, the most specific folder's first, with a "Home" tag
-  and a tinted background.
+  and a tinted background. The other groups follow, the most recently changed page first.
 - "New page" (Ctrl+N) asks for a name, where `/` makes folders, and creates the file
   at once from the page template (typing the name in the search box and pressing Enter
   also opens the page, but its file only appears on the first edit). "Open file…"
@@ -409,10 +421,22 @@ goes to the first property.
 | A URL (`https://...`)                       | `[](https://...)`       | in the text part  |
 | A file path (`/x.md`, `./x.md`, `~/x.pdf`)  | `[](/x.md)`             | in the text part  |
 | Any other text                              | `[Some text]()`         | in the target     |
-| Nothing                                     | `[]()`                  | in the text part  |
+| Nothing                                     | `[]()`                  | in the target     |
 
-When the cursor lands in the target, the editor offers existing concepts from
-`tessela vocab`, with the slug of the selected text (§4) as the first suggestion.
+When the cursor lands in the target, the editor searches the pages by title and by path,
+and offers a link to a new page named after what was typed (its path is made as in §4).
+Choosing one fills in the target, and the text too when it is empty. With nothing typed
+yet, the pages are searched by the link text, so `[Daily TODO](` offers that page first.
+
+Titles come from the `title:` of the front matter, else the first `#` heading, else the
+file name. The same search opens after typing `](` by hand, and after a single `[` and a
+few letters: `[dai` offers "Daily TODO", and choosing it writes `[Daily TODO](/daily-todo.md)`.
+A `[` that is a task box (`[ ]`, `[x]`), an image (`![`) or the text of a link that already
+exists does not search.
+
+An address (`https://...`, `mailto:...`) pasted over selected text makes the text its link,
+so a title and an address are not typed twice. With nothing selected, or inside code, a
+paste is a plain paste.
 
 ## 12. Importing from Logseq
 
@@ -433,6 +457,8 @@ that already has files, and it never changes the graph.
 | `[[alias]]` of a page with `alias::`  | A link to the page that declares the alias           |
 | `#foo`                                | `#foo`                                               |
 | Page properties (header or first bullet) | Frontmatter: `title`, `tags`, `aliases`, other keys |
+| `tags:: #a #b`, `tags:: a, [[B c]]`      | `tags: ["a", "b"]`, `tags: ["a", "b-c"]`          |
+| Page property `created:: [[2026-10-27]]` | `created: "2026-10-27"`, a date (§7)               |
 | Block property `status:: done`        | `#status/done` on the last line of the block         |
 | Block property `author:: [[Jane]]`    | `[author](/author.md): [Jane](/jane.md)`             |
 | Block property `tags:: a, b`          | `#a #b`                                              |
@@ -480,4 +506,5 @@ as files that go stale.
 Not imported, and listed in the report: `.org` pages, whiteboards, and files that
 are not valid UTF-8. Logseq macros such as `{{query ...}}` are copied as they are
 and counted. Journal links are recognised in Logseq's default title format
-(`Oct 27th, 2026`) and in ISO form.
+(`Oct 27th, 2026`) and in ISO form, with or without a weekday (`2026-10-27`,
+`2026-10-27 Tuesday`).

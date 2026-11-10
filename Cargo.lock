@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "tessela-cli"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "clap",
  "serde",
@@ -409,7 +409,7 @@ dependencies = [
 
 [[package]]
 name = "tessela-core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "blake3",
  "diffy",

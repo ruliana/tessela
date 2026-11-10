@@ -28,8 +28,8 @@ describe("smartLink", () => {
     expect(edit.inTarget).toBe(true);
   });
 
-  it("with nothing selected makes an empty link with the cursor in the text", () => {
-    expect(smartLink("")).toEqual({ text: "[]()", cursor: 1, inTarget: false });
+  it("with nothing selected makes an empty link with the cursor in the target, to search for a page", () => {
+    expect(smartLink("")).toEqual({ text: "[]()", cursor: 3, inTarget: true });
   });
 });
 
@@ -301,9 +301,26 @@ describe("backlink order", () => {
     expect(isHomePath("home/page.md")).toBe(false);
   });
 
-  it("puts home pages first, the most specific folder's first, and keeps the rest in order", () => {
+  it("puts home pages first, the most specific folder's first, and keeps the rest in order when no time is known", () => {
     const hits = [hit("a.md"), hit("home.md"), hit("b.md"), hit("x/y/home.md"), hit("x/home.md")];
     expect(orderBacklinks(hits).map((h) => h.path)).toEqual(["x/y/home.md", "x/home.md", "home.md", "a.md", "b.md"]);
+  });
+
+  it("orders the rest by last change, newest first, and keeps a page's hits together", () => {
+    const hits = [
+      hit("old.md", { modified: 10, line: 1 }),
+      hit("new.md", { modified: 300, line: 1, handle: "n1" }),
+      hit("mid.md", { modified: 100 }),
+      hit("new.md", { modified: 300, line: 9, handle: "n2" }),
+      hit("home.md", { modified: 1 }),
+      hit("unknown.md"),
+    ];
+    expect(orderBacklinks(hits).map((h) => h.handle)).toEqual(["home.md", "n1", "n2", "mid.md", "old.md", "unknown.md"]);
+  });
+
+  it("puts a deeper home page before a newer shallow one", () => {
+    const hits = [hit("home.md", { modified: 500 }), hit("a/home.md", { modified: 5 })];
+    expect(orderBacklinks(hits).map((h) => h.path)).toEqual(["a/home.md", "home.md"]);
   });
 
   it("trusts the home flag of the tool when it is there", () => {

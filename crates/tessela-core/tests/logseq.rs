@@ -157,17 +157,19 @@ fn backlinks_work_on_the_imported_bundle() {
     };
 
     // Through a link, a link to an alias, and a child that inherits from its parent.
+    // The order follows the files' modification times, which an import does not control.
     let hits = ask(&["tessela"]);
-    let texts: Vec<_> = hits.iter().map(|h| h.text.as_str()).collect();
+    let mut texts: Vec<_> = hits.iter().map(|h| h.text.as_str()).collect();
+    texts.sort();
     assert_eq!(
         texts,
         [
-            "Started planning [Tessela](/tessela.md) with #agents",
-            "write the spec\nSCHEDULED: 2026-10-28",
             "Read about [Machine Learning](/machine-learning.md)\n#status/reading",
-            "ping [tess](/tessela.md) about `[[not a link]]`",
+            "Started planning [Tessela](/tessela.md) with #agents",
             "Subproject of [Tessela](/tessela.md)",
             "[Tessela](/tessela.md) is written in Rust",
+            "ping [tess](/tessela.md) about `[[not a link]]`",
+            "write the spec\nSCHEDULED: 2026-10-28",
         ]
     );
 

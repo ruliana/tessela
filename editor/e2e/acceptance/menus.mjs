@@ -273,7 +273,7 @@ suite("Concept suggestions and Ctrl-click", bundle, (test) => {
   test("]( suggests pages and fills in the path", async (s) => {
     await s.openWith("sugg-link", "");
     await s.type("[x](proj");
-    await menu(s, "project/tessela");
+    await menu(s, "tessela");
     await s.key("Enter");
     assert.equal(await s.body(), "[x](/project/tessela.md)");
   });

@@ -15,11 +15,20 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | --- | --- |
 | Find where a topic is mentioned (backlinks) | `tessela query . --ref NAME [--json]` |
 | Search text, a page or folder, a page type, a date range | `tessela query . --text WORDS`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
-| See what a folder holds | `tessela index . [--dir folder]` (prints; writes nothing) |
+| See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included) |
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
 | Check your work | `tessela lint . [--strict] [--json]` |
 | Import a Logseq graph into a new bundle | `tessela import-logseq GRAPH OUT` |
 | Add, edit, rename, move or remove a page | the edit commands, next section |
+
+Search with `tessela query` before you reach for `rg` or `grep`: each hit is a block with its file, line, handle and heading, and filters combine with AND. Use `--limit N` to cut the output; piping into `head` also works.
+
+What `tessela query` does not do, so `rg` over the Markdown files is the fallback:
+
+- `--text` is one literal phrase, case-insensitive: no regex, no words in any order, and only one `--text` per query.
+- `--text` reads block text, not frontmatter, so `title`, `role`, `team` and other keys are not searched by words. `--ref` does match a page's `tags` and the links in its other frontmatter text.
+- `--type` returns blocks, so a page with no body text is missing. `tessela index . --dir FOLDER --recursive --json` lists every page below a folder, with its title and type.
+- `--ref NAME` takes a page id, a title or an alias from a page's frontmatter `aliases`. An alias finds the page's backlinks plus the blocks that use the alias itself, but the page id does not find blocks that use an alias, and an alias that several pages share finds all of them. It also matches concepts nested under it (`--ref project` finds `project/tessela`). `--own` drops blocks that only inherit it from a parent item or heading.
 
 ## Changing pages: always through the CLI
 

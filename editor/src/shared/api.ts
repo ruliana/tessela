@@ -19,6 +19,8 @@ export interface Hit {
   parent: string | null;
   /** The hit is on a `home.md` page. Absent from older `tessela` builds. */
   home?: boolean;
+  /** When the hit's file was last changed, in ms since the epoch. Absent from older `tessela` builds. */
+  modified?: number;
 }
 
 /** One concept from `tessela vocab --json`. */
@@ -59,6 +61,8 @@ export interface QueryArgs {
 export interface PageEntry {
   id: string;
   path: string;
+  /** What the page calls itself (front matter `title:`, else its first `#` heading). Absent from older callers. */
+  title?: string;
 }
 
 export interface PageFile {

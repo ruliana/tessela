@@ -81,9 +81,15 @@ impl Linter {
         for rule in &self.rules {
             rule.check(bundle, &mut out);
         }
+        out.retain(|d| !is_attachment(&d.path));
         out.sort_by(|a, b| (&a.path, a.line, a.rule).cmp(&(&b.path, b.line, b.rule)));
         out
     }
+}
+
+/// Spec §1: files under the root `assets/` folder are attachments, not notes, so lint skips them.
+fn is_attachment(path: &str) -> bool {
+    path.starts_with("assets/")
 }
 
 fn diag(
@@ -385,7 +391,7 @@ impl Rule for UnwrittenConcepts {
     fn check(&self, bundle: &Bundle, out: &mut Vec<Diagnostic>) {
         let existing = bundle.page_ids();
         let mut missing: BTreeMap<String, (&str, Option<usize>, usize)> = BTreeMap::new();
-        for page in &bundle.pages {
+        for page in bundle.pages.iter().filter(|p| !is_attachment(&p.path)) {
             for (concept, line) in mentions(page) {
                 if existing.contains(&concept) {
                     continue;

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::page::Page;
+use crate::refs::normalize_concept;
 
 #[derive(Debug)]
 pub struct Bundle {
@@ -44,7 +45,11 @@ impl Bundle {
                 .collect::<Vec<_>>()
                 .join("/");
             match std::fs::read(entry.path()).map(String::from_utf8) {
-                Ok(Ok(text)) => pages.push(Page::parse(&rel, &text)),
+                Ok(Ok(text)) => {
+                    let mut page = Page::parse(&rel, &text);
+                    page.modified = modified_ms(&entry);
+                    pages.push(page);
+                }
                 Ok(Err(_)) => unreadable.push((rel, "file is not valid UTF-8".into())),
                 Err(e) => unreadable.push((rel, e.to_string())),
             }
@@ -60,10 +65,30 @@ impl Bundle {
         self.pages.iter().find(|p| p.id.eq_ignore_ascii_case(id))
     }
 
+    /// The concepts that mean `concept`: itself, and the page that lists it in its
+    /// frontmatter `aliases`, so a name that is only an alias still finds the page's backlinks.
+    pub fn names_for(&self, concept: &str) -> Vec<String> {
+        let mut names = vec![concept.to_string()];
+        for page in &self.pages {
+            let id = normalize_concept(&page.id);
+            if !names.contains(&id) && page.aliases().iter().any(|a| a == concept) {
+                names.push(id);
+            }
+        }
+        names
+    }
+
     /// IDs of all pages, lowercased, for checking whether a concept has a page.
     pub fn page_ids(&self) -> HashSet<String> {
         self.pages.iter().map(|p| p.id.to_lowercase()).collect()
     }
+}
+
+/// When the file was last changed, in milliseconds since the Unix epoch.
+fn modified_ms(entry: &DirEntry) -> Option<u64> {
+    let time = entry.metadata().ok()?.modified().ok()?;
+    let since = time.duration_since(std::time::UNIX_EPOCH).ok()?;
+    u64::try_from(since.as_millis()).ok()
 }
 
 fn is_reserved(file_name: &str) -> bool {

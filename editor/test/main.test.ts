@@ -1,11 +1,13 @@
+import { EventEmitter } from "node:events";
+import type { watch } from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { existsSync } from "node:fs";
 
-import { listPages, relativeInside, resolveImage, resolveInside } from "../src/main/files";
+import { listPages, relativeInside, resolveImage, resolveInside, watchBundle } from "../src/main/files";
 import { addPageVia, findTessela, queryArgv, readPageVia, savePageVia } from "../src/main/tessela";
 
 async function bundle(): Promise<string> {
@@ -22,6 +24,17 @@ describe("files", () => {
   it("lists concept pages but not reserved or hidden files", async () => {
     const root = await bundle();
     expect((await listPages(root)).map((p) => p.id)).toEqual(["journals/2026-10-27"]);
+  });
+
+  it("lists each page with the title it gives itself", async () => {
+    const root = await bundle();
+    await writeFile(path.join(root, "daily-todo.md"), '---\ntype: concept\ntitle: "Daily TODO"\n---\n\n# Other\n');
+    await writeFile(path.join(root, "reading-list.md"), "---\ntype: concept\n---\n\n# Books to read\n");
+    await writeFile(path.join(root, "bare-page.md"), "no heading");
+    const titles = Object.fromEntries((await listPages(root)).map((p) => [p.path, p.title]));
+    expect(titles["daily-todo.md"]).toBe("Daily TODO");
+    expect(titles["reading-list.md"]).toBe("Books to read");
+    expect(titles["bare-page.md"]).toBe("bare page");
   });
 
   it("shows pictures of the bundle and nothing else", () => {
@@ -152,5 +165,85 @@ describe("findTessela", () => {
   it("falls back to a build next to the editor, then PATH", () => {
     expect(findTessela({ ...base, exists: have("/src/target/debug/tessela") })).toBe("/src/target/debug/tessela");
     expect(findTessela({ ...base, exists: have() })).toBe("tessela");
+  });
+});
+
+describe("watchBundle", () => {
+  // What fs.watch does on a Mac that has run out of folder watchers: EMFILE, after it returned.
+  const emfile = Object.assign(new Error("EMFILE: too many open files, watch"), { code: "EMFILE" });
+  const brokenWatch = (): { fake: typeof watch; started: () => number } => {
+    let n = 0;
+    const fake = (() => {
+      n++;
+      const w = Object.assign(new EventEmitter(), { close: () => {} });
+      setTimeout(() => w.emit("error", emfile), 5);
+      return w;
+    }) as unknown as typeof watch;
+    return { fake, started: () => n };
+  };
+  const until = async (done: () => boolean): Promise<void> => {
+    for (let i = 0; i < 200 && !done(); i++) await new Promise((r) => setTimeout(r, 25));
+    expect(done()).toBe(true);
+  };
+
+  it("keeps reporting changes when the system watcher fails after it started", async () => {
+    const root = await bundle();
+    const heard = new Set<string>();
+    const warn = vi.fn();
+    const { fake } = brokenWatch();
+    const stop = watchBundle(root, (paths) => paths.forEach((p) => heard.add(p)), { watch: fake, pollMs: 20, retryMs: 60_000, warn });
+    await new Promise((r) => setTimeout(r, 100));
+    await writeFile(path.join(root, "new.md"), "new");
+    await writeFile(path.join(root, "journals/2026-10-27.md"), "changed elsewhere");
+    await writeFile(path.join(root, ".git/y.md"), "hidden");
+    await until(() => heard.has("new.md") && heard.has("journals/2026-10-27.md"));
+    stop();
+    expect(heard.has(".git/y.md")).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("EMFILE"));
+  });
+
+  it("does not throw when the system watcher cannot start", async () => {
+    const root = await bundle();
+    const heard = new Set<string>();
+    const refuse = (() => {
+      throw emfile;
+    }) as unknown as typeof watch;
+    const stop = watchBundle(root, (paths) => paths.forEach((p) => heard.add(p)), { watch: refuse, pollMs: 20, retryMs: 60_000, warn: () => {} });
+    await new Promise((r) => setTimeout(r, 100));
+    await writeFile(path.join(root, "late.md"), "x");
+    await until(() => heard.has("late.md"));
+    stop();
+  });
+
+  it("tries the system watcher again later", async () => {
+    const root = await bundle();
+    const { fake, started } = brokenWatch();
+    const stop = watchBundle(root, () => {}, { watch: fake, pollMs: 20, retryMs: 50, warn: () => {} });
+    await until(() => started() >= 3);
+    stop();
+    const after = started();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(started()).toBe(after);
+  });
+
+  it("stops looking at the files once the system watcher works again", async () => {
+    const root = await bundle();
+    const heard = new Set<string>();
+    let calls = 0;
+    let deliver: ((event: string, filename: string) => void) | undefined;
+    const flaky = ((_root: string, _opts: unknown, cb: (event: string, filename: string) => void) => {
+      const w = Object.assign(new EventEmitter(), { close: () => {} });
+      if (++calls === 1) setTimeout(() => w.emit("error", emfile), 5);
+      else deliver = cb;
+      return w;
+    }) as unknown as typeof watch;
+    const stop = watchBundle(root, (paths) => paths.forEach((p) => heard.add(p)), { watch: flaky, pollMs: 20, retryMs: 60, warn: () => {} });
+    await until(() => deliver !== undefined);
+    await writeFile(path.join(root, "quiet.md"), "x");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(heard.has("quiet.md")).toBe(false);
+    deliver!("change", "heard.md");
+    await until(() => heard.has("heard.md"));
+    stop();
   });
 });

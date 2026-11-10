@@ -19,6 +19,9 @@ pub struct Page {
     pub refs: Vec<String>,
     pub blocks: Vec<Block>,
     pub headings: Vec<Heading>,
+    /// When the file was last changed, in milliseconds since the Unix epoch. Not known
+    /// for a page parsed from text, and for files whose system does not say.
+    pub modified: Option<u64>,
 }
 
 impl Page {
@@ -33,6 +36,7 @@ impl Page {
             refs: Vec::new(),
             blocks: Vec::new(),
             headings: Vec::new(),
+            modified: None,
         };
         let (body, body_offset) = match split_frontmatter(text) {
             Split::None => (text, 0),
@@ -102,6 +106,20 @@ impl Page {
             }
         }
         refs
+    }
+
+    /// Frontmatter `aliases`, normalized to concept IDs: other names for this page.
+    pub fn aliases(&self) -> Vec<String> {
+        let names = match self.get("aliases") {
+            Some(Value::Sequence(items)) => items.iter().filter_map(Value::as_str).collect(),
+            Some(Value::String(one)) => vec![one.as_str()],
+            _ => Vec::new(),
+        };
+        names
+            .into_iter()
+            .map(normalize_concept)
+            .filter(|a| !a.is_empty())
+            .collect()
     }
 
     /// Frontmatter `tags`, normalized to concept IDs.

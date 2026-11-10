@@ -68,8 +68,10 @@ Headings and pages only exist to hold references, so they are returned only when
 the query names a concept with `--ref`.
 
 A concept also matches the ones nested under it, so `--ref project` finds
-`#project/tessela`. A date range (`--from`, `--to`) keeps what is on journal days
-in the range and anything, on any page, whose text contains a date in the range.
+`#project/tessela`. A name that a page lists in its frontmatter `aliases` finds
+that page's backlinks too. A date range (`--from`, `--to`) keeps what is on
+journal days in the range and anything, on any page, whose text contains a date
+in the range.
 Every hit has a `handle` that stays the same until the text changes, plus its
 page, line, heading path, refs and parent handle. Text output is for people;
 `--json` is for agents and the editor.
@@ -141,7 +143,9 @@ Ctrl+N makes a new page and Ctrl+O opens a Markdown file.
 
 Opens on the latest journal days, saves as you type, shows backlinks, searches the
 text of your notes, lists what `tessela lint` finds, suggests existing tags, and
-turns a selection into a link with Ctrl+L (Super+L on macOS). The **Rendered** button
+turns a selection into a link with Ctrl+L (Super+L on macOS), searches the pages for a link
+after Ctrl+L or a single `[` and a few letters, and turns selected text into a link when you
+paste an address over it. The **Rendered** button
 (Ctrl/Cmd+Alt+M) shows the Markdown rendered and switches to the raw text only in the
 block you are editing. Details are in spec §11. `npm test` runs the unit tests and `npm run e2e` drives a real window, and `npm run e2e:acceptance`
 checks every feature of the editor there (`ONLY=regex` runs some of them).
