@@ -506,6 +506,8 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Shift+Tab                     | Nested item moves out; a top-level item becomes a paragraph again      |
 | Alt+Up / Alt+Down             | Move the block, with what it owns, past its neighbour                  |
 | Esc, then Shift+Up / Shift+Down | Select the block at the cursor (Esc again: its parent), then more blocks |
+| Ctrl+Up / Ctrl+Down           | Fold, or open, the block at the cursor; pressed again, the block around it |
+| Ctrl+Alt+Right / Left         | Zoom in on the block at the cursor, or back out one level              |
 | Ctrl+B, Ctrl+I, Ctrl+E        | Bold, italic, code (the word at the cursor when nothing is selected)   |
 | Ctrl+Shift+X                  | Strikethrough                                                         |
 | `*` `_` `~` `(` `[` `{` `"` `` ` `` | Typed over a selection, surround it; brackets close themselves   |
@@ -513,6 +515,19 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Ctrl+Enter                    | Tick or untick a task; makes a task of an item or a paragraph         |
 | `/`                           | Menu: headings, lists, tasks, quote, code, table, dates, link, tag     |
 | Ctrl+F                        | Find in the page                                                      |
+
+Fold and zoom change what the editor shows, never the page. A heading folds its section (up
+to the next heading as high or higher), a list item folds what is nested in it and its wrapped
+lines, and a paragraph folds the list it owns. A fold leaves a chip with the number of lines it
+hides, and a click on the chip or on the chevron in the margin opens it. The palette has "Fold
+the page to level 1, 2 or 3" and "Unfold the whole page"; a level counts headings and nested
+items alike. Folds are kept with the window's settings, per notes folder and page, never in the
+notes or in `.tessela/`, so folding shows up in no diff and is not shared. A fold is remembered
+by the block's first line (and which of its kind that is on the page): when that line changes,
+the block opens. Zoom shows one block with what it owns, a heading with its whole section, and
+draws the way back above it: the page, the headings and items around the block, each a click
+to go there. While zoomed, select all takes the block and nothing outside it can be edited.
+Zoom is not remembered.
 
 On macOS, Ctrl above is Cmd. Tab, Shift+Tab and Alt+Up/Down keep their usual
 behaviour inside front matter and fenced code. Blocks are the ones of §3: a

@@ -36,7 +36,7 @@ export interface CardDeps {
   livePreview: () => boolean;
   onTogglePreview: () => void;
   /** Extensions mods add to the editor. */
-  extensions?: () => Extension[];
+  extensions?: (path: string) => Extension[];
   /** The page was loaded into the card. */
   onOpened?: (path: string) => void;
   /** A save changed the page's title. */
@@ -157,7 +157,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     pageName: () => pageId(path).split("/").pop() ?? "",
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
-    ...(deps.extensions ? { extensions: deps.extensions } : {}),
+    ...(deps.extensions ? { extensions: () => deps.extensions?.(path) ?? [] } : {}),
   });
 
   function setStatus(state: "saved" | "dirty" | "conflict", text: string): void {

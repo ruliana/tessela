@@ -16,7 +16,10 @@ import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { el } from "./dom";
 
-export const registry = new ModRegistry<EditorView, Extension>();
+/** An extension a mod gives for each editor, told which page the editor shows. */
+export type PageExtension = (page: { path: string }) => Extension;
+
+export const registry = new ModRegistry<EditorView, Extension | PageExtension>();
 
 /** The place at the top of the right column that mods draw in (`slots.mount("side-top")`). It outlives the window's shell. */
 export const sideTop = el("div", { class: "side-top", id: "side-top" });
@@ -25,6 +28,9 @@ export const sideTop = el("div", { class: "side-top", id: "side-top" });
 export let modsInfo: ModsInfo | null = null;
 
 const cm = { state, view, language, commands, autocomplete };
+// The mods that come with the app are built against these same packages (scripts/build-mods.mjs),
+// so what they create (fields, widgets) is made of the editor's own classes.
+(globalThis as { __tesselaCm?: typeof cm }).__tesselaCm = cm;
 
 /** What the window lends mods (set by main.ts): the parts of the window a mod may ask for. */
 export interface ModHost {
@@ -86,7 +92,8 @@ export interface ModContext {
   readonly id: string;
   commands: { add(command: ModCommand<EditorView>): void };
   slash: { add(item: ModSlash): void };
-  editor: { extend(extension: Extension): void };
+  /** Extensions for every editor; a function is called for each, with the page the editor shows. */
+  editor: { extend(extension: Extension | PageExtension): void };
   settings: { get(name: string): unknown; set(name: string, value: unknown): void };
   /** Runs a tessela command on the open notes folder and returns its `{api, ok, ...}` JSON (see Api.cli). */
   cli(argv: string[], options?: { input?: string }): Promise<unknown>;
@@ -168,7 +175,7 @@ export async function loadMods(): Promise<void> {
 }
 
 /** The extensions every editor gets from mods: the keys of their commands, then what they added. */
-export function modExtensions(): Extension[] {
+export function modExtensions(path: string): Extension[] {
   const keys = registry.keyed().map((c) => ({
     key: c.keys as string,
     run: (v: EditorView) => {
@@ -176,5 +183,5 @@ export function modExtensions(): Extension[] {
       return true;
     },
   }));
-  return [Prec.high(keymap.of(keys)), ...registry.editorExtensions()];
+  return [Prec.high(keymap.of(keys)), ...registry.editorExtensions().map((e) => (typeof e === "function" ? e({ path }) : e))];
 }
