@@ -84,6 +84,25 @@ impl Page {
         self.path.matches('/').count()
     }
 
+    /// What the page calls itself: its frontmatter `title`, else its first `#` heading, else
+    /// its file name with the dashes turned into spaces.
+    pub fn title(&self) -> String {
+        let named = self
+            .get_str("title")
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
+        named
+            .or_else(|| {
+                let heading = self.headings.iter().find(|h| h.level == 1)?;
+                Some(heading.text.trim().to_string()).filter(|t| !t.is_empty())
+            })
+            .unwrap_or_else(|| {
+                let id = self.id.rsplit('/').next().unwrap_or(&self.id);
+                id.replace('-', " ")
+            })
+    }
+
     /// The page's `type`, if it is a non-empty string.
     pub fn kind(&self) -> Option<&str> {
         self.get_str("type").filter(|t| !t.trim().is_empty())
@@ -120,6 +139,37 @@ impl Page {
             .map(normalize_concept)
             .filter(|a| !a.is_empty())
             .collect()
+    }
+
+    /// The words of the frontmatter, for searching: every value (a title, a role, a list of
+    /// tags, numbers), one per line, without the keys.
+    pub fn meta_text(&self) -> String {
+        fn collect(value: &Value, out: &mut Vec<String>) {
+            match value {
+                Value::String(s) => out.push(s.clone()),
+                Value::Number(n) => out.push(n.to_string()),
+                Value::Bool(b) => out.push(b.to_string()),
+                Value::Sequence(items) => items.iter().for_each(|v| collect(v, out)),
+                Value::Mapping(m) => m.values().for_each(|v| collect(v, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.frontmatter.values().for_each(|v| collect(v, &mut out));
+        out.join("\n")
+    }
+
+    /// Frontmatter `aliases` as written: the other names to look for in text.
+    pub fn alias_names(&self) -> Vec<String> {
+        match self.get("aliases") {
+            Some(Value::Sequence(items)) => items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect(),
+            Some(Value::String(one)) => vec![one.clone()],
+            _ => Vec::new(),
+        }
     }
 
     /// Frontmatter `tags`, normalized to concept IDs.

@@ -74,7 +74,30 @@ journal days in the range and anything, on any page, whose text contains a date
 in the range.
 Every hit has a `handle` that stays the same until the text changes, plus its
 page, line, heading path, refs and parent handle. Text output is for people;
-`--json` is for agents and the editor.
+`--json` is for agents and the editor: the answer is
+`{"api": 2, "ok": true, "hits": [...], "total": N}` (`vocab` answers with `concepts`,
+`lint` with `diagnostics`), and `--api 2` makes the tool refuse when it speaks another version.
+
+### Pages
+
+```
+tessela pages . --json     # every page: id, path, title, type
+```
+
+### The API
+
+```
+tessela schema             # every command, its arguments and the JSON Schema of its answer
+```
+
+### Watching
+
+```
+tessela watch . --json     # one line per burst of changes: {"event":"changed","paths":["a.md"]}
+```
+
+A read-only stream for tools that keep a view of the bundle. Hidden folders and other
+files are not reported; `--poll` looks at the files instead of asking the system.
 
 ### Vocabulary
 
@@ -109,7 +132,7 @@ since, so nothing is overwritten blindly. Writes are atomic. `--patch` takes a u
 diff that must apply exactly, for fine-grained changes. `rename` and `move` rewrite
 the tags and links that name the page in every page, and keep the moved page's own
 relative links pointing where they did. With `--json` every answer, errors included,
-is `{"api": 1, "ok": true|false, ...}`; `--api 1` makes the tool refuse when it speaks
+is `{"api": 2, "ok": true|false, ...}`; `--api 2` makes the tool refuse when it speaks
 another version. The files stay the source of truth: every call reads the disk, so
 edits made with vim or git are seen. Spec §9 has the rules.
 
@@ -156,6 +179,49 @@ The editor also has a dark theme, which follows the system until you choose one:
 
 The screenshots come from a small sample bundle; `npm run screenshots` in `editor/` takes them
 again (`xvfb-run -a npm run screenshots` on a server).
+
+### Mods
+
+The editor can be extended with mods: a folder `mods/NAME/` with a `main.js` in the config folder
+(`$TESSELA_CONFIG`, else the app's data folder, `~/.config/Tessela` on Linux). Mods are trusted
+code (your own or audited) and load before the first page opens; `--no-mods` starts without them,
+and one that throws is skipped and listed under "Show the mods" in the palette (Ctrl+K).
+
+```js
+// mods/stamp/main.js
+export default function (ctx) {
+  ctx.commands.add({
+    id: "stamp", label: "Stamp the page", keys: "Mod-Alt-j",
+    run: ({ view }) => view.dispatch({ changes: { from: view.state.selection.main.head, insert: "STAMPED" } }),
+  });
+  ctx.slash.add({ label: "Signature", text: "-- me" });
+  ctx.editor.extend(ctx.cm.view.EditorView.editorAttributes.of({ "data-mine": "yes" }));
+  const n = ctx.settings.get("runs") ?? 0;            // kept with the window's settings
+  ctx.cli(["vocab"]).then((r) => console.log(n, r.concepts.length));  // any tessela command, on the open folder
+}
+```
+
+A command with the id of a built-in one takes its place. Notes change only through `ctx.cli`
+(`save`, `rename`, ...), so the hash check and atomic writes always apply.
+
+Mods can also draw on the window and hear what happens in it:
+
+```js
+ctx.ui.dialog({ title, content: node, actions: [{ id: "ok", label: "Go", primary: true }] }).closed  // the id pressed, or null
+ctx.ui.toast("Saved somewhere", { label: "Undo", run })      // a note in the sidebar, with a button
+ctx.slots.add("page-menu", { label: "Do it…", run: ({ path }) => {} })  // the ⋯ menu in a page's head
+ctx.events.on("title-edited", ({ path, from, to }) => {})    // also page-opened, page-saved, changed
+ctx.pages.current(); ctx.pages.moved(from, to)               // the page shown; after a rename, move or delete
+```
+
+The app's own features are mods too (`editor/src/mods/NAME/main.ts`, built to `dist/mods`), and a mod
+of the same name in the config folder replaces them. `pages` renames, moves and deletes the open
+page ("Rename page…", "Move page…" and "Delete page…" in the palette and in the page's ⋯ menu), shows
+what will change first, and offers to rename the file when its title was edited.
+`fold` folds and zooms (Ctrl+Up and Ctrl+Down, Ctrl+Alt+Right and Left; see conventions §11): it keeps
+which blocks are folded in its settings, by page, and never in the notes. A mod can hand
+`ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
+the page that editor shows.
 
 To build an app that carries its own `tessela` binary:
 

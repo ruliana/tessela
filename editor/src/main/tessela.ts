@@ -1,16 +1,20 @@
 // Calls the `tessela` command line tools. The editor uses the same tools as agents do,
 // so what it shows is what they would find.
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import path from "node:path";
+import { createInterface } from "node:readline";
 
 import type { PageFile, QueryArgs, WriteResult } from "../shared/api";
 
 /** The version of the `tessela` edit commands this editor was written for. */
-export const TESSELA_API = 1;
+export const TESSELA_API = 2;
+
+/** What every call says about itself: JSON answers, written for this version of the contract. */
+const CALL = ["--json", "--api", String(TESSELA_API)];
 
 export function queryArgv(bundle: string, q: QueryArgs): string[] {
-  const argv = ["query", bundle, "--json"];
+  const argv = ["query", bundle, ...CALL];
   for (const r of q.refs ?? []) argv.push("--ref", r);
   if (q.any) argv.push("--any");
   if (q.own) argv.push("--own");
@@ -23,33 +27,111 @@ export function queryArgv(bundle: string, q: QueryArgs): string[] {
   return argv;
 }
 
+export function pagesArgv(bundle: string): string[] {
+  return ["pages", bundle, ...CALL];
+}
+
 export function vocabArgv(bundle: string): string[] {
-  return ["vocab", bundle, "--json"];
+  return ["vocab", bundle, ...CALL];
 }
 
 export function lintArgv(bundle: string): string[] {
-  return ["lint", bundle, "--json"];
+  return ["lint", bundle, ...CALL];
 }
 
 /**
- * Runs a tool and parses its JSON output. `okCodes` are exit codes that still come with
- * valid output: `tessela lint` exits with 1 when it finds errors.
+ * Runs a read command (`query`, `vocab`, `lint`, ...) and returns the list it answers with, found
+ * under `key` of the `{"api", "ok", ...}` envelope. `okCodes` are exit codes that still come with
+ * a valid answer: `tessela lint` exits with 1 when it finds errors.
  */
-export function runJson<T>(bin: string, argv: string[], okCodes: number[] = []): Promise<T> {
+export function runJson<T>(bin: string, argv: string[], key: string, okCodes: number[] = []): Promise<T> {
   return new Promise((resolve, reject) => {
     execFile(bin, argv, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
+      let answer: { ok?: boolean; error?: { message?: string }; [key: string]: unknown } | undefined;
+      try {
+        answer = JSON.parse(stdout);
+      } catch {
+        // Reported below.
+      }
+      if (answer?.ok === false) {
+        reject(new Error(`${bin} ${argv[0]} failed: ${answer.error?.message ?? "no reason given"}`));
+        return;
+      }
       const code = typeof error?.code === "number" ? error.code : undefined;
       if (error && !(code !== undefined && okCodes.includes(code))) {
         reject(new Error(`${bin} ${argv[0]} failed: ${stderr.trim() || error.message}`));
         return;
       }
-      try {
-        resolve(JSON.parse(stdout) as T);
-      } catch {
-        reject(new Error(`${bin} ${argv[0]} did not print JSON`));
+      if (!answer || !(key in answer)) {
+        reject(new Error(`${bin} ${argv[0]} did not print the expected JSON`));
+        return;
       }
+      resolve(answer[key] as T);
     });
   });
+}
+
+export interface WatchOptions {
+  /** Where a problem is reported; the editor keeps working without watching. */
+  warn?: (message: string) => void;
+  /** How long to wait before starting `tessela watch` again after it ended. */
+  restartMs?: number;
+}
+
+/**
+ * Tells `listener` which pages changed on disk, as `tessela watch` reports them. The tool does the
+ * watching (the system's watcher, or looking at the files when that fails) and the grouping of
+ * changes that come close together. It stops when this process does, and is started again if it
+ * ends early. Returns a function that stops watching.
+ */
+export function watchVia(
+  bin: string,
+  bundle: string,
+  listener: (paths: string[]) => void,
+  { warn = console.warn, restartMs = 5000 }: WatchOptions = {},
+): () => void {
+  let stopped = false;
+  let child: ReturnType<typeof spawn> | undefined;
+  let timer: NodeJS.Timeout | undefined;
+
+  const start = (): void => {
+    const proc = spawn(bin, ["watch", bundle, ...CALL, "--exit-on-stdin-close"], { stdio: ["pipe", "pipe", "pipe"] });
+    child = proc;
+    let stderr = "";
+    proc.stderr?.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-2000)));
+    createInterface({ input: proc.stdout! }).on("line", (line) => {
+      let event: { event?: string; ok?: boolean; paths?: string[]; mode?: string; reason?: string; error?: { message?: string } };
+      try {
+        event = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (event.ok === false) warn(`tessela watch: ${event.error?.message ?? "failed"}`);
+      else if (event.event === "changed" && event.paths) listener(event.paths);
+      else if (event.event === "mode" && event.mode === "polling") {
+        warn(`cannot watch ${bundle}, looking at it every few seconds instead: ${event.reason ?? ""}`);
+      }
+    });
+    // A tool that is missing or too old ends at once; try again later rather than in a tight loop.
+    const ended = (why: string): void => {
+      if (child !== proc) return;
+      child = undefined;
+      if (stopped) return;
+      warn(`tessela watch ended (${why}); trying again in ${restartMs / 1000} s`);
+      timer = setTimeout(start, restartMs);
+    };
+    proc.on("error", (err) => ended(err.message));
+    proc.on("exit", (code) => ended(`exit ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`));
+    // Ending early closes the pipe; that is reported above.
+    proc.stdin?.on("error", () => {});
+  };
+
+  start();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    child?.kill();
+  };
 }
 
 /** The error part of what the edit commands print when they fail. */
@@ -63,8 +145,12 @@ interface EditFailure {
  * JSON on success and on failure, so a non-zero exit with JSON is a result, not a crash.
  */
 export function runEdit<T>(bin: string, bundle: string, argv: string[], input = ""): Promise<T | EditFailure> {
+  return runCall(bin, [...argv, "--bundle", bundle, ...CALL], argv[0] ?? "", input);
+}
+
+/** Runs one `tessela` call whose answer is JSON on stdout, success or failure alike. */
+function runCall<T>(bin: string, full: string[], name: string, input: string): Promise<T | EditFailure> {
   return new Promise((resolve, reject) => {
-    const full = [...argv, "--bundle", bundle, "--json", "--api", String(TESSELA_API)];
     const child = execFile(bin, full, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
       try {
         resolve(JSON.parse(stdout) as T | EditFailure);
@@ -74,8 +160,8 @@ export function runEdit<T>(bin: string, bundle: string, argv: string[], input = 
         reject(
           new Error(
             old
-              ? `The tessela tool is too old for this editor (it has no \`${argv[0]}\` command). Update it.`
-              : `${bin} ${argv[0]} failed: ${text}`,
+              ? `The tessela tool is too old for this editor (it has no \`${name}\` command). Update it.`
+              : `${bin} ${name} failed: ${text}`,
           ),
         );
       }
@@ -131,6 +217,19 @@ export async function addPageVia(bin: string, bundle: string, rel: string, title
   if (r.ok) return true;
   if (r.error.code === "exists") return false;
   throw failure("add", r);
+}
+
+/** The commands that take the folder as their first argument; the others take `--bundle`. */
+const POSITIONAL = new Set(["lint", "query", "index", "vocab"]);
+
+/**
+ * Runs any `tessela` command for a mod, adding the folder, `--json` and the API version. The answer
+ * is the command's `{api, ok, ...}` JSON as it is; a failure (`ok: false`) is a result, not an error.
+ */
+export function cliVia(bin: string, bundle: string, argv: string[], input = ""): Promise<unknown> {
+  const [command = "", ...rest] = argv;
+  if (!POSITIONAL.has(command)) return runEdit(bin, bundle, argv, input);
+  return runCall(bin, [command, bundle, ...rest, ...CALL], command, input);
 }
 
 export interface BinLookup {

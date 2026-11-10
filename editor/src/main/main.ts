@@ -1,13 +1,14 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, promises as fs, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { BrowserWindow, app, dialog, ipcMain, net, protocol, shell } from "electron";
 import { pathToFileURL } from "node:url";
 
-import type { Diagnostic, Hit, OpenFileResult, QueryArgs, VocabEntry } from "../shared/api";
+import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
-import { listPages, relativeInside, resolveImage, resolveInside, watchBundle } from "./files";
-import { addPageVia, findTessela, lintArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "./tessela";
+import { relativeInside, resolveImage, resolveInside } from "./files";
+import { addPageVia, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
+import { cliArgv, configFolder, listMods, resolveModFile } from "./mods";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
 // userData is pinned first: the name feeds its default, and the saved bundle lives there.
@@ -62,8 +63,18 @@ function useBundle(dir: string | null): void {
     } catch {
       // Remembering the bundle is a convenience.
     }
-    stopWatching = watchBundle(dir, (paths) => win?.webContents.send("changed", paths));
+    stopWatching = watchVia(tesselaBin(), dir, (paths) => win?.webContents.send("changed", paths));
   }
+}
+
+/** Mods are switched off by starting with `--no-mods`, for when one breaks the window. */
+const modsDisabled = process.argv.includes("--no-mods");
+
+/** The mods that come with the app (built to dist/mods, next to this file). */
+const bundledMods = path.join(__dirname, "mods");
+
+function config(): string {
+  return configFolder(app.getPath("userData"), process.env.TESSELA_CONFIG);
 }
 
 function needBundle(): string {
@@ -109,13 +120,13 @@ function registerIpc(): void {
     useBundle(folder);
     return folder;
   });
-  ipcMain.handle("listPages", () => listPages(needBundle()));
-  ipcMain.handle("vocab", () => runJson<VocabEntry[]>(tesselaBin(), vocabArgv(needBundle())));
+  ipcMain.handle("listPages", () => runJson<PageEntry[]>(tesselaBin(), pagesArgv(needBundle()), "pages"));
+  ipcMain.handle("vocab", () => runJson<VocabEntry[]>(tesselaBin(), vocabArgv(needBundle()), "concepts"));
   ipcMain.handle("query", (_e, args: QueryArgs) =>
-    runJson<Hit[]>(tesselaBin(), queryArgv(needBundle(), args)),
+    runJson<Hit[]>(tesselaBin(), queryArgv(needBundle(), args), "hits"),
   );
   ipcMain.handle("lint", () =>
-    runJson<Diagnostic[]>(tesselaBin(), lintArgv(needBundle()), [1]),
+    runJson<Diagnostic[]>(tesselaBin(), lintArgv(needBundle()), "diagnostics", [1]),
   );
   // Pages are read and written by the same tool agents use, never by the editor itself.
   ipcMain.handle("readPage", (_e, rel: string) => readPageVia(tesselaBin(), needBundle(), rel));
@@ -130,6 +141,11 @@ function registerIpc(): void {
     if (typeof url === "string" && /^(https?:|mailto:)/i.test(url)) await shell.openExternal(url);
   });
   ipcMain.handle("todayPath", () => journalPath(localDay(new Date())));
+  ipcMain.handle("mods", () => listMods(config(), modsDisabled, bundledMods));
+  // For mods: any tessela command on the open folder (see Api.cli).
+  ipcMain.handle("cli", (_e, argv: unknown, input: unknown) =>
+    cliVia(tesselaBin(), needBundle(), cliArgv(argv), typeof input === "string" ? input : ""),
+  );
 }
 
 function createWindow(): void {
@@ -153,7 +169,25 @@ function createWindow(): void {
 }
 
 // Pictures in the notes folder are shown through this address, so the window never reads files itself.
-protocol.registerSchemesAsPrivileged([{ scheme: "tessela-file", privileges: { standard: true, secure: true } }]);
+protocol.registerSchemesAsPrivileged([
+  { scheme: "tessela-file", privileges: { standard: true, secure: true } },
+  // Mods are ES modules, which the window loads (and which load each other) from here.
+  { scheme: "tessela-mod", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+]);
+
+function serveMods(): void {
+  protocol.handle("tessela-mod", async (request) => {
+    try {
+      const [id = "", ...rest] = decodeURIComponent(new URL(request.url).pathname).replace(/^\//, "").split("/");
+      const file = resolveModFile(config(), id, rest.join("/"), bundledMods);
+      return new Response(await fs.readFile(file), {
+        headers: { "content-type": file.endsWith(".js") ? "text/javascript" : "application/octet-stream", "access-control-allow-origin": "*" },
+      });
+    } catch {
+      return new Response("not found", { status: 404 });
+    }
+  });
+}
 
 function serveImages(): void {
   protocol.handle("tessela-file", (request) => {
@@ -168,6 +202,7 @@ function serveImages(): void {
 
 void app.whenReady().then(() => {
   serveImages();
+  serveMods();
   useBundle(loadBundle());
   registerIpc();
   // macOS ignores the window icon and takes the Dock one from the app bundle. Packaged builds

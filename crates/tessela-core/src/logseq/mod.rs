@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use outline::{Analyzed, Marker, Outline, analyze, parse};
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, schemars::JsonSchema)]
 pub struct Report {
     pub pages: usize,
     pub journals: usize,
@@ -30,7 +30,7 @@ pub struct Report {
     pub renamed: Vec<(String, String)>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Skipped {
     pub path: String,
     pub reason: String,

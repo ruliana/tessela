@@ -12,7 +12,7 @@ use serde_yaml_ng::Value;
 use crate::bundle::Bundle;
 use crate::page::Page;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -30,7 +30,7 @@ impl Severity {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Diagnostic {
     pub rule: &'static str,
     pub severity: Severity,
@@ -59,6 +59,7 @@ impl Default for Linter {
         linter.add_rule(Box::new(Journals));
         linter.add_rule(Box::new(Vocabulary));
         linter.add_rule(Box::new(UnwrittenConcepts));
+        linter.add_rule(Box::new(UnusedAttachments));
         linter
     }
 }
@@ -81,7 +82,8 @@ impl Linter {
         for rule in &self.rules {
             rule.check(bundle, &mut out);
         }
-        out.retain(|d| !is_attachment(&d.path));
+        // Attachments are not linted as notes, but a rule may still report one.
+        out.retain(|d| !is_attachment(&d.path) || d.rule == UNUSED_ATTACHMENT);
         out.sort_by(|a, b| (&a.path, a.line, a.rule).cmp(&(&b.path, b.line, b.rule)));
         out
     }
@@ -415,6 +417,66 @@ impl Rule for UnwrittenConcepts {
                 line,
                 format!("`{concept}` is mentioned {times} but has no page yet"),
             ));
+        }
+    }
+}
+
+const UNUSED_ATTACHMENT: &str = "tessela/unused-attachment";
+
+/// Files under `assets/` that no page mentions. Informational: an attachment may be kept
+/// on purpose, or be used from outside the bundle. Markdown files there are exports of
+/// notes, not attachments, so they are left out. A page uses an attachment when its text
+/// holds the attachment's path, with or without `%20` for spaces.
+pub struct UnusedAttachments;
+
+impl Rule for UnusedAttachments {
+    fn id(&self) -> &'static str {
+        UNUSED_ATTACHMENT
+    }
+
+    fn check(&self, bundle: &Bundle, out: &mut Vec<Diagnostic>) {
+        let assets = bundle.root.join("assets");
+        if !assets.is_dir() {
+            return;
+        }
+        let walker = walkdir::WalkDir::new(&assets)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_entry(|e| e.depth() == 0 || !e.file_name().to_string_lossy().starts_with('.'));
+        let files: Vec<String> = walker
+            .flatten()
+            .filter(|e| {
+                e.file_type().is_file() && !e.file_name().to_string_lossy().ends_with(".md")
+            })
+            .filter_map(|e| {
+                let rel = e.path().strip_prefix(&bundle.root).ok()?;
+                Some(
+                    rel.components()
+                        .map(|c| c.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/"),
+                )
+            })
+            .collect();
+        if files.is_empty() {
+            return;
+        }
+        let text: String = bundle
+            .pages
+            .iter()
+            .filter_map(|p| std::fs::read_to_string(bundle.root.join(&p.path)).ok())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for file in files {
+            if !text.contains(&file) && !text.contains(&file.replace(' ', "%20")) {
+                out.push(diag(
+                    UNUSED_ATTACHMENT,
+                    Severity::Info,
+                    &file,
+                    None,
+                    format!("no page links to `{file}`"),
+                ));
+            }
         }
     }
 }

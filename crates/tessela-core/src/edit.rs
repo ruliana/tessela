@@ -22,14 +22,14 @@ use crate::rewrite::{Rewrite, Where};
 
 /// The version of the contract between callers and the tool: command names, arguments and JSON
 /// output. Callers say which one they were written for, and the tool refuses when it differs.
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 2;
 
 /// A short fingerprint of a page's text. Callers hand it back to say what they based a change on.
 pub fn content_hash(text: &str) -> String {
     blake3::hash(text.as_bytes()).to_hex()[..16].to_string()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorCode {
     /// The page on disk is not the one the caller based its change on.
@@ -59,7 +59,7 @@ impl ErrorCode {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct EditError {
     pub code: ErrorCode,
     pub message: String,
@@ -153,6 +153,9 @@ pub trait PageStore {
     fn write(&self, path: &str, text: &str, expect: &Expect) -> Result<()>;
     /// Removes the page if it still has this hash.
     fn delete(&self, path: &str, expect_hash: &str) -> Result<()>;
+    /// Stores an attachment (a path under `assets/`). Returns whether the file is new: storing
+    /// the same bytes again is fine, other bytes under the same name are an `exists` error.
+    fn write_asset(&self, path: &str, bytes: &[u8]) -> Result<bool>;
 }
 
 /// Pages as Markdown files in a folder.
@@ -270,6 +273,49 @@ impl PageStore for FsStore {
                 Err(EditError::conflict(path, Some(&content_hash(&text))))
             }
             Some(_) => fs::remove_file(&file).map_err(|e| EditError::io(path, e)),
+        }
+    }
+
+    fn write_asset(&self, path: &str, bytes: &[u8]) -> Result<bool> {
+        check_asset_path(path)?;
+        let file = self.root.join(path);
+        let same = |file: &Path| fs::read(file).map(|disk| disk == bytes);
+        match same(&file) {
+            Ok(true) => return Ok(false),
+            Ok(false) => {
+                return Err(EditError::new(
+                    ErrorCode::Exists,
+                    format!("{path} already exists with other content"),
+                ));
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(EditError::io(path, e)),
+        }
+        let dir = file.parent().unwrap_or(&self.root);
+        fs::create_dir_all(dir).map_err(|e| EditError::io(path, e))?;
+        let name = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let temp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
+        let written = (|| {
+            fs::write(&temp, bytes)?;
+            match fs::hard_link(&temp, &file) {
+                Ok(()) => fs::remove_file(&temp),
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(e),
+                Err(_) => fs::rename(&temp, &file),
+            }
+        })();
+        match written {
+            Ok(()) => Ok(true),
+            Err(e) => {
+                let _ = fs::remove_file(&temp);
+                if e.kind() == io::ErrorKind::AlreadyExists && same(&file).unwrap_or(false) {
+                    // Another writer stored the same picture in the meantime.
+                    return Ok(false);
+                }
+                Err(EditError::io(path, e))
+            }
         }
     }
 }
@@ -411,7 +457,7 @@ pub fn new_page_text(path: &str, title: Option<&str>, kind: Option<&str>) -> Res
     ))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct PageRead {
     pub path: String,
     pub exists: bool,
@@ -439,7 +485,7 @@ pub fn read_page(store: &dyn PageStore, path: &str) -> Result<PageRead> {
     })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Saved {
     pub path: String,
     pub hash: String,
@@ -565,7 +611,7 @@ pub fn pages_mentioning(store: &dyn PageStore, path: &str) -> Result<Vec<String>
     Ok(found)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Removed {
     pub path: String,
     /// Pages that still mention it. Links to a missing page are allowed, but you may want to know.
@@ -582,15 +628,128 @@ pub fn remove_page(store: &dyn PageStore, path: &str, expect_hash: &str) -> Resu
     })
 }
 
+/// What `attach` stored.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct Attached {
+    /// Where the file is, relative to the bundle: `assets/notes-idea-9f2c41d0a1b2.png`.
+    pub path: String,
+    /// How a page links to it: `/assets/notes-idea-9f2c41d0a1b2.png`.
+    pub link: String,
+    /// The hash in the name: the first 12 hex characters of the BLAKE3 hash of the content.
+    pub hash: String,
+    pub size: usize,
+    /// False when the same file was stored before.
+    pub created: bool,
+}
+
+/// The file name a page gives its attachments: its path without `.md`, folders joined by `-`.
+fn attachment_stem(page_path: &str) -> String {
+    let id = page_path.strip_suffix(".md").unwrap_or(page_path);
+    let mut stem = String::new();
+    for c in id.chars() {
+        let c = if c.is_alphanumeric() || matches!(c, '_' | '.') {
+            c.to_lowercase().next().unwrap_or(c)
+        } else {
+            '-'
+        };
+        if c == '-' && (stem.is_empty() || stem.ends_with('-')) {
+            continue;
+        }
+        stem.push(c);
+    }
+    let stem = stem.trim_matches(['-', '.']).to_string();
+    if stem.is_empty() {
+        "attachment".into()
+    } else {
+        stem
+    }
+}
+
+/// Whether `ext` can end an attachment's name: letters and digits, and not `md`, which
+/// would make the file a page.
+pub fn check_extension(ext: &str) -> Result<String> {
+    let ext = ext.trim_start_matches('.').to_lowercase();
+    if ext.is_empty() || ext.len() > 10 || !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(EditError::new(
+            ErrorCode::InvalidInput,
+            format!("{ext:?} is not a file extension"),
+        ));
+    }
+    if ext == "md" {
+        return Err(EditError::new(
+            ErrorCode::InvalidInput,
+            "an attachment cannot be a .md file: that would be a page; use `add` or `save`",
+        ));
+    }
+    Ok(ext)
+}
+
+/// The extension of a picture or document, read from its first bytes.
+pub fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
+    let starts = |magic: &[u8]| bytes.starts_with(magic);
+    if starts(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if starts(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if starts(b"GIF87a") || starts(b"GIF89a") {
+        Some("gif")
+    } else if starts(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        Some("webp")
+    } else if starts(b"%PDF-") {
+        Some("pdf")
+    } else if bytes[..bytes.len().min(512)]
+        .windows(4)
+        .any(|w| w == b"<svg")
+    {
+        Some("svg")
+    } else {
+        None
+    }
+}
+
+/// Stores a file in `assets/`, named after the page that uses it plus a short hash of its
+/// content, so the same file stored for the same page twice is one file.
+pub fn attach(store: &dyn PageStore, page_path: &str, bytes: &[u8], ext: &str) -> Result<Attached> {
+    check_page_path(page_path)?;
+    let ext = check_extension(ext)?;
+    let hash = blake3::hash(bytes).to_hex()[..12].to_string();
+    let path = format!("assets/{}-{hash}.{ext}", attachment_stem(page_path));
+    let created = store.write_asset(&path, bytes)?;
+    Ok(Attached {
+        link: format!("/{path}"),
+        path,
+        hash,
+        size: bytes.len(),
+        created,
+    })
+}
+
+/// A path under the root `assets/` folder that never leaves it or goes into a hidden one.
+fn check_asset_path(path: &str) -> Result<()> {
+    let ok = path.starts_with("assets/")
+        && !path.contains(['\0', '\\'])
+        && path
+            .split('/')
+            .all(|p| !p.is_empty() && !p.starts_with('.') && !p.chars().any(char::is_control));
+    if ok {
+        Ok(())
+    } else {
+        Err(EditError::new(
+            ErrorCode::InvalidPath,
+            format!("{path}: an attachment lives under assets/"),
+        ))
+    }
+}
+
 /// A page whose text changed because of a move.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Updated {
     pub path: String,
     pub links: usize,
     pub tags: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Moved {
     pub from: String,
     pub to: String,

@@ -16,6 +16,8 @@ import {
   canGoForward,
   emptyHistory,
   recentCount,
+  relocate,
+  relocateRecent,
   step,
   touch,
   visit,
@@ -29,6 +31,8 @@ import { createCard, type Card } from "./card";
 import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
+import { describeMods } from "../shared/mods";
+import { host, modExtensions, modsInfo, loadMods, registry } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -168,37 +172,16 @@ function readRecent(): string[] {
 
 function remember(path: string): void {
   recent = touch(recent, path);
+  saveRecent();
+}
+
+function saveRecent(): void {
   try {
     localStorage.setItem(`${RECENT_KEY}:${root}`, JSON.stringify(recent));
   } catch {
     // The list just is not remembered between runs.
   }
 }
-
-const FOLDS_KEY = "tessela.folds";
-
-/** The folded blocks of every page of this notes folder, by page path. Kept with the window, not in the notes. */
-function readFolds(): Record<string, string[]> {
-  try {
-    const all: unknown = JSON.parse(localStorage.getItem(`${FOLDS_KEY}:${root}`) ?? "{}");
-    return all && typeof all === "object" && !Array.isArray(all) ? (all as Record<string, string[]>) : {};
-  } catch {
-    return {};
-  }
-}
-
-const folds = {
-  read(path: string): string[] {
-    const keys = readFolds()[path];
-    return Array.isArray(keys) ? keys.filter((k): k is string => typeof k === "string") : [];
-  },
-  write(path: string, keys: string[]): void {
-    const all = readFolds();
-    if (keys.length > 0) all[path] = keys;
-    else delete all[path];
-    store(`${FOLDS_KEY}:${root}`, JSON.stringify(all));
-  },
-};
 
 function setRecentShown(value: string): void {
   recentShown = recentCount(value);
@@ -739,8 +722,22 @@ window.addEventListener(
 
 const IS_MAC = navigator.userAgent.includes("Mac");
 
-/** The commands of the palette. Each also has its own button or keys. */
+/** The commands of the palette: the built-in ones, then the mods'. Each built-in one also has its own button or keys. */
 function commandList(): Command[] {
+  return registry.commands(builtinCommands(), (c) => ({
+    id: c.id,
+    label: c.label,
+    ...(c.hint ? { hint: c.hint } : {}),
+    run: () => registry.run(c, { view: active?.view() }),
+  }));
+}
+
+function showMods(): void {
+  const info = modsInfo;
+  showNotice(describeMods(registry.loaded, registry.failures, info?.folder ?? "the config folder", info?.disabled ?? false));
+}
+
+function builtinCommands(): Command[] {
   const key = IS_MAC ? "⌘" : "Ctrl";
   return [
     { id: "today", label: "Go to today", run: () => void showJournals(true) },
@@ -750,17 +747,12 @@ function commandList(): Command[] {
     { id: "root", label: "Change the notes folder…", hint: `${key} Shift O`, run: () => void changeRoot() },
     { id: "preview", label: livePreview ? "Show the Markdown as written" : "Show the Markdown rendered", hint: `${key} Alt M`, run: togglePreview },
     { id: "focus", label: focusMode ? "Leave focus mode" : "Focus on the current block", hint: `${key} .`, run: toggleFocus },
-    { id: "fold-1", label: "Fold the page to level 1", run: () => active?.foldToLevel(1) },
-    { id: "fold-2", label: "Fold the page to level 2", run: () => active?.foldToLevel(2) },
-    { id: "fold-3", label: "Fold the page to level 3", run: () => active?.foldToLevel(3) },
-    { id: "unfold-all", label: "Unfold the whole page", run: () => active?.foldToLevel(null) },
-    { id: "zoom-in", label: "Zoom in on the current block", hint: `${key} Alt →`, run: () => active?.zoomIn() },
-    { id: "zoom-out", label: "Zoom out", hint: `${key} Alt ←`, run: () => active?.zoomOut() },
     { id: "sidebar", label: panels.sidebar ? "Hide the sidebar" : "Show the sidebar", hint: `${key} \\`, run: () => togglePanel("sidebar") },
     { id: "backlinks", label: panels.backlinks ? "Hide the backlinks" : "Show the backlinks", hint: `${key} Shift \\`, run: () => togglePanel("backlinks") },
     { id: "theme", label: `Theme: ${label(theme)}, change`, run: cycleTheme },
     { id: "text", label: `Text: ${label(textFace)}, change`, run: toggleText },
     { id: "problems", label: problemsOpen ? "Hide the problems" : "Show the problems", run: toggleProblems },
+    { id: "mods", label: "Show the mods", run: showMods },
   ];
 }
 
@@ -816,10 +808,15 @@ function cardDeps() {
     vocab: () => vocab,
     pages: () => linkPages(pages, vocab),
     written: () => written,
-    onSaved: () => {
+    onSaved: (path: string) => {
       void refreshIndex();
       void renderBacklinks();
+      registry.emit("page-saved", { path });
     },
+    onOpened: (path: string) => registry.emit("page-opened", { path }),
+    onTitleEdited: (path: string, from: string, to: string) => registry.emit("title-edited", { path, from, to }),
+    pageMenu: (path: string) =>
+      registry.pageMenuItems().map((item) => ({ label: item.label, run: () => registry.call(item.mod, item.label, () => item.run({ path })) })),
     onActive: (path: string) => {
       const card = cards.find((c) => c.path === path);
       if (card && card !== active) {
@@ -834,7 +831,7 @@ function cardDeps() {
     onOpenExternal: (url: string) => void api.openExternal(url),
     livePreview: () => livePreview,
     onTogglePreview: togglePreview,
-    folds,
+    extensions: modExtensions,
   };
 }
 
@@ -923,6 +920,7 @@ async function openAt(hit: Hit): Promise<void> {
 }
 
 async function onChanged(paths: string[]): Promise<void> {
+  registry.emit("changed", { paths });
   void refreshIndex();
   await Promise.all(cards.map((c) => c.diskChanged(paths)));
   await renderBacklinks();
@@ -1000,4 +998,35 @@ function hitPlace(hit: Hit): string {
   return trail.join(" › ");
 }
 
-start().catch((e) => welcome(String(e)));
+/** The page a card shows or, in the journals, the card being worked in. */
+function currentPath(): string | null {
+  return active?.path ?? (view?.kind === "page" ? view.path : null);
+}
+
+/** A page changed place (`to`) or was deleted (`to` null): the lists and the history follow, and so does the view. */
+async function pageMoved(from: string, to: string | null): Promise<void> {
+  recent = relocateRecent(recent, from, to);
+  saveRecent();
+  places = relocate(places, from, to);
+  const shown = view?.kind === "page" && view.path === from;
+  await refreshIndex();
+  if (shown) await (to ? showPage(to) : showJournals());
+  renderNav();
+  renderLists();
+}
+
+Object.assign(host, {
+  toast: showNotice,
+  current: currentPath,
+  flush: async () => void (await Promise.all(cards.map((c) => c.flush()))),
+  moved: pageMoved,
+});
+
+// A command of a mod that fails is said so; the rest of the window goes on.
+registry.onFailure = (f) => {
+  if (document.getElementById("notice")) showNotice(`The mod ${f.mod} failed: ${f.message}`);
+};
+
+loadMods()
+  .then(start)
+  .catch((e) => welcome(String(e)));

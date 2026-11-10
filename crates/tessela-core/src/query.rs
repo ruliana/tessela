@@ -6,10 +6,11 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::blocks::{Block, Heading};
+use crate::blocks::{Block, Heading, TaskState};
 use crate::bundle::Bundle;
 use crate::page::Page;
 use crate::refs::normalize_concept;
+use crate::unlinked::{self, Mention, Spec};
 
 /// All filters that are set must match.
 #[derive(Debug, Default, Clone)]
@@ -22,8 +23,13 @@ pub struct Query {
     pub any: bool,
     /// Match only a block's own refs, not those inherited from parent items and headings.
     pub own: bool,
-    /// Case-insensitive substring of the block text.
-    pub text: Option<String>,
+    /// Case-insensitive substrings the block text must all contain, so several phrases, or
+    /// words in any order, narrow the search. Empty means no text filter.
+    pub text: Vec<String>,
+    /// With `text`: also search what is not block text, and return it as `page` and
+    /// `heading` hits. A page matches on its title and every value in its front matter, a
+    /// heading on its text.
+    pub meta: bool,
     /// The page's frontmatter `type`.
     pub kind: Option<String>,
     /// A page ID, or a folder prefix when it ends with `/`.
@@ -33,11 +39,40 @@ pub struct Query {
     pub from: Option<String>,
     /// Last day to include, `YYYY-MM-DD`. See `from`.
     pub to: Option<String>,
+    /// Only checkbox items, open or done. Headings and pages are never tasks.
+    pub task: Option<TaskFilter>,
+    /// A concept written as plain words, not linked: blocks that name it by its title, an
+    /// alias or a `vocabulary.md` term, and do not already reach it through a tag or a
+    /// link, their own or inherited. Each hit lists the `mentions`. Only blocks are
+    /// returned, newest page first, and the concept's own page is left out.
+    pub unlinked: Option<String>,
+}
+
+/// Which checkbox items `--task` keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskFilter {
+    /// `- [ ]`
+    Open,
+    /// `- [x]`
+    Done,
+    /// Either
+    Any,
+}
+
+impl TaskFilter {
+    fn accepts(self, task: Option<TaskState>) -> bool {
+        match (self, task) {
+            (_, None) => false,
+            (TaskFilter::Open, Some(state)) => state == TaskState::Open,
+            (TaskFilter::Done, Some(state)) => state == TaskState::Done,
+            (TaskFilter::Any, Some(_)) => true,
+        }
+    }
 }
 
 /// What kind of thing a hit is. Anything that can hold a reference can be found,
 /// so a query for a concept returns its backlinks wherever they are.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum HitKind {
     /// A paragraph or list item.
@@ -50,7 +85,7 @@ pub enum HitKind {
     Page,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Hit {
     pub kind: HitKind,
     /// Blocks and headings: page ID plus a hash of the text. Pages: the page ID.
@@ -68,6 +103,11 @@ pub struct Hit {
     pub dates: Vec<String>,
     /// Handle of the enclosing list item, if any.
     pub parent: Option<String>,
+    /// Blocks that are checkbox items: `open` or `done`.
+    pub task: Option<TaskState>,
+    /// With `unlinked`: where the concept is named in this block.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mentions: Vec<Mention>,
     /// The hit is on a `home.md` page. A link from a home page marks the target as
     /// important, so these hits come first (spec §5).
     pub home: bool,
@@ -84,13 +124,16 @@ impl Query {
             .iter()
             .map(|r| bundle.names_for(&normalize_concept(r)))
             .collect();
-        let text = self.text.as_ref().map(|t| t.to_lowercase());
+        let text: Vec<String> = self.text.iter().map(|t| t.to_lowercase()).collect();
+        let search_meta = self.meta && !text.is_empty();
+        let unlinked = self.unlinked.as_ref().map(|name| Spec::new(bundle, name));
         let by_date = self.from.is_some() || self.to.is_some();
         let mut hits = Vec::new();
         for page in &bundle.pages {
             if !self.page_matches(page) {
                 continue;
             }
+            let meta = search_meta.then(|| page.meta_text().to_lowercase());
             let page_in_range = by_date && page_date(page).is_some_and(|d| self.in_range(&d));
             let accepts = |hit: &Hit| {
                 let have = if self.own { &hit.refs } else { &hit.path_refs };
@@ -101,16 +144,29 @@ impl Query {
                         wanted.iter().all(|w| mentions_any(have, w))
                     };
                 refs_ok
-                    && text
-                        .as_ref()
-                        .is_none_or(|t| hit.text.to_lowercase().contains(t))
+                    && self.task.is_none_or(|t| t.accepts(hit.task))
+                    && {
+                        let have = match (&meta, hit.kind) {
+                            (Some(meta), HitKind::Page) => meta.clone(),
+                            _ => hit.text.to_lowercase(),
+                        };
+                        text.iter().all(|t| have.contains(t))
+                    }
                     && (!by_date || page_in_range || hit.dates.iter().any(|d| self.in_range(d)))
             };
 
+            if let Some(spec) = &unlinked {
+                hits.extend(
+                    unlinked_hits(bundle, page, spec)
+                        .into_iter()
+                        .filter(accepts),
+                );
+                continue;
+            }
             let mut found = Vec::new();
             // Pages and headings only exist to hold references, so they are only
             // returned when a concept is asked for.
-            if !wanted.is_empty() {
+            if !wanted.is_empty() || search_meta {
                 found.push(page_hit(page));
                 found.extend(page.headings.iter().map(|h| heading_hit(page, h)));
             }
@@ -118,6 +174,10 @@ impl Query {
             // Document order; the page itself first.
             found.sort_by_key(|h| h.line);
             hits.extend(found.into_iter().filter(accepts));
+        }
+        if unlinked.is_some() {
+            // Newest page first, like backlinks; a page's blocks stay in document order.
+            hits.sort_by_key(|h| Reverse(h.modified));
         }
         // Backlinks from home pages first, the most specific folder's first, then the
         // most recently changed page's. Hits of one page share a time and the sort is
@@ -177,6 +237,25 @@ pub fn dates_in(text: &str) -> Vec<String> {
     found
 }
 
+/// The blocks of a page that name the concept in plain words and do not reach it yet.
+fn unlinked_hits(bundle: &Bundle, page: &Page, spec: &Spec) -> Vec<Hit> {
+    if spec.is_page(page) {
+        return Vec::new();
+    }
+    let file = unlinked::read_file(&bundle.root, page);
+    page.blocks
+        .iter()
+        .filter(|b| !mentions_concept(&b.path_refs, &spec.concept))
+        .filter_map(|b| {
+            let mentions = spec.mentions(page, b, file.as_deref());
+            (!mentions.is_empty()).then(|| Hit {
+                mentions,
+                ..block_hit(page, b)
+            })
+        })
+        .collect()
+}
+
 fn block_hit(page: &Page, block: &Block) -> Hit {
     Hit {
         kind: HitKind::Block,
@@ -191,6 +270,8 @@ fn block_hit(page: &Page, block: &Block) -> Hit {
         refs: block.refs.clone(),
         path_refs: block.path_refs.clone(),
         parent: block.parent.map(|p| page.blocks[p].handle.clone()),
+        task: block.task,
+        mentions: Vec::new(),
         home: page.is_home(),
         modified: page.modified,
     }
@@ -210,6 +291,8 @@ fn heading_hit(page: &Page, heading: &Heading) -> Hit {
         refs: heading.refs.clone(),
         path_refs: heading.path_refs.clone(),
         parent: None,
+        task: None,
+        mentions: Vec::new(),
         home: page.is_home(),
         modified: page.modified,
     }
@@ -230,17 +313,19 @@ fn page_hit(page: &Page) -> Hit {
         refs: page.refs.clone(),
         path_refs: page.refs.clone(),
         parent: None,
+        task: None,
+        mentions: Vec::new(),
         home: page.is_home(),
         modified: page.modified,
     }
 }
 
-fn mentions_any(refs: &[String], concepts: &[String]) -> bool {
+pub(crate) fn mentions_any(refs: &[String], concepts: &[String]) -> bool {
     concepts.iter().any(|c| mentions_concept(refs, c))
 }
 
 /// Whether `refs` has the concept or one nested under it (`project/tessela` is under `project`).
-fn mentions_concept(refs: &[String], concept: &str) -> bool {
+pub(crate) fn mentions_concept(refs: &[String], concept: &str) -> bool {
     refs.iter().any(|r| {
         r == concept
             || r.strip_prefix(concept)

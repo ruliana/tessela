@@ -16,6 +16,8 @@ const api: Api = {
   addPage: (path, title) => ipcRenderer.invoke("addPage", path, title),
   openExternal: (url) => ipcRenderer.invoke("openExternal", url),
   todayPath: () => ipcRenderer.invoke("todayPath"),
+  mods: () => ipcRenderer.invoke("mods"),
+  cli: (argv, input) => ipcRenderer.invoke("cli", argv, input),
   onChanged(listener) {
     const handler = (_event: unknown, paths: string[]) => listener(paths);
     ipcRenderer.on("changed", handler);

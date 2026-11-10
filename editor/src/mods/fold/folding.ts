@@ -1,14 +1,14 @@
-// Fold and zoom in the editor. The logic of what can be folded, and what a zoom shows, is in
-// shared/folds.ts; this connects it to CodeMirror. A fold hides the lines under a heading, a
-// list item or a paragraph with its list. Zoom shows one block and what it owns, with the way
-// back drawn above it. Neither touches the page: the window remembers the folds by block key
-// (see `foldKeys`), and a zoom is for the moment.
+// Fold and zoom in the editor, the CodeMirror side of the fold mod. The logic of what can be folded,
+// and what a zoom shows, is in shared/folds.ts. A fold hides the lines under a heading, a list item
+// or a paragraph with its list. Zoom shows one block and what it owns, with the way back drawn above
+// it. Neither touches the page: the window remembers the folds by block key (`FoldStore`), and a
+// zoom is for the moment.
 
 import { codeFolding, foldEffect, foldedRanges, unfoldEffect } from "@codemirror/language";
 import { EditorState, type Extension, Prec, type Range, StateEffect, StateField, type Text, Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType, keymap } from "@codemirror/view";
 
-import { type Crumb, type Fold, foldAround, foldables, zoomAt } from "../shared/folds";
+import { type Crumb, type Fold, foldAround, foldables, zoomAt } from "../../shared/folds";
 
 // ---- folds -------------------------------------------------------------------------
 
@@ -25,7 +25,7 @@ function foldsOf(state: EditorState): Fold[] {
 }
 
 /** What the fold of `f` hides: from the end of its visible line to the end of its last line. */
-function hidden(state: EditorState, f: Fold): { from: number; to: number } {
+function hidden(state: { doc: Text }, f: Fold): { from: number; to: number } {
   return { from: state.doc.line(f.line + 1).to, to: state.doc.line(f.last + 1).to };
 }
 
@@ -37,9 +37,20 @@ function isFolded(state: EditorState, r: { from: number; to: number }): boolean 
   return found;
 }
 
-/** Whether an update opened or closed a fold. */
-export function foldChanged(update: ViewUpdate): boolean {
-  return foldedRanges(update.startState) !== foldedRanges(update.state);
+/** Whether an update opened or closed a fold (a fold that went with the text it covered counts too). */
+function foldChanged(update: ViewUpdate): boolean {
+  const effect = update.transactions.some((tr) => tr.effects.some((e) => e.is(foldEffect) || e.is(unfoldEffect)));
+  return effect || foldedRanges(update.startState).size !== foldedRanges(update.state).size;
+}
+
+/** The text was replaced as a whole by the editor, not typed: a page loaded or read again. */
+function isReplacement(tr: Transaction): boolean {
+  if (!tr.docChanged || tr.annotation(Transaction.userEvent) !== undefined) return false;
+  let whole = false;
+  tr.changes.iterChangedRanges((from, to) => {
+    whole = from === 0 && to === tr.startState.doc.length;
+  });
+  return whole;
 }
 
 /** The keys of the blocks that are folded now, in page order. */
@@ -49,13 +60,49 @@ export function foldKeys(state: EditorState): string[] {
     .map((f) => f.key);
 }
 
-/** Folds the blocks with these keys; a key no block has any more is dropped. */
-export function restoreFolds(view: EditorView, keys: string[]): void {
-  const want = new Set(keys);
-  const effects = foldsOf(view.state)
-    .filter((f) => want.has(f.key))
-    .map((f) => foldEffect.of(hidden(view.state, f)));
-  if (effects.length > 0) view.dispatch({ effects });
+/** Where the window keeps which blocks of a page are folded: keys made by `foldables`, by page. */
+export interface FoldStore {
+  read(path: string): string[];
+  write(path: string, keys: string[]): void;
+}
+
+/** A page that has just been loaded folds again what was folded: the blocks whose key is stored. */
+function restoring(path: string, store: FoldStore): Extension {
+  return EditorState.transactionExtender.of((tr) => {
+    if (!isReplacement(tr)) return null;
+    const want = new Set(store.read(path));
+    if (want.size === 0) return null;
+    const effects = foldables(tr.newDoc.toString().split("\n"))
+      .filter((f) => want.has(f.key))
+      .map((f) => foldEffect.of(hidden({ doc: tr.newDoc }, f)));
+    return effects.length > 0 ? { effects } : null;
+  });
+}
+
+/** Keeps the store up to date: at once when a fold opens or closes, a little later while its page is being typed in. */
+function remembering(path: string, store: FoldStore): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      timer: number | undefined;
+      constructor(readonly view: EditorView) {}
+      save = (): void => {
+        this.timer = undefined;
+        store.write(path, foldKeys(this.view.state));
+      };
+      update(update: ViewUpdate) {
+        if (foldChanged(update)) {
+          window.clearTimeout(this.timer);
+          this.save();
+        } else if (update.docChanged && foldedRanges(update.state).size > 0) {
+          window.clearTimeout(this.timer);
+          this.timer = window.setTimeout(this.save, 400);
+        }
+      }
+      destroy() {
+        window.clearTimeout(this.timer);
+      }
+    },
+  );
 }
 
 function headLine(state: EditorState): number {
@@ -182,9 +229,6 @@ const placeholder = codeFolding({
 
 const zoomEffect = StateEffect.define<{ from: number; to: number } | null>();
 
-/** Puts the window back on the whole page. */
-export const zoomReset = zoomEffect.of(null);
-
 interface ZoomState {
   from: number;
   to: number;
@@ -253,6 +297,8 @@ const zoomField = StateField.define<ZoomState | null>({
       if (e.is(zoomEffect)) return e.value ? zoomState(tr.state, e.value.from, e.value.to) : null;
     }
     if (!value || !tr.docChanged) return value;
+    // Another page, or the same one read again: back to the whole of it.
+    if (isReplacement(tr)) return null;
     // What is typed at either edge belongs to the block.
     const from = tr.changes.mapPos(value.from, -1);
     const to = tr.changes.mapPos(value.to, 1);
@@ -326,19 +372,24 @@ function selectZoomed(view: EditorView): boolean {
   return true;
 }
 
-export const folding: Extension = [
-  placeholder,
-  chevrons,
-  // Above the page's other block widgets (the properties), which the zoom has to cover.
-  Prec.highest(zoomField),
-  guard,
-  Prec.high(
-    keymap.of([
-      { key: "Mod-ArrowUp", run: foldHere },
-      { key: "Mod-ArrowDown", run: unfoldHere },
-      { key: "Mod-Alt-ArrowRight", run: zoomIn },
-      { key: "Mod-Alt-ArrowLeft", run: zoomOut },
-      { key: "Mod-a", run: selectZoomed },
-    ]),
-  ),
-];
+/** Everything the fold mod adds to the editor of the page at `path`. */
+export function folding(path: string, store: FoldStore): Extension {
+  return [
+    placeholder,
+    chevrons,
+    // Above the page's other block widgets (the properties), which the zoom has to cover.
+    Prec.highest(zoomField),
+    guard,
+    restoring(path, store),
+    remembering(path, store),
+    Prec.high(
+      keymap.of([
+        { key: "Mod-ArrowUp", run: foldHere },
+        { key: "Mod-ArrowDown", run: unfoldHere },
+        { key: "Mod-Alt-ArrowRight", run: zoomIn },
+        { key: "Mod-Alt-ArrowLeft", run: zoomOut },
+        { key: "Mod-a", run: selectZoomed },
+      ]),
+    ),
+  ];
+}

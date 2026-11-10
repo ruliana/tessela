@@ -14,10 +14,18 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | You want to | Run |
 | --- | --- |
 | Find where a topic is mentioned (backlinks) | `tessela query . --ref NAME [--json]` |
-| Search text, a page or folder, a page type, a date range | `tessela query . --text WORDS`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
-| See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included) |
+| Search text, a page or folder, a page type, a date range | `tessela query . --text PHRASE` (repeatable), `--words "a b c"`, `--meta`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
+| List tasks (checkbox items), open or done, with their dates | `tessela query . --task open [--from/--to YYYY-MM-DD] [--ref NAME]`; `--task done` and `--task any` too; each hit has `task` |
+| Find text that names a page but does not link it (to link it) | `tessela query . --unlinked NAME --json`: blocks with `mentions` (`text`, `line`, `column`, `link`); skips blocks that already reach the page; fix with a patch through `save` |
+| See what changed in the notes since a commit or the last pull (by git or by another agent) | `tessela changes -b . --json [--since REV]` (`ORIG_HEAD` after a pull): pages added/modified/deleted with block-level `changes` (`raw`, `old_raw`, `line`); read-only |
+| Find related pages, and the home pages that lead to one | `tessela related -b . NAME --json`: `together` (with a `reason`) and `chain` of home pages |
+| See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included; `--json` also gives the folder's `home` and the pages its home page `links` to, the best place to start reading) |
+| List every page with its title and type | `tessela pages . --json` (`pages`: `id`, `path`, `title`, `type`; sorted by path) |
+| Follow changes as they happen | `tessela watch . --json [--exit-on-stdin-close]` (one JSON line per burst: `{"event":"changed","paths":[...]}`; runs until stopped) |
+| See every command, argument and answer shape | `tessela schema` (one JSON document: `commands.NAME.args`, `commands.NAME.answer` as JSON Schema) |
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
 | Check your work | `tessela lint . [--strict] [--json]` |
+| Run a live list (the body of a ```` ```tessela ```` fence) | `tessela fence -b . --json < body.txt`: one read-only command (`query`, `index`, `vocab`, `lint`), then built-in filters (`rg`, `sed`, `sort`, `uniq`, `head`, `wc`); never a shell |
 | Import a Logseq graph into a new bundle | `tessela import-logseq GRAPH OUT` |
 | Add, edit, rename, move or remove a page | the edit commands, next section |
 
@@ -25,8 +33,7 @@ Search with `tessela query` before you reach for `rg` or `grep`: each hit is a b
 
 What `tessela query` does not do, so `rg` over the Markdown files is the fallback:
 
-- `--text` is one literal phrase, case-insensitive: no regex, no words in any order, and only one `--text` per query.
-- `--text` reads block text, not frontmatter, so `title`, `role`, `team` and other keys are not searched by words. `--ref` does match a page's `tags` and the links in its other frontmatter text.
+- `--text` is a literal phrase, case-insensitive, with no regex. Repeat `--text` or use `--words "a b c"` when every word must be there in any order. By default it reads block text only; add `--meta` to search page titles, every front matter value (`role`, `team`, ...) and headings too, returned as `page` and `heading` hits.
 - `--type` returns blocks, so a page with no body text is missing. `tessela index . --dir FOLDER --recursive --json` lists every page below a folder, with its title and type.
 - `--ref NAME` takes a page id, a title or an alias from a page's frontmatter `aliases`. An alias finds the page's backlinks plus the blocks that use the alias itself, but the page id does not find blocks that use an alias, and an alias that several pages share finds all of them. It also matches concepts nested under it (`--ref project` finds `project/tessela`). `--own` drops blocks that only inherit it from a parent item or heading.
 
@@ -34,7 +41,7 @@ What `tessela query` does not do, so `rg` over the Markdown files is the fallbac
 
 Adding, editing, renaming, moving and deleting pages all go through the `tessela` edit commands. They are the same door the editor uses, so every writer follows the same safety rules: no overwriting a change you have not seen, atomic writes, and renames that keep links and tags working. **Do not edit the Markdown files directly** (no `sed -i`, no redirecting into a page, no `mv`/`rm` on pages) unless the CLI is missing (see the end of this section).
 
-All of them take `--bundle DIR` (default `.`) and the page as a path relative to the bundle, with or without `.md`. Add `--json` and `--api 1` when you parse the output: the answer is `{"api": 1, "ok": true, ...}` or `{"ok": false, "error": {"code", "message"}}`, and `--api 1` makes the tool refuse if it speaks another version. Run `tessela api` if unsure.
+All of them take `--bundle DIR` (default `.`) and the page as a path relative to the bundle, with or without `.md`. Add `--json` and `--api 2` when you parse the output: the answer is `{"api": 2, "ok": true, ...}` or `{"api": 2, "ok": false, "error": {"code", "message"}}`, and `--api 2` makes the tool refuse if it speaks another version. This holds for the read commands too (`query` answers `hits` and `total`, `vocab` `concepts`, `lint` `diagnostics`, `index` the listing), which take `--api` as well. Run `tessela api` if unsure.
 
 | You want to | Run |
 | --- | --- |
@@ -45,6 +52,7 @@ All of them take `--bundle DIR` (default `.`) and the page as a path relative to
 | Rename (same folder) | `tessela rename -b . PAGE NEW-NAME [--dry-run]` |
 | Move to another folder or path | `tessela move -b . PAGE folder/ [--dry-run]` or `... PAGE new/path` |
 | Delete | `tessela remove -b . PAGE --expect HASH` |
+| Store a picture or file | `tessela attach -b . PAGE [--file F \| < bytes] [--ext png]`, then link it as `![what it shows](/assets/NAME)` (named after the page plus a hash of the content) |
 
 ### The workflow for every change
 

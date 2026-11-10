@@ -9,6 +9,14 @@ use serde::Serialize;
 
 use crate::refs::extract_refs;
 
+/// Whether a list item is a checkbox, and ticked: `- [ ]` is open, `- [x]` is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskState {
+    Open,
+    Done,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Block {
     /// Page ID plus a hash of the block text; see spec §3, "Block handles".
@@ -23,6 +31,8 @@ pub struct Block {
     pub refs: Vec<String>,
     /// Own refs plus those of ancestor list items and headings.
     pub path_refs: Vec<String>,
+    /// Set for a list item that starts with a checkbox. The text does not hold the box.
+    pub task: Option<TaskState>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -257,7 +267,9 @@ impl Parse<'_> {
         }
         item.finalized = true;
         let (idx, start) = (item.block, item.range.start);
-        let text = item_text(&self.body[start..end.max(start)]);
+        let raw = &self.body[start..end.max(start)];
+        let task = task_state(raw);
+        let text = item_text(raw);
         let refs = extract_refs(&text, self.page_dir);
         let parent = self.out.blocks[idx].parent;
         let mut path_refs = parent.map_or_else(Vec::new, |p| self.out.blocks[p].path_refs.clone());
@@ -267,6 +279,7 @@ impl Parse<'_> {
         block.text = text;
         block.refs = refs;
         block.path_refs = path_refs;
+        block.task = task;
     }
 
     fn push_block(&mut self, parent: Option<usize>, text: String, line: usize, refs: Vec<String>) {
@@ -280,6 +293,7 @@ impl Parse<'_> {
             line,
             refs,
             path_refs,
+            task: None,
         });
     }
 
@@ -324,14 +338,28 @@ fn extend_unique(into: &mut Vec<String>, from: &[String]) {
     }
 }
 
+const CHECKBOXES: [(&str, TaskState); 3] = [
+    ("[ ] ", TaskState::Open),
+    ("[x] ", TaskState::Done),
+    ("[X] ", TaskState::Done),
+];
+
+/// Whether a list item starts with a checkbox, and which one.
+fn task_state(raw: &str) -> Option<TaskState> {
+    let first = strip_list_marker(raw.trim_end().lines().next()?.trim_start());
+    CHECKBOXES
+        .iter()
+        .find_map(|(c, state)| first.starts_with(c).then_some(*state))
+}
+
 /// The text of a list item without its marker, task checkbox and continuation indent.
 fn item_text(raw: &str) -> String {
     let mut lines = raw.trim_end().lines();
     let first = lines.next().unwrap_or("").trim_start();
     let first = strip_list_marker(first);
-    let first = ["[ ] ", "[x] ", "[X] "]
+    let first = CHECKBOXES
         .iter()
-        .find_map(|c| first.strip_prefix(c))
+        .find_map(|(c, _)| first.strip_prefix(c))
         .unwrap_or(first);
     let mut out = first.to_string();
     for line in lines {

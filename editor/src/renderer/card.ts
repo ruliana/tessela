@@ -5,7 +5,11 @@
 import type { Api, VocabEntry } from "../shared/api";
 import { formatDate } from "../shared/dates";
 import type { LinkPage } from "../shared/linkFlows";
+import { titleOf } from "../shared/linkFlows";
 import { pageId } from "../shared/pages";
+import type { Extension } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+
 import { el } from "./dom";
 import { createEditor, type EditorHandle } from "./editor";
 
@@ -31,13 +35,21 @@ export interface CardDeps {
   /** Whether Markdown is shown rendered outside the block being edited. */
   livePreview: () => boolean;
   onTogglePreview: () => void;
-  /** Which blocks of a page are folded, as the window remembers them. */
-  folds: { read: (path: string) => string[]; write: (path: string, keys: string[]) => void };
+  /** Extensions mods add to the editor. */
+  extensions?: (path: string) => Extension[];
+  /** The page was loaded into the card. */
+  onOpened?: (path: string) => void;
+  /** A save changed the page's title. */
+  onTitleEdited?: (path: string, from: string, to: string) => void;
+  /** What the menu in the head of the card offers; no menu while this is empty or absent. */
+  pageMenu?: (path: string) => { label: string; run: () => void }[];
 }
 
 export interface Card {
   readonly root: HTMLElement;
   readonly path: string;
+  /** The CodeMirror view of the page. */
+  view(): EditorView;
   load(): Promise<void>;
   flush(): Promise<void>;
   /** Tells the card that these pages changed on disk. */
@@ -50,10 +62,6 @@ export interface Card {
   /** The number of words in the page, front matter excluded. */
   words(): number;
   setLivePreview(on: boolean): void;
-  /** Shows the outline down to a level (1 is the top lines only); null opens every fold. */
-  foldToLevel(level: number | null): void;
-  zoomIn(): void;
-  zoomOut(): void;
   destroy(): void;
 }
 
@@ -80,6 +88,32 @@ function dateline(path: string, title: HTMLElement, status: HTMLElement): HTMLEl
   );
 }
 
+/** The "⋯" button in a card's head and the menu it opens. */
+function pageMenu(items: { label: string; run: () => void }[]): HTMLElement {
+  const list = el("div", { class: "page-menu", hidden: true });
+  const button = el("button", { class: "page-menu-button", title: "Page actions", ariaLabel: "Page actions" }, "⋯");
+  const close = () => {
+    list.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    document.removeEventListener("mousedown", away, true);
+  };
+  const away = (e: MouseEvent) => {
+    if (!(e.target instanceof Node) || (!list.contains(e.target) && !button.contains(e.target))) close();
+  };
+  list.append(
+    ...items.map((item) =>
+      el("button", { class: "menu-item", onclick: () => { close(); item.run(); } }, item.label),
+    ),
+  );
+  button.addEventListener("click", () => {
+    if (!list.hidden) return close();
+    list.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    document.addEventListener("mousedown", away, true);
+  });
+  return el("span", { class: "page-menu-wrap" }, button, list);
+}
+
 export function createCard(path: string, deps: CardDeps, opts: { compact?: boolean } = {}): Card {
   const { api } = deps;
   /** Hash of the file on disk when we last read or wrote it; null if it has no file yet. */
@@ -90,6 +124,8 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
   let saveTimer: number | undefined;
   let saving: Promise<void> = Promise.resolve();
   let gone = false;
+  /** The page's title as of the last time its text was read or saved. */
+  let knownTitle = "";
 
   const title = el(
     "button",
@@ -97,12 +133,14 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     pageId(path).replace(/^journals\//, ""),
   );
   const status = el("span", { class: "status" });
+  const menuItems = opts.compact ? [] : (deps.pageMenu?.(path) ?? []);
+  const head = menuItems.length > 0 ? el("span", { class: "head-end" }, status, pageMenu(menuItems)) : status;
   const banner = el("div", { class: "banner", hidden: true });
   const host = el("div", { class: "editor" });
   const root = el(
     "section",
     { class: `card${opts.compact ? " compact" : ""}` },
-    opts.compact ? dateline(path, title, status) : el("div", { class: "pane-head" }, title, status),
+    opts.compact ? dateline(path, title, status) : el("div", { class: "pane-head" }, title, head),
     banner,
     host,
   );
@@ -119,7 +157,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     pageName: () => pageId(path).split("/").pop() ?? "",
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
-    folds: { read: () => deps.folds.read(path), write: (keys) => deps.folds.write(path, keys) },
+    ...(deps.extensions ? { extensions: () => deps.extensions?.(path) ?? [] } : {}),
   });
 
   function setStatus(state: "saved" | "dirty" | "conflict", text: string): void {
@@ -151,12 +189,21 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     if (result.ok) {
       hash = result.hash;
       saved = text;
+      noteTitle(text, true);
       const now = editor.text() === text;
       setStatus(now ? "saved" : "dirty", now ? "Saved" : "Editing…");
       deps.onSaved(path);
     } else {
       showConflict();
     }
+  }
+
+  /** Remembers the title `text` gives; a change made by saving is told to the mods. */
+  function noteTitle(text: string, edited: boolean): void {
+    const next = titleOf(text, path);
+    const from = knownTitle;
+    knownTitle = next;
+    if (edited && from !== "" && from !== next) deps.onTitleEdited?.(path, from, next);
   }
 
   function showConflict(): void {
@@ -174,6 +221,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     const file = await api.readPage(path);
     hash = file.hash;
     saved = file.text;
+    noteTitle(file.text, false);
     conflict = false;
     banner.hidden = true;
     editor.setText(file.text);
@@ -196,8 +244,10 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       const file = await api.readPage(path);
       hash = file.hash;
       saved = file.text;
+      noteTitle(file.text, false);
       editor.setText(file.text);
       setStatus("saved", file.exists ? "Saved" : "New page");
+      deps.onOpened?.(path);
     },
     flush,
     async diskChanged(paths) {
@@ -207,6 +257,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       if (editor.text() !== saved) return showConflict();
       hash = file.hash;
       saved = file.text;
+      noteTitle(file.text, false);
       editor.setText(file.text);
       setStatus("saved", "Saved");
     },
@@ -214,6 +265,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       if (line !== undefined) editor.setText(editor.text(), line);
       editor.focus();
     },
+    view: () => editor.view,
     refresh: () => editor.refresh(),
     statusInfo: () => ({ state: (status.dataset.state as "saved" | "dirty" | "conflict") ?? "saved", text: status.textContent ?? "" }),
     words: () => {
@@ -221,9 +273,6 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       return (body.match(/\S+/g) ?? []).length;
     },
     setLivePreview: (on) => editor.setLivePreview(on),
-    foldToLevel: (level) => editor.foldToLevel(level),
-    zoomIn: () => editor.zoomIn(),
-    zoomOut: () => editor.zoomOut(),
     destroy() {
       gone = true;
       window.clearTimeout(saveTimer);

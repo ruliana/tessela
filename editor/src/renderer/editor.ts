@@ -36,7 +36,6 @@ import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
 import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
-import { foldChanged, folding, foldKeys, foldToLevel, restoreFolds, zoomIn, zoomOut, zoomReset, zoomed } from "./folding";
 import { focusMarks, livePreview, renderedLine } from "./livePreview";
 import { slashSource } from "./slash";
 import { noSetext } from "../shared/blocks";
@@ -63,11 +62,13 @@ export interface EditorOptions {
   livePreview?: boolean;
   /** The key for switching the rendering on or off was pressed. */
   onTogglePreview?: () => void;
-  /** Where the window keeps which blocks of this page are folded (keys made by `foldKeys`). */
-  folds?: { read: () => string[]; write: (keys: string[]) => void };
+  /** Extensions mods add to every editor. */
+  extensions?: () => Extension[];
 }
 
 export interface EditorHandle {
+  /** The CodeMirror view, for commands that mods run. */
+  readonly view: EditorView;
   text(): string;
   /** Replaces the whole text without counting it as an edit by the user. */
   setText(text: string, line?: number): void;
@@ -76,12 +77,6 @@ export interface EditorHandle {
   refresh(): void;
   /** Shows Markdown rendered, raw only where the cursor is (or raw everywhere when off). */
   setLivePreview(on: boolean): void;
-  /** Shows the outline down to `level` (1 is the top lines only); null opens every fold. */
-  foldToLevel(level: number | null): void;
-  /** Zoom in on the block at the cursor, or back out by one level. */
-  zoomIn(): void;
-  zoomOut(): void;
-  zoomed(): boolean;
 }
 
 const programmatic = Annotation.define<boolean>();
@@ -227,17 +222,6 @@ function completions(vocab: () => VocabEntry[], pages: () => LinkPage[]) {
 
 export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHandle {
   const preview = new Compartment();
-  /** The folds as the window last remembered them: what a page gets back when its text is replaced. */
-  let foldedKeys = opts.folds?.read() ?? [];
-  let saveTimer: number | undefined;
-  /** Set while the editor changes the text or the folds on its own, which are not the user's doing. */
-  let quiet = false;
-  const saveFolds = (): void => {
-    window.clearTimeout(saveTimer);
-    saveTimer = undefined;
-    foldedKeys = foldKeys(view.state);
-    opts.folds?.write(foldedKeys);
-  };
   let previewOn = opts.livePreview === true;
 
   /** Scrolls to the heading that `#anchor` points to, and puts the cursor there. */
@@ -290,8 +274,9 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         focusMarks(),
         preview.of(previewOn ? previewExtension() : []),
         blockKeymap,
-        folding,
         formatting,
+        // What mods add comes before the defaults below, so their keys win over them.
+        ...(opts.extensions?.() ?? []),
         search({ top: true }),
         Prec.highest(keymap.of(searchKeymap)),
         Prec.highest(
@@ -358,33 +343,23 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         EditorView.updateListener.of((update) => {
           const own = update.transactions.some((tr) => tr.annotation(programmatic));
           if (update.docChanged && !own) opts.onChange(update.state.doc.toString());
-          if (!quiet && (update.docChanged ? !own : foldChanged(update))) {
-            window.clearTimeout(saveTimer);
-            saveTimer = window.setTimeout(saveFolds, 400);
-          }
         }),
       ],
     }),
   });
 
   return {
+    view,
     text: () => view.state.doc.toString(),
     setText(text, line) {
       // A page opens with the cursor in its text, not in the front matter.
       const keep = view.state.doc.length === 0 ? bodyStart(text) : Math.min(view.state.selection.main.head, text.length);
-      const same = text === view.state.doc.toString();
-      if (saveTimer !== undefined) saveFolds();
-      quiet = true;
       view.dispatch({
-        changes: same ? undefined : { from: 0, to: view.state.doc.length, insert: text },
+        changes: { from: 0, to: view.state.doc.length, insert: text },
         // Loading a page is not something to undo: undoing it would blank the page.
         annotations: [programmatic.of(true), Transaction.addToHistory.of(false)],
         selection: { anchor: keep },
-        effects: same ? undefined : zoomReset,
       });
-      // New text has no folds yet: the blocks that were folded fold again.
-      if (!same) restoreFolds(view, foldedKeys);
-      quiet = false;
       if (line !== undefined) {
         // The line is in the new text, so look it up after the change.
         const target = view.state.doc.line(Math.max(1, Math.min(line, view.state.doc.lines)));
@@ -397,10 +372,6 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
     },
     focus: () => view.focus(),
     refresh: () => view.dispatch({ effects: refreshDecorations.of(null) }),
-    foldToLevel: (level) => foldToLevel(view, level),
-    zoomIn: () => void zoomIn(view),
-    zoomOut: () => void zoomOut(view),
-    zoomed: () => zoomed(view.state),
     setLivePreview(on) {
       previewOn = on;
       view.dispatch({ effects: preview.reconfigure(on ? previewExtension() : []) });

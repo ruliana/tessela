@@ -1,12 +1,21 @@
+mod answers;
+mod changes;
+mod fence;
+mod schema;
+mod watch;
+
 use std::fmt::Arguments;
 use std::io::{self, ErrorKind, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use serde::Serialize;
 use tessela_core::edit::{self, API_VERSION, EditError, ErrorCode, Expect, FsStore, PageStore};
-use tessela_core::{Bundle, HitKind, Linter, Query, Severity, index, logseq, vocabulary};
+use tessela_core::related;
+use tessela_core::{
+    Bundle, HitKind, Linter, Query, Severity, TaskFilter, index, logseq, vocabulary,
+};
 
 /// `print!` that ends the run quietly when the reader has closed the pipe (`| head`).
 macro_rules! out {
@@ -44,9 +53,12 @@ struct Common {
     /// The bundle folder
     #[arg(default_value = ".")]
     path: PathBuf,
-    /// Print JSON instead of text
+    /// Print JSON instead of text; errors are JSON too
     #[arg(long)]
     json: bool,
+    /// The API version the caller was written for; the command fails when it differs
+    #[arg(long)]
+    api: Option<u32>,
 }
 
 /// What every command that reads or changes pages takes.
@@ -63,6 +75,96 @@ struct EditArgs {
     api: Option<u32>,
 }
 
+/// The filters of `query`, shared with the first stage of a fence.
+#[derive(Args)]
+struct QueryArgs {
+    /// A concept the block must mention (repeatable); `#tag` or a name
+    #[arg(long = "ref", short = 'r')]
+    refs: Vec<String>,
+    /// Match blocks that mention any of the --ref concepts, not all
+    #[arg(long)]
+    any: bool,
+    /// Ignore refs inherited from parent items and headings
+    #[arg(long)]
+    own: bool,
+    /// A phrase the block contains (case-insensitive); repeat it to need several
+    #[arg(long, short = 't')]
+    text: Vec<String>,
+    /// Words the block contains, in any order (case-insensitive): `--words "rust linter"`
+    #[arg(long)]
+    words: Vec<String>,
+    /// With --text or --words, also search page titles, every front matter value and
+    /// headings, and return them as page and heading hits
+    #[arg(long)]
+    meta: bool,
+    /// Only pages with this frontmatter `type`
+    #[arg(long = "type")]
+    kind: Option<String>,
+    /// Only this page ID, or a folder when it ends with `/`
+    #[arg(long)]
+    page: Option<String>,
+    /// First day to include (YYYY-MM-DD): journal days and dates written in blocks
+    #[arg(long)]
+    from: Option<String>,
+    /// Last day to include (YYYY-MM-DD): journal days and dates written in blocks
+    #[arg(long)]
+    to: Option<String>,
+    /// Only checkbox items (`- [ ]`, `- [x]`): `open`, `done` or `any`
+    #[arg(long, value_enum)]
+    task: Option<TaskArg>,
+    /// Blocks that write this concept's title, an alias or a vocabulary term as plain
+    /// words without linking it, with where, and the link that would fix it
+    #[arg(long, value_name = "CONCEPT")]
+    unlinked: Option<String>,
+    /// Show at most this many blocks
+    #[arg(long)]
+    limit: Option<usize>,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum TaskArg {
+    Open,
+    Done,
+    Any,
+}
+
+impl TaskArg {
+    fn filter(self) -> TaskFilter {
+        match self {
+            TaskArg::Open => TaskFilter::Open,
+            TaskArg::Done => TaskFilter::Done,
+            TaskArg::Any => TaskFilter::Any,
+        }
+    }
+}
+
+impl QueryArgs {
+    fn query(&self) -> Query {
+        Query {
+            refs: self.refs.clone(),
+            any: self.any,
+            own: self.own,
+            text: self
+                .text
+                .iter()
+                .cloned()
+                .chain(
+                    self.words
+                        .iter()
+                        .flat_map(|w| w.split_whitespace().map(String::from)),
+                )
+                .collect(),
+            meta: self.meta,
+            kind: self.kind.clone(),
+            page: self.page.clone(),
+            from: self.from.clone(),
+            to: self.to.clone(),
+            task: self.task.map(TaskArg::filter),
+            unlinked: self.unlinked.clone(),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Check a bundle against OKF and the Tessela conventions
@@ -76,37 +178,29 @@ enum Command {
         #[arg(long, value_parser = ["info", "warning", "error"], default_value = "info")]
         min_severity: String,
     },
+    /// List every concept page with its title and type
+    Pages {
+        #[command(flatten)]
+        common: Common,
+    },
+    /// Stream the pages that change on disk, one line per burst of changes
+    Watch {
+        #[command(flatten)]
+        common: Common,
+        /// Stop when stdin is closed, so a caller that goes away does not leave this running
+        #[arg(long)]
+        exit_on_stdin_close: bool,
+        /// Look at the files every few seconds instead of asking the system, for folders it
+        /// cannot watch (network shares)
+        #[arg(long)]
+        poll: bool,
+    },
     /// Find backlinks and blocks: by concept, text, page, type or date
     Query {
         #[command(flatten)]
         common: Common,
-        /// A concept the block must mention (repeatable); `#tag` or a name
-        #[arg(long = "ref", short = 'r')]
-        refs: Vec<String>,
-        /// Match blocks that mention any of the --ref concepts, not all
-        #[arg(long)]
-        any: bool,
-        /// Ignore refs inherited from parent items and headings
-        #[arg(long)]
-        own: bool,
-        /// Text the block contains (case-insensitive)
-        #[arg(long, short = 't')]
-        text: Option<String>,
-        /// Only pages with this frontmatter `type`
-        #[arg(long = "type")]
-        kind: Option<String>,
-        /// Only this page ID, or a folder when it ends with `/`
-        #[arg(long)]
-        page: Option<String>,
-        /// First day to include (YYYY-MM-DD): journal days and dates written in blocks
-        #[arg(long)]
-        from: Option<String>,
-        /// Last day to include (YYYY-MM-DD): journal days and dates written in blocks
-        #[arg(long)]
-        to: Option<String>,
-        /// Show at most this many blocks
-        #[arg(long)]
-        limit: Option<usize>,
+        #[command(flatten)]
+        filters: QueryArgs,
     },
     /// List what a folder holds, as an OKF `index.md` (computed, nothing is written)
     Index {
@@ -136,6 +230,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Print the whole API (commands, arguments, answers) as one JSON document
+    Schema,
     /// Print the API version of the edit commands (read, add, save, rename, move, remove)
     Api {
         /// Print JSON instead of text
@@ -164,6 +260,19 @@ enum Command {
         /// Read the whole page from stdin instead of using the template
         #[arg(long)]
         stdin: bool,
+    },
+    /// Store a file (a picture, a PDF) in assets/, named after the page that uses it
+    Attach {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page that will link to the file, e.g. `project/tessela.md`; it need not exist yet
+        page: String,
+        /// Read the file from here instead of stdin
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// The file's extension, when it is not in the file's name or recognised from its bytes
+        #[arg(long)]
+        ext: Option<String>,
     },
     /// Replace a page, or change it with a unified diff, based on a hash from `read`
     Save {
@@ -221,6 +330,33 @@ enum Command {
         #[arg(long)]
         expect: String,
     },
+    /// What changed in the notes since a git revision, block by block (reads git, writes nothing)
+    Changes {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The state to compare with: a commit, `HEAD~3`, `origin/main`, `ORIG_HEAD` (before the
+        /// last pull or merge); the last commit when left out
+        #[arg(long, default_value = "HEAD")]
+        since: String,
+    },
+    /// Pages mentioned together with a page, and the home pages that lead to it
+    Related {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page or concept, e.g. `project/tessela` or `machine learning`
+        name: String,
+        /// List at most this many related pages
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Run the body of a ```tessela fence (a live list): a read-only command, then filters
+    Fence {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// Read the fence from this file instead of stdin
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
     /// List the concepts that exist: tags, links and pages
     Vocab {
         #[command(flatten)]
@@ -244,30 +380,13 @@ fn main() -> ExitCode {
             strict,
             min_severity,
         } => lint(common, strict, &min_severity),
-        Command::Query {
+        Command::Query { common, filters } => run_query(common, filters.query(), filters.limit),
+        Command::Pages { common } => pages(common),
+        Command::Watch {
             common,
-            refs,
-            any,
-            own,
-            text,
-            kind,
-            page,
-            from,
-            to,
-            limit,
-        } => {
-            let query = Query {
-                refs,
-                any,
-                own,
-                text,
-                kind,
-                page,
-                from,
-                to,
-            };
-            run_query(common, query, limit)
-        }
+            exit_on_stdin_close,
+            poll,
+        } => run_watch(common, exit_on_stdin_close, poll),
         Command::Index {
             common,
             dir,
@@ -283,6 +402,10 @@ fn main() -> ExitCode {
             prefix,
         } => vocab(common, unwritten, min_count, prefix),
         Command::Api { json } => api(json),
+        Command::Schema => {
+            print_json(&schema::document(&Cli::command()));
+            ExitCode::SUCCESS
+        }
         Command::Read { edit, page } => run_edit(&edit, |store| {
             let path = edit::existing_path(&page)?;
             let read = edit::read_page(store, &path)?;
@@ -308,6 +431,44 @@ fn main() -> ExitCode {
             Ok(Done::new(
                 &saved,
                 |s| format!("created {} ({})", s.path, s.hash),
+                false,
+            ))
+        }),
+        Command::Attach {
+            edit,
+            page,
+            file,
+            ext,
+        } => run_edit(&edit, |store| {
+            let path = edit::existing_path(&page)?;
+            let bytes = read_bytes(file.as_deref())?;
+            let ext = ext
+                .or_else(|| {
+                    file.as_deref()
+                        .and_then(|f| f.extension())
+                        .map(|e| e.to_string_lossy().into_owned())
+                })
+                .or_else(|| edit::sniff_extension(&bytes).map(String::from))
+                .ok_or_else(|| {
+                    EditError::new(
+                        ErrorCode::InvalidInput,
+                        "cannot tell what kind of file this is: pass --ext, for example --ext png",
+                    )
+                })?;
+            let attached = edit::attach(store, &path, &bytes, &ext)?;
+            Ok(Done::new(
+                &attached,
+                |a| {
+                    format!(
+                        "{} {}",
+                        if a.created {
+                            "stored"
+                        } else {
+                            "already stored"
+                        },
+                        a.path
+                    )
+                },
                 false,
             ))
         }),
@@ -354,6 +515,37 @@ fn main() -> ExitCode {
             let to = edit::move_target(&from, &dest)?;
             moved(store, &from, &to, expect.as_deref(), dry_run)
         }),
+        Command::Related { edit, name, limit } => run_edit(&edit, |_| {
+            let bundle = Bundle::load(&edit.bundle)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
+            let related = related::related(&bundle, &name, limit);
+            Ok(Done::new(
+                &related,
+                |r| {
+                    let mut out = String::new();
+                    for h in &r.chain {
+                        out.push_str(&format!("home: {} ({})\n", h.title, h.path));
+                    }
+                    for t in &r.together {
+                        let at = t.page.as_ref().map_or("no page", |p| p.path.as_str());
+                        out.push_str(&format!("{}  ({at})  {}\n", t.concept, t.reason));
+                    }
+                    out
+                },
+                true,
+            ))
+        }),
+        Command::Changes { edit, since } => run_edit(&edit, |_| {
+            let out = changes::run(&edit.bundle, &since)?;
+            Ok(Done::new(&out, |o| o.text(), true))
+        }),
+        Command::Fence { edit, file } => run_edit(&edit, |_| {
+            let input = read_input(file.as_deref())?;
+            let bundle = Bundle::load(&edit.bundle)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
+            let out = fence::run(&bundle, &input)?;
+            Ok(Done::new(&out, |o| o.text(), true))
+        }),
         Command::Remove { edit, page, expect } => run_edit(&edit, |store| {
             let path = edit::existing_path(&page)?;
             let removed = edit::remove_page(store, &path, &expect)?;
@@ -382,13 +574,8 @@ struct Done {
 
 impl Done {
     fn new<T: Serialize>(value: &T, text: impl Fn(&T) -> String, raw: bool) -> Done {
-        let mut json = serde_json::to_value(value).expect("output serializes");
-        if let Some(map) = json.as_object_mut() {
-            map.insert("api".into(), API_VERSION.into());
-            map.insert("ok".into(), true.into());
-        }
         Done {
-            json,
+            json: envelope(serde_json::to_value(value).expect("output serializes")),
             text: text(value),
             raw,
         }
@@ -415,16 +602,35 @@ fn run_edit(
             outln!("{}", done.text);
             ExitCode::SUCCESS
         }
-        Err(e) => {
-            if args.json {
-                print_json(&serde_json::json!({ "api": API_VERSION, "ok": false, "error": e }));
-            } else {
-                eprintln!("tessela: {e}");
-            }
-            // 1 is for findings (lint), 2 for failures, 3 for a change that lost a race.
-            ExitCode::from(if e.code == ErrorCode::Conflict { 3 } else { 2 })
-        }
+        Err(e) => fail(args.json, &e),
     }
+}
+
+/// Reports a failed command: JSON when the caller asked for it, a line on stderr otherwise.
+/// 1 is for findings (lint), 2 for failures, 3 for a change that lost a race.
+fn fail(json: bool, e: &EditError) -> ExitCode {
+    if json {
+        print_json(&serde_json::json!({ "api": API_VERSION, "ok": false, "error": e }));
+    } else {
+        eprintln!("tessela: {e}");
+    }
+    ExitCode::from(if e.code == ErrorCode::Conflict { 3 } else { 2 })
+}
+
+/// Every `--json` answer carries `api` and `ok`. An object keeps its fields; a list goes
+/// under the name the caller reads it by.
+fn envelope(mut json: serde_json::Value) -> serde_json::Value {
+    if let Some(map) = json.as_object_mut() {
+        map.insert("api".into(), API_VERSION.into());
+        map.insert("ok".into(), true.into());
+    }
+    json
+}
+
+fn print_ok<T: Serialize>(answer: &T) {
+    print_json(&envelope(
+        serde_json::to_value(answer).expect("output serializes"),
+    ));
 }
 
 fn moved(
@@ -477,12 +683,39 @@ fn read_input(file: Option<&Path>) -> Result<String, EditError> {
     Ok(text)
 }
 
+/// The most an attachment may weigh, so a stray pipe cannot fill the disk.
+const MAX_ATTACHMENT: u64 = 64 * 1024 * 1024;
+
+fn read_bytes(file: Option<&Path>) -> Result<Vec<u8>, EditError> {
+    let mut bytes = Vec::new();
+    let read = match file {
+        Some(f) => {
+            std::fs::File::open(f).and_then(|f| f.take(MAX_ATTACHMENT + 1).read_to_end(&mut bytes))
+        }
+        None => std::io::stdin()
+            .take(MAX_ATTACHMENT + 1)
+            .read_to_end(&mut bytes),
+    };
+    read.map_err(|e| {
+        EditError::new(
+            ErrorCode::InvalidInput,
+            format!("cannot read the input: {e}"),
+        )
+    })?;
+    if bytes.len() as u64 > MAX_ATTACHMENT {
+        return Err(EditError::new(
+            ErrorCode::InvalidInput,
+            "the file is larger than 64 MiB",
+        ));
+    }
+    Ok(bytes)
+}
+
 fn api(json: bool) -> ExitCode {
     if json {
-        print_json(&serde_json::json!({
-            "api": API_VERSION,
-            "version": env!("CARGO_PKG_VERSION"),
-        }));
+        print_ok(&answers::Api {
+            version: env!("CARGO_PKG_VERSION").into(),
+        });
     } else {
         outln!("{API_VERSION}");
     }
@@ -490,10 +723,18 @@ fn api(json: bool) -> ExitCode {
 }
 
 fn load(common: &Common) -> Result<Bundle, ExitCode> {
-    Bundle::load(&common.path).map_err(|e| {
-        eprintln!("tessela: {e}");
-        ExitCode::from(2)
-    })
+    edit::check_api(common.api)
+        .and_then(|()| {
+            Bundle::load(&common.path).map_err(|e| {
+                let code = if e.kind() == ErrorKind::NotFound {
+                    ErrorCode::NotFound
+                } else {
+                    ErrorCode::Io
+                };
+                EditError::new(code, e.to_string())
+            })
+        })
+        .map_err(|e| fail(common.json, &e))
 }
 
 fn print_json<T: Serialize>(value: &T) {
@@ -526,7 +767,7 @@ fn lint(common: Common, strict: bool, min_severity: &str) -> ExitCode {
     );
 
     if common.json {
-        print_json(&diagnostics);
+        print_ok(&answers::Lint { diagnostics });
     } else {
         for d in &diagnostics {
             let line = d.line.map_or(String::new(), |l| format!(":{l}"));
@@ -551,6 +792,85 @@ fn lint(common: Common, strict: bool, min_severity: &str) -> ExitCode {
     }
 }
 
+fn run_watch(common: Common, exit_on_stdin_close: bool, poll: bool) -> ExitCode {
+    let bundle = match load(&common) {
+        Ok(b) => b,
+        Err(code) => return code,
+    };
+    if exit_on_stdin_close {
+        std::thread::spawn(|| {
+            let _ = io::copy(&mut io::stdin(), &mut io::sink());
+            std::process::exit(0);
+        });
+    }
+    let json = common.json;
+    let line = |event: answers::WatchEvent| {
+        if json {
+            let value = envelope(serde_json::to_value(event).expect("output serializes"));
+            outln!(
+                "{}",
+                serde_json::to_string(&value).expect("output serializes")
+            );
+        }
+    };
+    let result = watch::watch(
+        &bundle.root,
+        &watch::Options {
+            native: !poll,
+            ..Default::default()
+        },
+        |event| match event {
+            watch::Event::Ready(mode) => line(answers::WatchEvent::Ready { mode }),
+            watch::Event::Mode(mode, reason) => {
+                if !json {
+                    eprintln!("tessela: watching in {} mode: {reason}", mode.as_str());
+                }
+                line(answers::WatchEvent::Mode { mode, reason });
+            }
+            watch::Event::Changed(paths) => {
+                if json {
+                    line(answers::WatchEvent::Changed { paths });
+                } else {
+                    for path in &paths {
+                        outln!("changed {path}");
+                    }
+                }
+            }
+        },
+    );
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(message) => fail(json, &EditError::new(ErrorCode::Io, message)),
+    }
+}
+
+fn pages(common: Common) -> ExitCode {
+    let bundle = match load(&common) {
+        Ok(b) => b,
+        Err(code) => return code,
+    };
+    let mut pages: Vec<_> = bundle.pages.iter().collect();
+    pages.sort_by(|a, b| a.path.cmp(&b.path));
+    if common.json {
+        let rows = pages
+            .iter()
+            .map(|p| answers::PageRow {
+                id: p.id.clone(),
+                path: p.path.clone(),
+                title: p.title(),
+                kind: p.kind().map(str::to_string),
+            })
+            .collect();
+        print_ok(&answers::Pages { pages: rows });
+    } else {
+        for p in &pages {
+            outln!("{}  {}", p.path, p.title());
+        }
+        eprintln!("{} pages", pages.len());
+    }
+    ExitCode::SUCCESS
+}
+
 fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
     let bundle = match load(&common) {
         Ok(b) => b,
@@ -561,7 +881,7 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
     hits.truncate(limit.unwrap_or(usize::MAX));
 
     if common.json {
-        print_json(&hits);
+        print_ok(&answers::Query { total, hits });
     } else {
         for hit in &hits {
             let label = match hit.kind {
@@ -576,6 +896,10 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
             }
             for line in hit.text.lines() {
                 outln!("  {line}");
+            }
+            for m in &hit.mentions {
+                let column = m.column.map_or(String::new(), |c| format!(":{}", c + 1));
+                outln!("  unlinked: \"{}\" at {}{column}", m.text, m.line);
             }
         }
         if hits.len() < total {
@@ -601,7 +925,7 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
             }
         };
         if common.json {
-            print_json(&report);
+            print_ok(&report);
         } else {
             for path in &report.written {
                 outln!("wrote {path}");
@@ -618,7 +942,7 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
         index::listing(&bundle, dir)
     };
     if common.json {
-        print_json(&listing);
+        print_ok(&listing);
     } else {
         let name = bundle
             .root
@@ -645,7 +969,7 @@ fn vocab(common: Common, unwritten: bool, min_count: usize, prefix: Option<Strin
         .collect();
 
     if common.json {
-        print_json(&entries);
+        print_ok(&answers::Vocab { concepts: entries });
     } else {
         let width = entries.iter().map(|e| e.concept.len()).max().unwrap_or(0);
         for e in &entries {
@@ -689,7 +1013,7 @@ fn import_logseq(graph: &Path, out: &Path, json: bool) -> ExitCode {
         }
     };
     if json {
-        print_json(&report);
+        print_ok(&report);
         return ExitCode::SUCCESS;
     }
     outln!(

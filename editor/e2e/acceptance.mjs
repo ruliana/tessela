@@ -20,6 +20,8 @@ import "./acceptance/palette.mjs";
 import "./acceptance/dates.mjs";
 import "./acceptance/home.mjs";
 import "./acceptance/links.mjs";
+import "./acceptance/mods.mjs";
+import "./acceptance/pages.mjs";
 import "./acceptance/folding.mjs";
 
 await runAll();

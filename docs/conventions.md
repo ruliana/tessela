@@ -85,6 +85,7 @@ structure of the page body; nothing about them is stored in the file.
 | Top-level code fence, table, quote     | Yes                                       |
 | Code fence, table, quote inside an item | Part of that item's block                |
 | Paragraph after a nested list, inside an item | A block of its own, a child of that item |
+| List item that starts with `[ ]` or `[x]` | A task: its block has `task: open` or `done`; the box is not part of the text |
 | Heading                                | Not a block, but a backlink holder (§5); its refs apply to the blocks below it |
 | Frontmatter                            | Not a block; it belongs to the page and can be a backlink (§5) |
 
@@ -291,7 +292,12 @@ agents share. Its rules:
 ## 10. Tools
 
 All tools are Rust binaries built on one shared core library. Each has a
-human-readable output and a `--json` output, which the editor and agents use.
+human-readable output and a `--json` output, which the editor and agents use. Every
+`--json` answer, from every command, is an object with `"api": N` and `"ok": true`; lists
+sit under a name (`hits` and `total` for `query`, `concepts` for `vocab`, `diagnostics`
+for `lint`). A failure is `{"api": N, "ok": false, "error": {"code", "message"}}` with
+exit code 2 (3 for a `conflict`; `lint` keeps 1 for findings, and `ok` stays true then).
+Every command takes `--api N` for the version the caller was written for.
 
 - `tessela lint`: OKF conformance plus Tessela rules (dates, tags, vocabulary, home pages).
   Rules are pluggable, so semantic rules can be added later.
@@ -308,6 +314,21 @@ human-readable output and a `--json` output, which the editor and agents use.
   `--ref <alias>` finds the page's backlinks, plus the blocks that use the alias
   itself. It does not work the other way: `--ref <page>` does not find blocks that
   use one of its aliases.
+  `--task open|done|any` keeps only checkbox items (§3), so a task is a plain `- [ ]` and its
+  due date is a date written in it: `--task open --to 2026-11-15` lists what is open on
+  journal days up to the 15th or names a date up to it. Hits carry `task`.
+  `--text PHRASE` may be given several times (every phrase must be in the block) and
+  `--words "a b c"` needs each word, in any order. `--meta` also searches what is not block
+  text: page titles and every front matter value (`role`, `team`, tags...), which come
+  back as `page` hits, and headings, as `heading` hits.
+  `--unlinked CONCEPT` finds text that names a concept without linking it: blocks that
+  write the page's title, one of its aliases or a `vocabulary.md` term that says `use:` it
+  as plain words, and do not already reach it through a tag or link, their own or inherited
+  (§3). Code, links, tags and web addresses are not searched, nor is the concept's own page.
+  Only blocks are returned, newest page first, and each has `mentions`: `text`, `line`,
+  `column` (bytes into the file line, absent when the line could not be placed) and the
+  `link` that would replace the words (`[ML](/machine-learning.md)`). A client turns a
+  mention into a reference with a `save --patch`.
 - `tessela index`: what a folder holds, as an OKF `index.md` (§6 of OKF):
   sub-folders, then the folder's own pages (its `home.md` first) with their
   `description` or first line, then its journal days, newest first. It prints to
@@ -317,7 +338,12 @@ human-readable output and a `--json` output, which the editor and agents use.
   bundles read by tools that do not compute listings. Generated files carry a
   marker line; one that does not (a hand-written `index.md`) is kept unless
   `--force` is given.
-- `tessela read | add | save | rename | move | remove`: the edit commands (§9). They
+  For a folder page, the listing also names the folder's `home` (its `home.md`) and the
+  `links`: the existing pages that home page links to or tags, in the order it first
+  mentions them (for the root these are the pinned pages), and each sub-folder says
+  whether it has a `home` of its own (`has_home`).
+- `tessela read | add | save | rename | move | remove`: the edit commands (§9), with
+  `attach` below. They
   take the bundle with `--bundle DIR` (default `.`) and the page as a path relative to
   it, with or without `.md`. `add` and the targets of `rename` and `move` take a name
   the way a person writes it (`Machine Learning` becomes `machine-learning.md`, §4);
@@ -330,9 +356,81 @@ human-readable output and a `--json` output, which the editor and agents use.
   `invalid-path`, `invalid-patch`, `invalid-input`, `api-mismatch`, `io`. The `api`
   number is the version of this contract (command names, arguments and JSON); callers
   pass `--api N` for the version they were written for, and the tool refuses on a
-  mismatch. `tessela api` prints it. The operations are written against a `PageStore`
+  mismatch. `tessela api` prints it. Any change to command names, arguments or JSON bumps it
+  (2: every answer got the `api`/`ok` envelope). The operations are written against a `PageStore`
   in `tessela-core`, so a bundle kept elsewhere (remote, database) needs a new store,
   not new callers.
+- `tessela pages`: every concept page, sorted by path, with its `id`, `path`, `title` and
+  `type`. The title is what the page calls itself: its frontmatter `title`, else its
+  first `#` heading, else its file name with the dashes turned into spaces. Reserved
+  files (`index.md`, `log.md`) and hidden folders are not pages.
+- `tessela fence`: runs a live list. A page may hold a code fence with the info string
+  `tessela` whose body is one read-only command (`query`, `index`, `vocab` or `lint`, with
+  the bundle left out), optionally followed by filters:
+
+  ````markdown
+  ```tessela
+  query --ref project/tessela --type journal | rg -v draft | sort -r | head 5
+  ```
+  ````
+
+  The editor draws the rows under the fence and never writes them into the page, so a
+  page stays plain Markdown that shows a command anyone can read. `tessela fence` reads the
+  body on stdin (or `--file`) and prints one line per row, `path:line:text` as `rg` prints it;
+  with `--json` the answer is `{"api": N, "ok": true, "command": "query", "rows": [{"text",
+  "source"}]}`, where `source` is the hit, page, concept or finding the line came from, and
+  `null` once a filter has rewritten the line so that its `path:line:` start is gone. A page
+  can arrive by `git pull` or from an agent, so the line never reaches a shell or a real
+  program. The filters are built into tessela: `rg [-i -v -F -w -e PATTERN]`,
+  `sed 's/re/new/[gi]'` and `sed '/re/d'` (`\1` and `&` in the replacement), `sort [-r -n -u]`,
+  `uniq [-c]`, `head [-n] N` and `wc [-l|-w|-c]`. Patterns are Rust regular expressions;
+  words are split like a shell's (`'...'`, `"..."`, `\`) but nothing is expanded, and a pipe
+  may be broken over lines after a `|`. Anything else (`awk`, `sed -i`, `index --write`, a
+  folder in the command) is refused with the `invalid-input` error.
+- `tessela attach PAGE`: stores a file in `assets/` for a page to link to. The bytes come
+  from stdin or `--file`, the kind from `--ext`, the file's name or the first bytes (png,
+  jpg, gif, webp, pdf, svg); `.md` is refused, since that would be a page. The file is named
+  after the page plus a short hash of its content (`assets/project-tessela-9f2c41d0a1b2.png`
+  for `project/tessela.md`), so the same file attached twice for the same page is one file.
+  The answer has `path`, `link` (what a page writes: `![description](/assets/...)`), `hash`,
+  `size` and `created`. It takes `--bundle`, `--json` and `--api` like the edit commands. The
+  page need not exist yet. `tessela lint` reports attachments no page mentions as
+  `tessela/unused-attachment` (informational).
+- `tessela watch`: a read-only stream of the pages that change on disk, for clients that
+  keep a view of the bundle (the editor). With `--json` it prints one JSON line per
+  event: `ready` (with the `mode`, `native` or `polling`), `changed` (the `paths` of the
+  pages that were created, changed or removed, sorted, a moment after the last change, so
+  a burst is one line), and `mode` when it switches between the system's watcher and looking
+  at the files every few seconds (the system can run out of watchers; it is tried again
+  every minute). `--poll` always looks at the files, for folders the system cannot watch.
+  Hidden folders and files that are not Markdown are not reported. `--exit-on-stdin-close`
+  ends it when its caller goes away. It is not a server: saves stay one call each.
+- `tessela schema`: the whole API as one JSON document, for clients in any language: each
+  command with its arguments (from the command line parser) and its answer as JSON Schema
+  (from the types that print it), the envelope, the failure shape and the exit codes. A test
+  checks that real answers validate against it and that every command describes its
+  answer, so it cannot drift from the tool.
+- `tessela changes [--since REV]`: what differs between the notes on disk and git, so "what
+  changed while I was away" has an exact answer. `REV` is any git revision (default `HEAD`,
+  the last commit; `ORIG_HEAD` is where the last pull or merge started from). It reads git
+  (`diff`, `show`, `ls-files`) and writes nothing, and needs the bundle to be in a git
+  repository (a folder of a larger one sees only its own pages). The answer lists the pages
+  that were `added`, `modified` or `deleted` (with `hash`, to base a patch on) and for each
+  the `changes`: `added`, `removed` or `changed` units, where a unit is a block, a heading
+  or the `properties` (front matter). A change has `handle`, `heading_path`, `line`, `text`
+  and `raw` (the source lines) as they are now, and for a `changed` one `old_text`,
+  `old_line` and `old_raw`, which is what a client needs to keep a change or put the old
+  text back with `save --patch`. A removed unit has the line it had before. This is the
+  honest form of OKF's `log.md`: computed when asked, never a file.
+- `tessela related NAME [--limit N]`: related pages in place of a graph. `together` lists the
+  concepts most often mentioned together with the page or concept (`concept`, its `page`
+  if it has one, `blocks`, `pages`, `properties`, and a `reason` such as `together in 7
+  blocks on 3 pages`): blocks that mention both (inherited references count, as in
+  §3), and pages whose properties do, a page tagged with the concept included. Its own
+  aliases and the concepts nested under it or above it are not listed. `chain` is the home
+  pages that lead to the page (§1), the root's first: a shortest path of links from the root
+  `home.md` through home pages (`chain_by: "links"`), or else the home pages of the folders
+  around it (`"folders"`). Computed on demand, nothing is written.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
@@ -341,10 +439,11 @@ human-readable output and a `--json` output, which the editor and agents use.
 
 An Electron editor (in `editor/`, TypeScript, CodeMirror 6) that uses the same
 tools as everyone else: it runs `tessela query --json` and `tessela vocab --json`
-and `tessela lint --json` (the binary comes from `$TESSELA_BIN`, then the one
+and `tessela lint --json` with `--api` (the binary comes from `$TESSELA_BIN`, then the one
 packaged with the app, then `target/{release,debug}`, then `PATH`). It reads and
 saves pages with `tessela read` and `tessela save` (§9, §10), one call per read and per
-save, so it follows the same rules as agents; it only lists and watches the files itself.
+save, so it follows the same rules as agents; it lists the pages with `tessela pages` and
+follows changes with `tessela watch`, so it reads nothing from the folder itself.
 
 - The root is the folder it opens: `--bundle PATH`, or the last one used, or the one
   chosen in the window (the folder button at the top of the sidebar, Ctrl+Shift+O, or
