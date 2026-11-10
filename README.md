@@ -230,6 +230,10 @@ the notes change, and opens the page of a row when it is clicked; nothing it dra
 open tasks that name it in a "Due" group at the top of its backlinks (today also lists the overdue ones),
 ticking a task on its tile is written as a one-line patch through `tessela save --patch`, and a month
 strip in the sidebar marks the days that have a file and the days that are only mentioned.
+`outline` lists the headings of the open page as a group at the top of its backlinks (a click puts the cursor on
+one; it is drawn from the saved page, so it follows once the page is saved), adds "Go to heading" to the
+palette, and makes Alt+Up and Alt+Down on a heading line move its section (what is under it, down to the
+next heading of its level) past the neighbour of the same level, without moving it out of its parent.
 `changes` is the "Changes" row in the sidebar: what differs between the notes and git (the last commit, or
 any revision typed in, `ORIG_HEAD` for before the last pull), block by block, from `tessela changes`. Each
 change is kept (hidden, nothing written; the window remembers) or put back (the page is saved again without
