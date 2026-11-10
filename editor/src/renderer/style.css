@@ -148,6 +148,19 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .editor .cm-cursor { border-left-color: var(--text); }
 .editor .cm-focused { outline: none; }
 .editor .cm-selectionBackground, .editor .cm-focused .cm-selectionBackground { background: var(--accent-soft) !important; }
+/* Fold and zoom: a chevron in the margin of a line that can fold, the chip a fold leaves, the way back above a zoom. */
+.editor .cm-line { position: relative; }
+.cm-foldmark { position: absolute; left: 4px; top: 0; width: 16px; text-align: center; color: var(--muted); cursor: pointer; opacity: 0; transform: rotate(90deg); transition: opacity 0.12s; user-select: none; }
+.cm-foldmark::before { content: "›"; }
+.cm-foldmark.folded { opacity: 0.7; transform: none; }
+.cm-line:hover .cm-foldmark { opacity: 0.7; }
+.cm-foldmark:hover { opacity: 1 !important; color: var(--accent); }
+.cm-foldchip { margin-left: 8px; padding: 0 6px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); font: 12px var(--sans); cursor: pointer; }
+.cm-foldchip:hover { border-color: var(--accent); color: var(--text); }
+.cm-zoomtrail { padding: 2px 24px 14px; font: 13px var(--sans); color: var(--muted); }
+.cm-zoomtrail button { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; }
+.cm-zoomtrail button:hover { color: var(--accent); text-decoration: underline; }
+.cm-zoomend { height: 0; }
 .cm-tag { color: var(--accent); background: var(--accent-soft); border-radius: 3px; padding: 0 3px; font-weight: 500; }
 .cm-concept { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 .cm-unwritten { text-decoration: underline dashed; text-decoration-color: var(--accent); text-underline-offset: 3px; font-style: italic; }
