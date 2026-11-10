@@ -22,6 +22,7 @@ import "./acceptance/home.mjs";
 import "./acceptance/links.mjs";
 import "./acceptance/mods.mjs";
 import "./acceptance/pages.mjs";
+import "./acceptance/peek.mjs";
 import "./acceptance/attach.mjs";
 import "./acceptance/folding.mjs";
 import "./acceptance/livelists.mjs";
