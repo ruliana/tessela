@@ -85,6 +85,9 @@ await win.waitForSelector("#problems .problem.error");
 assert.match(await win.textContent("#problems"), /broken\.md/);
 await win.click("#problems .problem.error");
 await win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "broken");
+// The list of problems floats over the bottom of the sidebar; close it so it does not cover the pages.
+await win.click("#problems-toggle");
+await win.waitForSelector("#problems", { state: "hidden" });
 
 // The project page lists the journal block that mentions it.
 await win.click("#pages button:has-text('project/tessela')");
