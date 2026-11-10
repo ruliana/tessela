@@ -3,9 +3,8 @@
 // and only changes anything once the dialog is confirmed. All the changes go through `ctx.cli`.
 
 import type { ModContext } from "../../renderer/mods";
-import { changedPages, describeChange, failureText, folderOf, mentioning, nameForTitle, stemOf, type MoveAnswer } from "./plan";
-
-type Answer<T> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
+import { cliOf, failureText } from "../kit";
+import { changedPages, describeChange, folderOf, mentioning, nameForTitle, stemOf, type MoveAnswer } from "./plan";
 
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "", props: Partial<HTMLElementTagNameMap[K]> = {}): HTMLElementTagNameMap[K] =>
   Object.assign(document.createElement(tag), { textContent: text }, props);
@@ -19,7 +18,7 @@ function pageList(paths: string[], limit = 8): HTMLElement {
 }
 
 export default function (ctx: ModContext): void {
-  const cli = <T>(argv: string[], input?: string) => ctx.cli(argv, input === undefined ? undefined : { input }) as Promise<Answer<T>>;
+  const cli = cliOf(ctx);
 
   /** Rename (a new name in the same folder) or move (a folder ending in `/`, or a new path). */
   async function relocate(mode: "rename" | "move", path: string, initial: string): Promise<void> {

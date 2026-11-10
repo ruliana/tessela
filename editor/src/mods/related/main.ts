@@ -5,15 +5,14 @@
 
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
+import { cliOf } from "../kit";
 import { type Related, conceptFor, homeLabel, isEmpty, togetherRows, trailOf } from "./plan";
-
-type Answer = ({ ok: true } & Related) | { ok: false; error: { code: string; message: string } };
 
 export default function (ctx: ModContext): void {
   ctx.backlinks.add(async ({ path }) => {
     const concept = conceptFor(path);
     if (concept === null) return null;
-    const answer = (await ctx.cli(["related", concept, "--limit", "8"])) as Answer;
+    const answer = await cliOf(ctx)<Related>(["related", concept, "--limit", "8"]);
     if (!answer.ok || isEmpty(answer)) return null;
 
     const rows = togetherRows(answer).map((t) => {

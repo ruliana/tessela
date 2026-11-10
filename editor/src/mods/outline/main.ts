@@ -10,9 +10,8 @@ import type { EditorView } from "@codemirror/view";
 
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
+import { cliOf } from "../kit";
 import { type Heading, headingAt, headings, matching, moveSection } from "./plan";
-
-type Answer<T> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
 
 const linesOf = (view: EditorView) => view.state.doc.toString().split("\n");
 
@@ -149,7 +148,7 @@ export default function (ctx: ModContext): void {
   // ---- the group in the right column --------------------------------------------------
 
   ctx.backlinks.add(async ({ path }) => {
-    const page = (await ctx.cli(["read", path])) as Answer<{ exists: boolean; text: string }>;
+    const page = await cliOf(ctx)<{ exists: boolean; text: string }>(["read", path]);
     if (!page.ok || !page.exists) return null;
     const list = headings(page.text.split("\n"));
     if (list.length < 2) return null;

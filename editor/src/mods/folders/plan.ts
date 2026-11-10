@@ -25,8 +25,6 @@ export interface Listing {
   journal: PageEntry[];
 }
 
-export type Answer = Listing | { ok: false; error: { code: string; message: string } };
-
 /** How many journal days the view lists before saying how many more there are. */
 export const JOURNAL_SHOWN = 5;
 

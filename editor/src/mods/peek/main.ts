@@ -6,6 +6,7 @@
 import type { EditorView } from "@codemirror/view";
 
 import type { ModContext, PageCard } from "../../renderer/mods";
+import { cliOf } from "../kit";
 import { countMentions, mentionsOf, peekAt, type PeekTarget } from "./plan";
 
 interface Hit {
@@ -15,8 +16,6 @@ interface Hit {
   text: string;
 }
 
-type Answer<T> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
-
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "", props: Partial<HTMLElementTagNameMap[K]> = {}): HTMLElementTagNameMap[K] =>
   Object.assign(document.createElement(tag), { textContent: text }, props);
 
@@ -24,7 +23,7 @@ const dirOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/"))
 
 export default function (ctx: ModContext): void {
   const slot = ctx.slots.mount("side-top");
-  const cli = <T>(argv: string[]) => ctx.cli(argv) as Promise<Answer<T>>;
+  const cli = cliOf(ctx);
 
   /** True while the peek's own card is loading, whose `page-opened` is not the window moving to another page. */
   let loading = false;

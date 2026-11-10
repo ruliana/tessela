@@ -5,9 +5,8 @@
 
 import type { ModContext } from "../../renderer/mods";
 import { newPagePath } from "../../shared/pages";
+import { cliOf } from "../kit";
 import { type PageKind, type TemplateEntry, PLAIN, kindsFrom, moveChoice } from "./plan";
-
-type Failure = { ok: false; error: { code: string; message: string } };
 
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] =>
   Object.assign(document.createElement(tag), { className, textContent: text });
@@ -15,7 +14,7 @@ const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", tex
 export default function (ctx: ModContext): void {
   /** The types to choose from, read when the dialog opens so a template written since is there. */
   async function kinds(): Promise<PageKind[]> {
-    const answer = (await ctx.cli(["index", "--dir", "templates"])) as { ok: true; pages: TemplateEntry[] } | Failure;
+    const answer = await cliOf(ctx)<{ pages: TemplateEntry[] }>(["index", "--dir", "templates"]);
     return kindsFrom(answer.ok ? answer.pages : []);
   }
 
@@ -25,7 +24,7 @@ export default function (ctx: ModContext): void {
     // The name, not the path, so the title keeps its capitals and spaces.
     const title = name.trim().replace(/\.md$/i, "").split("/").pop()?.trim();
     const argv = ["add", name.trim(), "--type", type, ...(title ? [`--title=${title}`] : [])];
-    const answer = (await ctx.cli(argv)) as { ok: true; path: string } | Failure;
+    const answer = await cliOf(ctx)<{ path: string }>(argv);
     // A page that already exists is simply opened.
     if (!answer.ok && answer.error.code !== "exists") return ctx.ui.toast(`Could not create the page: ${answer.error.message}`);
     await ctx.pages.open(answer.ok ? answer.path : path);

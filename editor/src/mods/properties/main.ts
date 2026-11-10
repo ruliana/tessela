@@ -7,13 +7,12 @@
 
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
+import { cliOf } from "../kit";
 import { daysInLine } from "../../shared/dates";
 import type { PropertiesArg } from "../../shared/mods";
 import { journalDest } from "../../shared/pages";
 import { showWhen } from "../../shared/properties";
 import { type Edit, applyEdit, dateChoices, knownTypes, tagChoices, validWhen } from "./plan";
-
-type Answer<T> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
 
 interface Choice {
   label: string;
@@ -36,7 +35,7 @@ interface Editing {
 }
 
 export default function (ctx: ModContext): void {
-  const cli = <T>(argv: string[], input?: string) => ctx.cli(argv, input === undefined ? undefined : { input }) as Promise<Answer<T>>;
+  const cli = cliOf(ctx);
 
   /** The one small editor that is open. */
   let open: { close(): void } | null = null;

@@ -45,9 +45,3 @@ export function mentioning(hits: { path: string }[], path: string): { pages: str
   const others = hits.filter((h) => h.path !== path);
   return { pages: [...new Set(others.map((h) => h.path))], mentions: others.length };
 }
-
-/** What a failed answer says. */
-export function failureText(answer: unknown): string {
-  const e = (answer as { error?: { message?: unknown } } | null)?.error;
-  return typeof e?.message === "string" ? e.message : "the tessela command failed";
-}

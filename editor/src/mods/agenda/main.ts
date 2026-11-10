@@ -7,18 +7,16 @@
 // Everything is read and written through `ctx.cli`; note text goes in as text, never as HTML.
 
 import type { ModContext } from "../../renderer/mods";
+import { cliOf, failureText } from "../kit";
 import { el } from "../../renderer/dom";
 import { renderInlineText } from "../../renderer/inline";
 import { formatDate } from "../../shared/dates";
 import { journalPath, pageId } from "../../shared/pages";
 import { dayBefore, dayOfJournal, dueOn, monthView, shiftMonth, tickPatch, type Due, type TaskHit } from "./plan";
 
-type Answer<T> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
-
-const failure = (a: { ok: false; error: { message: string } }) => a.error.message;
 
 export default function (ctx: ModContext): void {
-  const cli = <T>(argv: string[], input?: string) => ctx.cli(argv, input === undefined ? undefined : { input }) as Promise<Answer<T>>;
+  const cli = cliOf(ctx);
   const query = async (args: string[]): Promise<TaskHit[]> => {
     const answer = await cli<{ hits: TaskHit[] }>(["query", ...args]);
     return answer.ok ? answer.hits : [];
@@ -32,11 +30,11 @@ export default function (ctx: ModContext): void {
       ctx.ui.toast(message);
       return false;
     };
-    if (!page.ok) return stop(`Could not read ${hit.path}: ${failure(page)}`);
+    if (!page.ok) return stop(`Could not read ${hit.path}: ${failureText(page)}`);
     const patch = page.exists && page.hash ? tickPatch(hit.path, page.text, hit.line, hit.text) : null;
     if (!patch || !page.hash) return stop(`That task has changed in ${hit.path}. Open the page to tick it.`);
     const saved = await cli<object>(["save", hit.path, "--expect", page.hash, "--patch"], patch);
-    return saved.ok || stop(`Could not tick the task: ${failure(saved)}`);
+    return saved.ok || stop(`Could not tick the task: ${failureText(saved)}`);
   }
 
   function tile(item: Due): HTMLElement {
