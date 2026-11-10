@@ -29,7 +29,7 @@ pub fn content_hash(text: &str) -> String {
     blake3::hash(text.as_bytes()).to_hex()[..16].to_string()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorCode {
     /// The page on disk is not the one the caller based its change on.
@@ -59,7 +59,7 @@ impl ErrorCode {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct EditError {
     pub code: ErrorCode,
     pub message: String,
@@ -457,7 +457,7 @@ pub fn new_page_text(path: &str, title: Option<&str>, kind: Option<&str>) -> Res
     ))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct PageRead {
     pub path: String,
     pub exists: bool,
@@ -485,7 +485,7 @@ pub fn read_page(store: &dyn PageStore, path: &str) -> Result<PageRead> {
     })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Saved {
     pub path: String,
     pub hash: String,
@@ -611,7 +611,7 @@ pub fn pages_mentioning(store: &dyn PageStore, path: &str) -> Result<Vec<String>
     Ok(found)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Removed {
     pub path: String,
     /// Pages that still mention it. Links to a missing page are allowed, but you may want to know.
@@ -629,7 +629,7 @@ pub fn remove_page(store: &dyn PageStore, path: &str, expect_hash: &str) -> Resu
 }
 
 /// What `attach` stored.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Attached {
     /// Where the file is, relative to the bundle: `assets/notes-idea-9f2c41d0a1b2.png`.
     pub path: String,
@@ -742,14 +742,14 @@ fn check_asset_path(path: &str) -> Result<()> {
 }
 
 /// A page whose text changed because of a move.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Updated {
     pub path: String,
     pub links: usize,
     pub tags: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Moved {
     pub from: String,
     pub to: String,

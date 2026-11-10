@@ -12,7 +12,7 @@ use serde_yaml_ng::Value;
 use crate::bundle::Bundle;
 use crate::page::Page;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -30,7 +30,7 @@ impl Severity {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Diagnostic {
     pub rule: &'static str,
     pub severity: Severity,

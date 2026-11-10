@@ -67,7 +67,7 @@ impl TaskFilter {
 
 /// What kind of thing a hit is. Anything that can hold a reference can be found,
 /// so a query for a concept returns its backlinks wherever they are.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum HitKind {
     /// A paragraph or list item.
@@ -80,7 +80,7 @@ pub enum HitKind {
     Page,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Hit {
     pub kind: HitKind,
     /// Blocks and headings: page ID plus a hash of the text. Pages: the page ID.

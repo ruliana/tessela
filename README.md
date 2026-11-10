@@ -84,6 +84,12 @@ page, line, heading path, refs and parent handle. Text output is for people;
 tessela pages . --json     # every page: id, path, title, type
 ```
 
+### The API
+
+```
+tessela schema             # every command, its arguments and the JSON Schema of its answer
+```
+
 ### Watching
 
 ```

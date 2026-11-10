@@ -9,7 +9,7 @@ use crate::bundle::Bundle;
 use crate::lint::{mentions, read_vocabulary};
 use crate::refs::normalize_concept;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct VocabEntry {
     pub concept: String,
     /// A page with this ID exists.

@@ -295,3 +295,88 @@ fn watch_refuses_a_caller_for_another_api_version() {
     let json: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["error"]["code"], "api-mismatch");
 }
+
+/// What `tessela schema` describes is what the commands print: every answer below is
+/// checked against the schema of its command.
+#[test]
+fn the_schema_describes_what_the_commands_print() {
+    let dir = bundle("schema", NOTES);
+    let d = dir.to_str().unwrap();
+    let doc: Value =
+        serde_json::from_slice(&tessela(&["schema"]).stdout).expect("schema prints JSON");
+    assert_eq!(doc["api"], API);
+    let check = |command: &str, answer: Value| {
+        let mut schema = doc.clone();
+        schema["$ref"] = format!("#/commands/{command}/answer").into();
+        let validator = jsonschema::validator_for(&schema).expect("a valid schema");
+        let errors: Vec<_> = validator
+            .iter_errors(&answer)
+            .map(|e| e.to_string())
+            .collect();
+        assert!(errors.is_empty(), "{command}: {errors:?}\n{answer}");
+    };
+    let json = |args: &[&str]| -> Value {
+        let out = tessela(args);
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{args:?}: {e}"))
+    };
+    check("pages", json(&["pages", d, "--json"]));
+    check("query", json(&["query", d, "--ref", "tessela", "--json"]));
+    check("vocab", json(&["vocab", d, "--json"]));
+    check("lint", json(&["lint", d, "--json"]));
+    check("index", json(&["index", d, "--json"]));
+    check("api", json(&["api", "--json"]));
+    check("read", json(&["read", "ideas.md", "-b", d, "--json"]));
+    check("add", json(&["add", "fresh", "-b", d, "--json"]));
+    check(
+        "move",
+        json(&["move", "fresh.md", "later/", "-b", d, "--json"]),
+    );
+    check("schema", doc.clone());
+
+    // The two that read their input from stdin.
+    let with_stdin = |args: &[&str], input: &str| -> Value {
+        use std::io::Write;
+        let mut child = Command::new(env!("CARGO_BIN_EXE_tessela"))
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        serde_json::from_slice(&child.wait_with_output().unwrap().stdout).unwrap()
+    };
+    check(
+        "fence",
+        with_stdin(
+            &["fence", "-b", d, "--json"],
+            "query --ref tessela | head 1\n",
+        ),
+    );
+    check(
+        "attach",
+        with_stdin(
+            &["attach", "ideas", "--ext", "png", "-b", d, "--json"],
+            "not really a png",
+        ),
+    );
+
+    // A failure has its own shape.
+    let failure = json(&["remove", "nope.md", "--expect", "abc", "-b", d, "--json"]);
+    assert_eq!(failure["ok"], false);
+    let mut schema = doc.clone();
+    schema["$ref"] = "#/failure".into();
+    assert!(
+        jsonschema::validator_for(&schema)
+            .unwrap()
+            .is_valid(&failure)
+    );
+
+    // Streams: the first line of `watch`.
+    let watch = Watch::start(&dir);
+    check("watch", watch.next(5000).unwrap());
+}

@@ -397,6 +397,11 @@ Every command takes `--api N` for the version the caller was written for.
   every minute). `--poll` always looks at the files, for folders the system cannot watch.
   Hidden folders and files that are not Markdown are not reported. `--exit-on-stdin-close`
   ends it when its caller goes away. It is not a server: saves stay one call each.
+- `tessela schema`: the whole API as one JSON document, for clients in any language: each
+  command with its arguments (from the command line parser) and its answer as JSON Schema
+  (from the types that print it), the envelope, the failure shape and the exit codes. A test
+  checks that real answers validate against it and that every command describes its
+  answer, so it cannot drift from the tool.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
