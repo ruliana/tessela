@@ -1,4 +1,5 @@
 mod fence;
+mod watch;
 
 use std::fmt::Arguments;
 use std::io::{self, ErrorKind, Read as _, Write};
@@ -155,6 +156,18 @@ enum Command {
     Pages {
         #[command(flatten)]
         common: Common,
+    },
+    /// Stream the pages that change on disk, one line per burst of changes
+    Watch {
+        #[command(flatten)]
+        common: Common,
+        /// Stop when stdin is closed, so a caller that goes away does not leave this running
+        #[arg(long)]
+        exit_on_stdin_close: bool,
+        /// Look at the files every few seconds instead of asking the system, for folders it
+        /// cannot watch (network shares)
+        #[arg(long)]
+        poll: bool,
     },
     /// Find backlinks and blocks: by concept, text, page, type or date
     Query {
@@ -322,6 +335,11 @@ fn main() -> ExitCode {
         } => lint(common, strict, &min_severity),
         Command::Query { common, filters } => run_query(common, filters.query(), filters.limit),
         Command::Pages { common } => pages(common),
+        Command::Watch {
+            common,
+            exit_on_stdin_close,
+            poll,
+        } => run_watch(common, exit_on_stdin_close, poll),
         Command::Index {
             common,
             dir,
@@ -695,6 +713,67 @@ fn lint(common: Common, strict: bool, min_severity: &str) -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+fn run_watch(common: Common, exit_on_stdin_close: bool, poll: bool) -> ExitCode {
+    let bundle = match load(&common) {
+        Ok(b) => b,
+        Err(code) => return code,
+    };
+    if exit_on_stdin_close {
+        std::thread::spawn(|| {
+            let _ = io::copy(&mut io::stdin(), &mut io::sink());
+            std::process::exit(0);
+        });
+    }
+    let json = common.json;
+    let line = |event: &str, fields: serde_json::Value| {
+        if json {
+            let mut value = envelope(serde_json::json!({ "event": event }));
+            value
+                .as_object_mut()
+                .expect("an object")
+                .extend(fields.as_object().cloned().unwrap_or_default());
+            outln!(
+                "{}",
+                serde_json::to_string(&value).expect("output serializes")
+            );
+        }
+    };
+    let result = watch::watch(
+        &bundle.root,
+        &watch::Options {
+            native: !poll,
+            ..Default::default()
+        },
+        |event| match event {
+            watch::Event::Ready(mode) => {
+                line("ready", serde_json::json!({ "mode": mode.as_str() }))
+            }
+            watch::Event::Mode(mode, reason) => {
+                line(
+                    "mode",
+                    serde_json::json!({ "mode": mode.as_str(), "reason": reason }),
+                );
+                if !json {
+                    eprintln!("tessela: watching in {} mode: {reason}", mode.as_str());
+                }
+            }
+            watch::Event::Changed(paths) => {
+                if json {
+                    line("changed", serde_json::json!({ "paths": paths }));
+                } else {
+                    for path in &paths {
+                        outln!("changed {path}");
+                    }
+                }
+            }
+        },
+    );
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(message) => fail(json, &EditError::new(ErrorCode::Io, message)),
     }
 }
 

@@ -163,3 +163,135 @@ fn pages_lists_every_concept_page_with_the_title_it_gives_itself() {
         ]
     );
 }
+
+/// A running `tessela watch --json`: its lines arrive on a channel.
+struct Watch {
+    child: std::process::Child,
+    lines: std::sync::mpsc::Receiver<Value>,
+}
+
+impl Watch {
+    fn start(dir: &Path) -> Watch {
+        Watch::start_with(dir, &[])
+    }
+
+    fn start_with(dir: &Path, extra: &[&str]) -> Watch {
+        use std::io::{BufRead, BufReader};
+        use std::process::Stdio;
+        let api = API.to_string();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_tessela"))
+            .args(["watch", dir.to_str().unwrap(), "--json", "--api", &api])
+            .args(extra)
+            .stdout(Stdio::piped())
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let (send, lines) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let _ = send.send(serde_json::from_str::<Value>(&line).expect(&line));
+            }
+        });
+        Watch { child, lines }
+    }
+
+    fn next(&self, within_ms: u64) -> Option<Value> {
+        self.lines
+            .recv_timeout(std::time::Duration::from_millis(within_ms))
+            .ok()
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[test]
+fn watch_streams_the_pages_that_change() {
+    let dir = bundle("watch", &[("a.md", "one\n"), ("sub/b.md", "two\n")]);
+    let watch = Watch::start(&dir);
+    let ready = watch.next(5000).expect("a ready line");
+    assert_eq!(ready["event"], "ready");
+    assert_eq!(
+        (&ready["api"], &ready["ok"]),
+        (&Value::from(API), &Value::Bool(true))
+    );
+
+    // Hidden folders and other files are not pages: no line for them.
+    std::fs::create_dir_all(dir.join(".git")).unwrap();
+    std::fs::write(dir.join(".git/x.md"), "x").unwrap();
+    std::fs::write(dir.join("notes.txt"), "x").unwrap();
+    // Several changes close together arrive as one line, with sorted, unique paths.
+    std::fs::write(dir.join("sub/b.md"), "changed\n").unwrap();
+    std::fs::write(dir.join("a.md"), "changed\n").unwrap();
+    std::fs::write(dir.join("a.md"), "changed again\n").unwrap();
+    let changed = watch.next(5000).expect("a changed line");
+    assert_eq!(changed["event"], "changed");
+    assert_eq!(changed["paths"], serde_json::json!(["a.md", "sub/b.md"]));
+
+    // A deleted page is reported too.
+    std::fs::remove_file(dir.join("a.md")).unwrap();
+    let gone = watch.next(5000).expect("a changed line for the deletion");
+    assert_eq!(gone["paths"], serde_json::json!(["a.md"]));
+}
+
+#[test]
+fn watch_reports_a_folder_that_never_stops_changing() {
+    let dir = bundle("watch-busy", &[("a.md", "one\n")]);
+    let watch = Watch::start(&dir);
+    assert_eq!(watch.next(5000).unwrap()["event"], "ready");
+    // A change every 50 ms never leaves a quiet moment, but it is still reported.
+    let writer = {
+        let file = dir.join("a.md");
+        std::thread::spawn(move || {
+            for i in 0..60 {
+                std::fs::write(&file, format!("{i}\n")).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        })
+    };
+    let changed = watch
+        .next(2500)
+        .expect("a changed line while it is still busy");
+    assert_eq!(changed["paths"], serde_json::json!(["a.md"]));
+    writer.join().unwrap();
+}
+
+#[test]
+fn watch_can_look_at_the_files_instead_of_asking_the_system() {
+    let dir = bundle("watch-poll", &[("a.md", "one\n")]);
+    let watch = Watch::start_with(&dir, &["--poll"]);
+    let ready = watch.next(5000).expect("a ready line");
+    assert_eq!(ready["mode"], "polling");
+    std::fs::write(dir.join("new.md"), "x").unwrap();
+    std::fs::write(dir.join("a.md"), "changed\n").unwrap();
+    let changed = watch.next(10_000).expect("a changed line");
+    assert_eq!(changed["paths"], serde_json::json!(["a.md", "new.md"]));
+}
+
+#[test]
+fn watch_ends_when_its_caller_goes_away() {
+    let dir = bundle("watch-exit", &[("a.md", "one\n")]);
+    let mut watch = Watch::start_with(&dir, &["--exit-on-stdin-close"]);
+    assert_eq!(watch.next(5000).unwrap()["event"], "ready");
+    // The caller (the editor) closes the pipe it keeps open on stdin, or dies and the system does.
+    drop(watch.child.stdin.take());
+    let start = std::time::Instant::now();
+    while watch.child.try_wait().unwrap().is_none() {
+        assert!(start.elapsed().as_secs() < 5, "watch kept running");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn watch_refuses_a_caller_for_another_api_version() {
+    let dir = bundle("watch-api", &[]);
+    let out = tessela(&["watch", dir.to_str().unwrap(), "--json", "--api", "1"]);
+    assert_eq!(out.status.code(), Some(2));
+    let json: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["error"]["code"], "api-mismatch");
+}

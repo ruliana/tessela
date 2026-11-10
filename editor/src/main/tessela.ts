@@ -1,8 +1,9 @@
 // Calls the `tessela` command line tools. The editor uses the same tools as agents do,
 // so what it shows is what they would find.
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import path from "node:path";
+import { createInterface } from "node:readline";
 
 import type { PageFile, QueryArgs, WriteResult } from "../shared/api";
 
@@ -68,6 +69,69 @@ export function runJson<T>(bin: string, argv: string[], key: string, okCodes: nu
       resolve(answer[key] as T);
     });
   });
+}
+
+export interface WatchOptions {
+  /** Where a problem is reported; the editor keeps working without watching. */
+  warn?: (message: string) => void;
+  /** How long to wait before starting `tessela watch` again after it ended. */
+  restartMs?: number;
+}
+
+/**
+ * Tells `listener` which pages changed on disk, as `tessela watch` reports them. The tool does the
+ * watching (the system's watcher, or looking at the files when that fails) and the grouping of
+ * changes that come close together. It stops when this process does, and is started again if it
+ * ends early. Returns a function that stops watching.
+ */
+export function watchVia(
+  bin: string,
+  bundle: string,
+  listener: (paths: string[]) => void,
+  { warn = console.warn, restartMs = 5000 }: WatchOptions = {},
+): () => void {
+  let stopped = false;
+  let child: ReturnType<typeof spawn> | undefined;
+  let timer: NodeJS.Timeout | undefined;
+
+  const start = (): void => {
+    const proc = spawn(bin, ["watch", bundle, ...CALL, "--exit-on-stdin-close"], { stdio: ["pipe", "pipe", "pipe"] });
+    child = proc;
+    let stderr = "";
+    proc.stderr?.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-2000)));
+    createInterface({ input: proc.stdout! }).on("line", (line) => {
+      let event: { event?: string; ok?: boolean; paths?: string[]; mode?: string; reason?: string; error?: { message?: string } };
+      try {
+        event = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (event.ok === false) warn(`tessela watch: ${event.error?.message ?? "failed"}`);
+      else if (event.event === "changed" && event.paths) listener(event.paths);
+      else if (event.event === "mode" && event.mode === "polling") {
+        warn(`cannot watch ${bundle}, looking at it every few seconds instead: ${event.reason ?? ""}`);
+      }
+    });
+    // A tool that is missing or too old ends at once; try again later rather than in a tight loop.
+    const ended = (why: string): void => {
+      if (child !== proc) return;
+      child = undefined;
+      if (stopped) return;
+      warn(`tessela watch ended (${why}); trying again in ${restartMs / 1000} s`);
+      timer = setTimeout(start, restartMs);
+    };
+    proc.on("error", (err) => ended(err.message));
+    proc.on("exit", (code) => ended(`exit ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`));
+    // Ending early closes the pipe; that is reported above.
+    proc.stdin?.on("error", () => {});
+  };
+
+  start();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    child?.kill();
+  };
 }
 
 /** The error part of what the edit commands print when they fail. */
