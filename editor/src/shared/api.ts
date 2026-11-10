@@ -87,6 +87,15 @@ export type OpenFileResult =
   /** The file is inside the bundle but is not a page the editor can open. */
   | { kind: "unsupported"; reason: string };
 
+/** The mods installed in the config folder (mods/<id>/main.js). */
+export interface ModsInfo {
+  /** The config folder: mods live in its `mods/` folder. */
+  folder: string;
+  /** Started with `--no-mods`: `ids` is then empty. */
+  disabled: boolean;
+  ids: string[];
+}
+
 export interface Api {
   bundle(): Promise<string | null>;
   /** Asks for the notes folder (the bundle root) and switches to it. Returns the folder now in use. */
@@ -109,6 +118,14 @@ export interface Api {
   openExternal(url: string): Promise<void>;
   /** Path of today's journal, in local time. */
   todayPath(): Promise<string>;
+  /** Which mods the window should load. */
+  mods(): Promise<ModsInfo>;
+  /**
+   * Runs a `tessela` command on the open notes folder for a mod and returns its JSON. The edit
+   * commands (read, add, save, rename, move, remove) get the folder and API version added and
+   * answer `{ok, ...}`; for the others the folder goes right after the command name.
+   */
+  cli(argv: string[], input?: string): Promise<unknown>;
   /** Called with the paths (relative) of pages that changed on disk. Returns an unsubscribe. */
   onChanged(listener: (paths: string[]) => void): () => void;
 }

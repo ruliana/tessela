@@ -133,6 +133,22 @@ export async function addPageVia(bin: string, bundle: string, rel: string, title
   throw failure("add", r);
 }
 
+/** The commands that change or read single pages: they take `--bundle`, `--json` and `--api` and answer `{ok, ...}`. */
+const EDIT_COMMANDS = new Set(["read", "add", "save", "rename", "move", "remove"]);
+
+/**
+ * Runs any `tessela` command for a mod. The edit commands go through `runEdit`; for the others the
+ * folder is the first argument after the command name, as `query`, `vocab` and `lint` take it, and
+ * `--json` is added unless given.
+ */
+export function cliVia(bin: string, bundle: string, argv: string[], input = ""): Promise<unknown> {
+  const [command = "", ...rest] = argv;
+  if (EDIT_COMMANDS.has(command)) return runEdit(bin, bundle, argv, input);
+  const full = [command, bundle, ...rest];
+  if (!full.includes("--json")) full.push("--json");
+  return runJson(bin, full, command === "lint" ? [1] : []);
+}
+
 export interface BinLookup {
   env: string | undefined;
   /** Where a packaged app keeps its extra files; undefined when running from source. */

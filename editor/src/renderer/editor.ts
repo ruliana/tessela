@@ -62,9 +62,13 @@ export interface EditorOptions {
   livePreview?: boolean;
   /** The key for switching the rendering on or off was pressed. */
   onTogglePreview?: () => void;
+  /** Extensions mods add to every editor. */
+  extensions?: () => Extension[];
 }
 
 export interface EditorHandle {
+  /** The CodeMirror view, for commands that mods run. */
+  readonly view: EditorView;
   text(): string;
   /** Replaces the whole text without counting it as an edit by the user. */
   setText(text: string, line?: number): void;
@@ -271,6 +275,8 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         preview.of(previewOn ? previewExtension() : []),
         blockKeymap,
         formatting,
+        // What mods add comes before the defaults below, so their keys win over them.
+        ...(opts.extensions?.() ?? []),
         search({ top: true }),
         Prec.highest(keymap.of(searchKeymap)),
         Prec.highest(
@@ -343,6 +349,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
   });
 
   return {
+    view,
     text: () => view.state.doc.toString(),
     setText(text, line) {
       // A page opens with the cursor in its text, not in the front matter.

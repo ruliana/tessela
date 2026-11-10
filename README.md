@@ -157,6 +157,30 @@ The editor also has a dark theme, which follows the system until you choose one:
 The screenshots come from a small sample bundle; `npm run screenshots` in `editor/` takes them
 again (`xvfb-run -a npm run screenshots` on a server).
 
+### Mods
+
+The editor can be extended with mods: a folder `mods/NAME/` with a `main.js` in the config folder
+(`$TESSELA_CONFIG`, else the app's data folder, `~/.config/Tessela` on Linux). Mods are trusted
+code (your own or audited) and load before the first page opens; `--no-mods` starts without them,
+and one that throws is skipped and listed under "Show the mods" in the palette (Ctrl+K).
+
+```js
+// mods/stamp/main.js
+export default function (ctx) {
+  ctx.commands.add({
+    id: "stamp", label: "Stamp the page", keys: "Mod-Alt-j",
+    run: ({ view }) => view.dispatch({ changes: { from: view.state.selection.main.head, insert: "STAMPED" } }),
+  });
+  ctx.slash.add({ label: "Signature", text: "-- me" });
+  ctx.editor.extend(ctx.cm.view.EditorView.editorAttributes.of({ "data-mine": "yes" }));
+  const n = ctx.settings.get("runs") ?? 0;            // kept with the window's settings
+  ctx.cli(["vocab"]).then((concepts) => console.log(n, concepts.length));  // any tessela command, on the open folder
+}
+```
+
+A command with the id of a built-in one takes its place. Notes change only through `ctx.cli`
+(`save`, `rename`, ...), so the hash check and atomic writes always apply.
+
 To build an app that carries its own `tessela` binary:
 
 ```
