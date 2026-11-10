@@ -18,7 +18,7 @@ fn bundle(name: &str) -> PathBuf {
 fn tessela(dir: &Path, args: &[&str], stdin: &[u8]) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_tessela"))
         .args(args)
-        .args(["--bundle", dir.to_str().unwrap(), "--json", "--api", "1"])
+        .args(["--bundle", dir.to_str().unwrap(), "--json", "--api", "2"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -39,7 +39,7 @@ fn the_same_picture_for_the_same_page_is_one_file() {
     let first = json(&tessela(&dir, &["attach", "project/tessela.md"], PNG));
     assert_eq!(
         (first["api"].clone(), first["ok"].clone()),
-        (1.into(), true.into())
+        (2.into(), true.into())
     );
     let path = first["path"].as_str().unwrap();
     assert!(
@@ -114,7 +114,7 @@ fn lint_lists_attachments_that_no_page_links_to() {
             .args(["lint", dir.to_str().unwrap(), "--json"])
             .output()
             .unwrap();
-        json(&out)
+        json(&out)["diagnostics"]
             .as_array()
             .unwrap()
             .iter()
