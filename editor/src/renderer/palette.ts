@@ -41,7 +41,7 @@ export function paletteOpen(): boolean {
   return current !== null;
 }
 
-export function closePalette(): void {
+function closePalette(): void {
   current?.close();
 }
 

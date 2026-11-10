@@ -17,7 +17,7 @@ export interface FenceAt {
   end: number;
 }
 
-export function fencesIn(state: EditorState): FenceAt[] {
+function fencesIn(state: EditorState): FenceAt[] {
   const found: FenceAt[] = [];
   const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
   tree.iterate({

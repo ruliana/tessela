@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import type { PageFile, QueryArgs, WriteResult } from "../shared/api";
 
 /** The version of the `tessela` edit commands this editor was written for. */
-export const TESSELA_API = 2;
+const TESSELA_API = 2;
 
 /** What every call says about itself: JSON answers, written for this version of the contract. */
 const CALL = ["--json", "--api", String(TESSELA_API)];
@@ -144,7 +144,7 @@ interface EditFailure {
  * Runs an edit command (`read`, `add`, `save`, ...), passing `input` on stdin. The tool prints
  * JSON on success and on failure, so a non-zero exit with JSON is a result, not a crash.
  */
-export function runEdit<T>(bin: string, bundle: string, argv: string[], input: string | Uint8Array = ""): Promise<T | EditFailure> {
+function runEdit<T>(bin: string, bundle: string, argv: string[], input: string | Uint8Array = ""): Promise<T | EditFailure> {
   return runCall(bin, [...argv, "--bundle", bundle, ...CALL], argv[0] ?? "", input);
 }
 

@@ -98,7 +98,7 @@ export function keptKey(path: string, change: Change): string {
 }
 
 /** The most kept changes remembered; the oldest are forgotten first. */
-export const KEPT_LIMIT = 500;
+const KEPT_LIMIT = 500;
 
 /** `kept` with `key` added (last), the oldest dropped when there are too many. */
 export function remember(kept: string[], ...keys: string[]): string[] {

@@ -26,7 +26,7 @@ function plainSafe(value: string): boolean {
 }
 
 /** `value` as a YAML scalar, in the style the old one was written in when that can hold it. */
-export function scalar(value: string, style: Style): string {
+function scalar(value: string, style: Style): string {
   if (style === "plain" && plainSafe(value)) return value;
   if (style === "single" && !/[\n\r]/.test(value)) return `'${value.replace(/'/g, "''")}'`;
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
