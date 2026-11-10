@@ -224,6 +224,9 @@ what will change first, and offers to rename the file when its title was edited.
 which blocks are folded in its settings, by page, and never in the notes. `live-lists` draws
 the ```` ```tessela ```` fences of the conventions (`tessela fence`) as rows under the fence, asks again when
 the notes change, and opens the page of a row when it is clicked; nothing it draws is written to the page.
+`unlinked` lists, under the backlinks, the places in other pages that name the open page in plain words
+(`tessela query --unlinked`), each with a Link button that writes the link through `tessela save`;
+it draws into `ctx.slots.mount("side-bottom")`, the element below the backlinks.
 A mod can hand
 `ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
 the page that editor shows.

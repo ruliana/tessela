@@ -25,6 +25,9 @@ export const registry = new ModRegistry<EditorView, Extension | PageExtension>()
 /** The place at the top of the right column that mods draw in (`slots.mount("side-top")`). It outlives the window's shell. */
 export const sideTop = el("div", { class: "side-top", id: "side-top" });
 
+/** The place below the backlinks that mods draw in (`slots.mount("side-bottom")`). It outlives the window's shell. */
+export const sideBottom = el("div", { class: "side-bottom", id: "side-bottom" });
+
 /** What the mods loaded, or why none did: nothing when the window has not asked yet. */
 export let modsInfo: ModsInfo | null = null;
 
@@ -113,12 +116,13 @@ export interface ModContext {
   fences: { add(info: string, render: (fence: FenceArg) => Node | string | Promise<Node | string>): void };
   /**
    * Named places in the window. `add("page-menu", ...)` puts an entry in the menu in a page's head.
-   * `mount("side-top")` gives the element at the top of the right column, above the backlinks (empty
-   * it is not drawn), and `reveal` opens the column if it was folded away.
+   * `mount("side-top")` gives the element at the top of the right column, above the backlinks, and
+   * `mount("side-bottom")` the one below them (empty, neither is drawn); `reveal` opens the column
+   * if it was folded away.
    */
   slots: {
     add(slot: "page-menu", item: PageMenuItem): void;
-    mount(slot: "side-top"): { root: HTMLElement; reveal(): void };
+    mount(slot: "side-top" | "side-bottom"): { root: HTMLElement; reveal(): void };
   };
   /** The pages in the window. */
   pages: {
@@ -150,7 +154,7 @@ function contextFor(mod: string): ModContext {
     fences: { add: (info, render) => registry.addFence(mod, info, render) },
     slots: {
       add: (_slot, item) => registry.addPageMenuItem(mod, item),
-      mount: () => ({ root: sideTop, reveal: () => host.reveal() }),
+      mount: (slot) => ({ root: slot === "side-bottom" ? sideBottom : sideTop, reveal: () => host.reveal() }),
     },
     pages: {
       current: () => host.current(),

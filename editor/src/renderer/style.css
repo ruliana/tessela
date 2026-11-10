@@ -396,6 +396,8 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 /* The slot at the top of the right column that mods draw in; the peek is its first user. */
 .side-top:empty { display: none; }
 .side-top { margin-bottom: 16px; }
+.side-bottom:empty { display: none; }
+.side-bottom { margin-top: 8px; }
 #peek { border: 1px solid var(--border); border-radius: 6px; background: var(--bg); overflow: hidden; outline: none; }
 #peek:focus-visible { border-color: var(--accent); }
 #peek .peek-head { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-bottom: 1px solid var(--border); font: 600 10.5px/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -419,3 +421,14 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .tessela-link:hover { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .tessela-empty { color: var(--muted); }
 .tessela-error { color: var(--warn); }
+
+/* The unlinked mod, below the backlinks: each mention is the text with the words marked, and a Link button. */
+#unlinked { display: grid; gap: 6px; }
+.unlinked-title { margin: 0; font: 600 15px/1.25 var(--serif); letter-spacing: 0; text-transform: none; color: var(--text); }
+.unlinked-page { margin: 6px 0 0; font: 600 13px/1.25 var(--serif); }
+.unlinked-page button { background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; text-align: left; font: inherit; }
+.unlinked-hit { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: start; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); padding: 6px 8px; }
+.unlinked-text { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; font: 400 13.5px/1.4 var(--serif); color: var(--text); overflow-wrap: anywhere; max-height: 6em; overflow: hidden; }
+.unlinked-text mark { background: var(--accent-soft); color: var(--accent); border-radius: 2px; padding: 0 1px; }
+.unlinked-link { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 12px; color: var(--accent); }
+.unlinked-link:hover { border-color: var(--accent); background: var(--accent-soft); }
