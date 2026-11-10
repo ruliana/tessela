@@ -70,6 +70,9 @@ function useBundle(dir: string | null): void {
 /** Mods are switched off by starting with `--no-mods`, for when one breaks the window. */
 const modsDisabled = process.argv.includes("--no-mods");
 
+/** The mods that come with the app (built to dist/mods, next to this file). */
+const bundledMods = path.join(__dirname, "mods");
+
 function config(): string {
   return configFolder(app.getPath("userData"), process.env.TESSELA_CONFIG);
 }
@@ -138,7 +141,7 @@ function registerIpc(): void {
     if (typeof url === "string" && /^(https?:|mailto:)/i.test(url)) await shell.openExternal(url);
   });
   ipcMain.handle("todayPath", () => journalPath(localDay(new Date())));
-  ipcMain.handle("mods", () => listMods(config(), modsDisabled));
+  ipcMain.handle("mods", () => listMods(config(), modsDisabled, bundledMods));
   // For mods: any tessela command on the open folder (see Api.cli).
   ipcMain.handle("cli", (_e, argv: unknown, input: unknown) =>
     cliVia(tesselaBin(), needBundle(), cliArgv(argv), typeof input === "string" ? input : ""),
@@ -176,7 +179,7 @@ function serveMods(): void {
   protocol.handle("tessela-mod", async (request) => {
     try {
       const [id = "", ...rest] = decodeURIComponent(new URL(request.url).pathname).replace(/^\//, "").split("/");
-      const file = resolveModFile(config(), id, rest.join("/"));
+      const file = resolveModFile(config(), id, rest.join("/"), bundledMods);
       return new Response(await fs.readFile(file), {
         headers: { "content-type": file.endsWith(".js") ? "text/javascript" : "application/octet-stream", "access-control-allow-origin": "*" },
       });

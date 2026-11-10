@@ -183,6 +183,21 @@ export default function (ctx) {
 A command with the id of a built-in one takes its place. Notes change only through `ctx.cli`
 (`save`, `rename`, ...), so the hash check and atomic writes always apply.
 
+Mods can also draw on the window and hear what happens in it:
+
+```js
+ctx.ui.dialog({ title, content: node, actions: [{ id: "ok", label: "Go", primary: true }] }).closed  // the id pressed, or null
+ctx.ui.toast("Saved somewhere", { label: "Undo", run })      // a note in the sidebar, with a button
+ctx.slots.add("page-menu", { label: "Do it…", run: ({ path }) => {} })  // the ⋯ menu in a page's head
+ctx.events.on("title-edited", ({ path, from, to }) => {})    // also page-opened, page-saved, changed
+ctx.pages.current(); ctx.pages.moved(from, to)               // the page shown; after a rename, move or delete
+```
+
+The app's own features are mods too (`editor/src/mods/NAME/main.ts`, built to `dist/mods`), and a mod
+of the same name in the config folder replaces them. `pages` renames, moves and deletes the open
+page ("Rename page…", "Move page…" and "Delete page…" in the palette and in the page's ⋯ menu), shows
+what will change first, and offers to rename the file when its title was edited.
+
 To build an app that carries its own `tessela` binary:
 
 ```

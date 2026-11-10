@@ -16,6 +16,8 @@ import {
   canGoForward,
   emptyHistory,
   recentCount,
+  relocate,
+  relocateRecent,
   step,
   touch,
   visit,
@@ -30,7 +32,7 @@ import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
 import { describeMods } from "../shared/mods";
-import { modExtensions, modsInfo, loadMods, registry } from "./mods";
+import { host, modExtensions, modsInfo, loadMods, registry } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -170,6 +172,10 @@ function readRecent(): string[] {
 
 function remember(path: string): void {
   recent = touch(recent, path);
+  saveRecent();
+}
+
+function saveRecent(): void {
   try {
     localStorage.setItem(`${RECENT_KEY}:${root}`, JSON.stringify(recent));
   } catch {
@@ -802,10 +808,15 @@ function cardDeps() {
     vocab: () => vocab,
     pages: () => linkPages(pages, vocab),
     written: () => written,
-    onSaved: () => {
+    onSaved: (path: string) => {
       void refreshIndex();
       void renderBacklinks();
+      registry.emit("page-saved", { path });
     },
+    onOpened: (path: string) => registry.emit("page-opened", { path }),
+    onTitleEdited: (path: string, from: string, to: string) => registry.emit("title-edited", { path, from, to }),
+    pageMenu: (path: string) =>
+      registry.pageMenuItems().map((item) => ({ label: item.label, run: () => registry.call(item.mod, item.label, () => item.run({ path })) })),
     onActive: (path: string) => {
       const card = cards.find((c) => c.path === path);
       if (card && card !== active) {
@@ -909,6 +920,7 @@ async function openAt(hit: Hit): Promise<void> {
 }
 
 async function onChanged(paths: string[]): Promise<void> {
+  registry.emit("changed", { paths });
   void refreshIndex();
   await Promise.all(cards.map((c) => c.diskChanged(paths)));
   await renderBacklinks();
@@ -985,6 +997,30 @@ function hitPlace(hit: Hit): string {
   if (hit.kind === "heading") return trail.length > 0 ? `Heading › ${trail.join(" › ")}` : "Heading";
   return trail.join(" › ");
 }
+
+/** The page a card shows or, in the journals, the card being worked in. */
+function currentPath(): string | null {
+  return active?.path ?? (view?.kind === "page" ? view.path : null);
+}
+
+/** A page changed place (`to`) or was deleted (`to` null): the lists and the history follow, and so does the view. */
+async function pageMoved(from: string, to: string | null): Promise<void> {
+  recent = relocateRecent(recent, from, to);
+  saveRecent();
+  places = relocate(places, from, to);
+  const shown = view?.kind === "page" && view.path === from;
+  await refreshIndex();
+  if (shown) await (to ? showPage(to) : showJournals());
+  renderNav();
+  renderLists();
+}
+
+Object.assign(host, {
+  toast: showNotice,
+  current: currentPath,
+  flush: async () => void (await Promise.all(cards.map((c) => c.flush()))),
+  moved: pageMoved,
+});
 
 // A command of a mod that fails is said so; the rest of the window goes on.
 registry.onFailure = (f) => {

@@ -31,6 +31,26 @@ export interface ModSlash {
   suggest?: boolean;
 }
 
+/** The names a mod can listen to, with what each is told. */
+export interface ModEvents {
+  /** A page was loaded into the window. */
+  "page-opened": { path: string };
+  /** A page's text reached the disk. */
+  "page-saved": { path: string };
+  /** The page's title (front matter `title:`, else its first `#` heading) changed in a save. */
+  "title-edited": { path: string; from: string; to: string };
+  /** Pages changed on disk (by an agent, git or the CLI). */
+  changed: { paths: string[] };
+}
+
+export type ModEventName = keyof ModEvents;
+
+/** An entry a mod adds to the menu in a page's head. */
+export interface PageMenuItem {
+  label: string;
+  run: (page: { path: string }) => unknown;
+}
+
 export interface ModFailure {
   mod: string;
   message: string;
@@ -53,10 +73,14 @@ function messageOf(e: unknown): string {
 
 type Owned<T> = T & { mod: string };
 
+type Listener = Owned<{ name: ModEventName; fn: (payload: never) => unknown }>;
+
 export class ModRegistry<V = unknown, E = unknown> {
   private readonly commandById = new Map<string, Owned<ModCommand<V>>>();
   private slash: Owned<SlashItem>[] = [];
   private extensions: Owned<{ extension: E }>[] = [];
+  private pageMenu: Owned<PageMenuItem>[] = [];
+  private listeners: Listener[] = [];
   readonly loaded: string[] = [];
   readonly failures: ModFailure[] = [];
   /** Told about every failure, so the window can say so. */
@@ -72,6 +96,31 @@ export class ModRegistry<V = unknown, E = unknown> {
 
   addExtension(mod: string, extension: E): void {
     this.extensions.push({ extension, mod });
+  }
+
+  addPageMenuItem(mod: string, item: PageMenuItem): void {
+    this.pageMenu.push({ ...item, mod });
+  }
+
+  /** The mods' entries for the menu in a page's head. */
+  pageMenuItems(): Owned<PageMenuItem>[] {
+    return this.pageMenu;
+  }
+
+  /** Listens to an event for a mod. Returns the way to stop. */
+  on<N extends ModEventName>(mod: string, name: N, fn: (payload: ModEvents[N]) => unknown): () => void {
+    const listener: Listener = { mod, name, fn: fn as (payload: never) => unknown };
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== listener);
+    };
+  }
+
+  /** Tells the mods that listen. One that throws is reported and the others still hear it. */
+  emit<N extends ModEventName>(name: N, payload: ModEvents[N]): void {
+    for (const l of this.listeners.filter((x) => x.name === name)) {
+      this.call(l.mod, `on ${name}`, () => (l.fn as (p: ModEvents[N]) => unknown)(payload));
+    }
   }
 
   slashItems(): SlashItem[] {
@@ -102,10 +151,14 @@ export class ModRegistry<V = unknown, E = unknown> {
 
   /** Runs a mod's command. A command that throws, or whose promise fails, is reported and goes no further. */
   run(command: ModCommand<V>, arg: CommandArg<V>): void {
-    const mod = (command as Partial<Owned<ModCommand<V>>>).mod ?? "?";
-    const fail = (e: unknown) => this.fail(mod, `${command.label}: ${messageOf(e)}`);
+    this.call((command as Partial<Owned<ModCommand<V>>>).mod ?? "?", command.label, () => command.run(arg));
+  }
+
+  /** Runs something a mod gave: a throw, or a promise that fails, is reported as the mod's. */
+  call(mod: string, what: string, fn: () => unknown): void {
+    const fail = (e: unknown) => this.fail(mod, `${what}: ${messageOf(e)}`);
     try {
-      const result = command.run(arg);
+      const result = fn();
       if (result instanceof Promise) result.catch(fail);
     } catch (e) {
       fail(e);
@@ -127,6 +180,8 @@ export class ModRegistry<V = unknown, E = unknown> {
     for (const [id, c] of this.commandById) if (c.mod === mod) this.commandById.delete(id);
     this.slash = this.slash.filter((s) => s.mod !== mod);
     this.extensions = this.extensions.filter((e) => e.mod !== mod);
+    this.pageMenu = this.pageMenu.filter((i) => i.mod !== mod);
+    this.listeners = this.listeners.filter((l) => l.mod !== mod);
   }
 
   fail(mod: string, message: string): void {
