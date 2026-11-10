@@ -15,6 +15,7 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | --- | --- |
 | Find where a topic is mentioned (backlinks) | `tessela query . --ref NAME [--json]` |
 | Search text, a page or folder, a page type, a date range | `tessela query . --text WORDS`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
+| List tasks (checkbox items), open or done, with their dates | `tessela query . --task open [--from/--to YYYY-MM-DD] [--ref NAME]`; `--task done` and `--task any` too; each hit has `task` |
 | See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included) |
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
 | Check your work | `tessela lint . [--strict] [--json]` |
