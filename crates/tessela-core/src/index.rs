@@ -133,7 +133,7 @@ fn build(bundle: &Bundle, dir: &str, recursive: bool) -> Listing {
 }
 
 /// The existing pages a page links to or tags, in the order it first mentions them.
-fn linked_from(bundle: &Bundle, page: &Page) -> Vec<PageEntry> {
+pub(crate) fn linked_from(bundle: &Bundle, page: &Page) -> Vec<PageEntry> {
     // Frontmatter first, then headings and blocks as they come in the file.
     let mut mentions: Vec<(usize, &[String])> = vec![(0, &page.refs)];
     mentions.extend(page.headings.iter().map(|h| (h.line, h.refs.as_slice())));
@@ -254,7 +254,7 @@ fn is_generated(path: &Path) -> io::Result<bool> {
         .any(|l| l.trim() == MARKER))
 }
 
-fn entry_of(page: &Page) -> PageEntry {
+pub(crate) fn entry_of(page: &Page) -> PageEntry {
     let file = page.path.rsplit('/').next().unwrap_or(&page.path);
     let title = page
         .get_str("title")

@@ -309,12 +309,12 @@ fn page_hit(page: &Page) -> Hit {
     }
 }
 
-fn mentions_any(refs: &[String], concepts: &[String]) -> bool {
+pub(crate) fn mentions_any(refs: &[String], concepts: &[String]) -> bool {
     concepts.iter().any(|c| mentions_concept(refs, c))
 }
 
 /// Whether `refs` has the concept or one nested under it (`project/tessela` is under `project`).
-fn mentions_concept(refs: &[String], concept: &str) -> bool {
+pub(crate) fn mentions_concept(refs: &[String], concept: &str) -> bool {
     refs.iter().any(|r| {
         r == concept
             || r.strip_prefix(concept)

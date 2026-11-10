@@ -13,6 +13,7 @@ pub mod logseq;
 pub mod page;
 pub mod query;
 pub mod refs;
+pub mod related;
 pub mod rewrite;
 pub mod unlinked;
 pub mod vocab;

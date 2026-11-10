@@ -413,6 +413,15 @@ Every command takes `--api N` for the version the caller was written for.
   `old_line` and `old_raw`, which is what a client needs to keep a change or put the old
   text back with `save --patch`. A removed unit has the line it had before. This is the
   honest form of OKF's `log.md`: computed when asked, never a file.
+- `tessela related NAME [--limit N]`: related pages in place of a graph. `together` lists the
+  concepts most often mentioned together with the page or concept (`concept`, its `page`
+  if it has one, `blocks`, `pages`, `properties`, and a `reason` such as `together in 7
+  blocks on 3 pages`): blocks that mention both (inherited references count, as in
+  §3), and pages whose properties do, a page tagged with the concept included. Its own
+  aliases and the concepts nested under it or above it are not listed. `chain` is the home
+  pages that lead to the page (§1), the root's first: a shortest path of links from the root
+  `home.md` through home pages (`chain_by: "links"`), or else the home pages of the folders
+  around it (`"folders"`). Computed on demand, nothing is written.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
