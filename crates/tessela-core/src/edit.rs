@@ -422,6 +422,80 @@ fn is_journal_path(path: &str) -> bool {
         && b[17..19].iter().all(u8::is_ascii_digit)
 }
 
+/// The type a new page gets when none is asked for.
+fn default_kind(path: &str) -> &'static str {
+    let file = path.strip_suffix(".md").unwrap_or(path);
+    let file = file.rsplit('/').next().unwrap_or(file);
+    if is_journal_path(path) {
+        "journal"
+    } else if file == "home" {
+        "home"
+    } else {
+        "concept"
+    }
+}
+
+/// The text a new page starts with: the template `templates/TYPE.md` (`type: template`)
+/// when the bundle has one for the page's type, else the built-in frontmatter. The
+/// template's `type` line says the page's type, its `title` line the page's title, and in a
+/// journal its `date` line the day; everything else in it is copied as it is.
+pub fn starting_text(
+    store: &dyn PageStore,
+    path: &str,
+    title: Option<&str>,
+    kind: Option<&str>,
+) -> Result<String> {
+    // Also checks the type.
+    let base = new_page_text(path, title, kind)?;
+    let kind = kind.unwrap_or(default_kind(path));
+    let Some(template) = store.read(&format!("templates/{kind}.md"))? else {
+        return Ok(base);
+    };
+    if Page::parse("template.md", &template).kind() != Some("template") {
+        return Ok(base);
+    }
+    let made = Page::parse(path, &base);
+    let mut set: Vec<(&str, String)> = vec![("type", kind.to_string())];
+    if let Some(t) = made.get_str("title") {
+        set.push(("title", yaml_string(t)));
+    }
+    if is_journal_path(path)
+        && let Some(d) = made.get_str("date")
+    {
+        set.push(("date", yaml_string(d)));
+    }
+    Ok(apply_template(&template, &set))
+}
+
+/// Replaces the value of the given top-level frontmatter keys, line by line, and keeps every
+/// other byte of the template.
+fn apply_template(template: &str, set: &[(&str, String)]) -> String {
+    let mut out = String::new();
+    // 0: before the frontmatter, 1: inside it, 2: after it.
+    let mut state = 0;
+    for line in template.split_inclusive('\n') {
+        let bare = line.trim_end();
+        if state == 0 && bare == "---" {
+            state = 1;
+        } else if state == 1 && bare == "---" {
+            state = 2;
+        } else if state == 1
+            && let Some((_, value)) = set.iter().find(|(key, _)| {
+                bare.strip_prefix(key).is_some_and(|rest| {
+                    rest.trim_start().starts_with(':') && !rest.starts_with(char::is_alphanumeric)
+                })
+            })
+        {
+            let key = bare.split(':').next().unwrap_or("").trim_end();
+            out.push_str(&format!("{key}: {value}"));
+            out.push_str(&line[bare.len()..]);
+            continue;
+        }
+        out.push_str(line);
+    }
+    out
+}
+
 /// The text a new page starts with: frontmatter that already passes `tessela lint`.
 pub fn new_page_text(path: &str, title: Option<&str>, kind: Option<&str>) -> Result<String> {
     let id = path.strip_suffix(".md").unwrap_or(path);
@@ -573,7 +647,7 @@ pub fn add_page(
     }
     let text = match text {
         Some(t) => t.to_string(),
-        None => new_page_text(path, title, kind)?,
+        None => starting_text(store, path, title, kind)?,
     };
     store.write(path, &text, &Expect::Absent).map_err(|e| {
         if e.code == ErrorCode::Conflict {

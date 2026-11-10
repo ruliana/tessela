@@ -67,6 +67,8 @@ For a whole-page edit, write the new text to a temporary file and send it with `
 
 `tessela add -b . "Machine Learning"` picks the file name for you: the name lowercased with whitespace runs turned into `-`, and a `/` means a folder (§4). `Machine Learning` becomes `machine-learning.md`, `#project/tessela` becomes `project/tessela.md`. It fails with `exists` when the page is there, and refuses `index` and `log` (reserved). The new page starts with `type: concept` and a `title` that keeps your spelling; pass `--type` for another OKF type (`howto`, `reference`, `decision`, ...). First check the name is new with `tessela vocab . --prefix ...` and `tessela query . --page the/path`. To create it with its text in one step: `tessela add -b . NAME --stdin < page.md`. Add the content afterwards by reading the page and saving with its hash.
 
+If the bundle has `templates/TYPE.md` (`type: template`), `add --type TYPE` starts from it (and a new journal day from `templates/journal.md`): keep the front matter keys it gives, since `tessela lint` warns about a page that lacks one (`tessela/template-keys`). `tessela index . --dir templates` lists the types a bundle has.
+
 ### Journal entries
 
 One file per day at `journals/YYYY-MM-DD.md` with `type: journal`, and `title` and `date` both set to the day, quoted (§6). `tessela add -b . journals/2026-11-04` makes exactly that. Create the file only when you have something to write in it. Append new blocks at the end; do not rewrite the day.

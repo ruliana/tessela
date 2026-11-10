@@ -73,7 +73,7 @@ pub fn related(bundle: &Bundle, name: &str, limit: usize) -> Related {
             .cloned()
             .collect()
     };
-    for p in &bundle.pages {
+    for p in bundle.pages.iter().filter(|p| !p.is_template()) {
         if mentions_any(&p.refs, &names) {
             // A page tagged with the concept is related to it, so its own concept counts.
             let mut together = others(&p.refs);

@@ -196,6 +196,10 @@ impl Query {
     }
 
     fn page_matches(&self, page: &Page) -> bool {
+        // Templates are not notes: only asking for the type `template` finds them.
+        if page.is_template() && self.kind.as_deref() != Some("template") {
+            return false;
+        }
         if self.kind.as_deref().is_some_and(|k| page.kind() != Some(k)) {
             return false;
         }

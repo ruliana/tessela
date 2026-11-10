@@ -79,6 +79,13 @@ impl Page {
         self.path == "home.md" || self.path.ends_with("/home.md")
     }
 
+    /// Whether this is a template (`templates/NAME.md`, `type: template`): the shape new pages
+    /// of the type NAME start from. Tools that look at the notes skip it, since a template is
+    /// not knowledge.
+    pub fn is_template(&self) -> bool {
+        self.kind() == Some("template")
+    }
+
     /// How many folders deep the page is: 0 at the bundle root.
     pub fn depth(&self) -> usize {
         self.path.matches('/').count()
