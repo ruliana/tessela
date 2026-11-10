@@ -26,6 +26,10 @@ export function queryArgv(bundle: string, q: QueryArgs): string[] {
   return argv;
 }
 
+export function pagesArgv(bundle: string): string[] {
+  return ["pages", bundle, ...CALL];
+}
+
 export function vocabArgv(bundle: string): string[] {
   return ["vocab", bundle, ...CALL];
 }

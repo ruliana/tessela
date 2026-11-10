@@ -84,6 +84,25 @@ impl Page {
         self.path.matches('/').count()
     }
 
+    /// What the page calls itself: its frontmatter `title`, else its first `#` heading, else
+    /// its file name with the dashes turned into spaces.
+    pub fn title(&self) -> String {
+        let named = self
+            .get_str("title")
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
+        named
+            .or_else(|| {
+                let heading = self.headings.iter().find(|h| h.level == 1)?;
+                Some(heading.text.trim().to_string()).filter(|t| !t.is_empty())
+            })
+            .unwrap_or_else(|| {
+                let id = self.id.rsplit('/').next().unwrap_or(&self.id);
+                id.replace('-', " ")
+            })
+    }
+
     /// The page's `type`, if it is a non-empty string.
     pub fn kind(&self) -> Option<&str> {
         self.get_str("type").filter(|t| !t.trim().is_empty())

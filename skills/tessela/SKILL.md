@@ -16,6 +16,7 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | Find where a topic is mentioned (backlinks) | `tessela query . --ref NAME [--json]` |
 | Search text, a page or folder, a page type, a date range | `tessela query . --text WORDS`, `--page folder/`, `--type journal`, `--from/--to YYYY-MM-DD` |
 | See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included) |
+| List every page with its title and type | `tessela pages . --json` (`pages`: `id`, `path`, `title`, `type`; sorted by path) |
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
 | Check your work | `tessela lint . [--strict] [--json]` |
 | Import a Logseq graph into a new bundle | `tessela import-logseq GRAPH OUT` |
