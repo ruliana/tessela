@@ -12,9 +12,14 @@ import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
 import { type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
+import { el } from "./dom";
 
 export const registry = new ModRegistry<EditorView, Extension>();
+
+/** The place at the top of the right column that mods draw in (`slots.mount("side-top")`). It outlives the window's shell. */
+export const sideTop = el("div", { class: "side-top", id: "side-top" });
 
 /** What the mods loaded, or why none did: nothing when the window has not asked yet. */
 export let modsInfo: ModsInfo | null = null;
@@ -31,9 +36,28 @@ export interface ModHost {
   flush(): Promise<void>;
   /** A page changed place (`to`) or was deleted (`to` null): the window follows it. */
   moved(from: string, to: string | null): Promise<void>;
+  /** Shows a page in the window, at `line` when given. */
+  open(path: string, line?: number): Promise<void>;
+  /** A card for a page that is not one of the window's own: it saves, follows the disk and is flushed like them. */
+  card(path: string, options?: { menu?: boolean }): Card;
+  /** Makes the right column visible. */
+  reveal(): void;
 }
 
-export const host: ModHost = { toast: () => {}, current: () => null, flush: async () => {}, moved: async () => {} };
+export const host: ModHost = {
+  toast: () => {},
+  current: () => null,
+  flush: async () => {},
+  moved: async () => {},
+  open: async () => {},
+  card: () => {
+    throw new Error("The window has no cards yet");
+  },
+  reveal: () => {},
+};
+
+/** A page open for editing, as a mod gets it: put `root` somewhere, `load` it, `destroy` it when done. */
+export type PageCard = Pick<Card, "root" | "path" | "view" | "load" | "flush" | "focus" | "destroy">;
 
 function settingsOf(mod: string) {
   const key = `tessela.mod.${mod}`;
@@ -73,14 +97,25 @@ export interface ModContext {
   };
   /** What happens in the window; `on` returns the way to stop listening. */
   events: { on<N extends ModEventName>(name: N, listener: (payload: ModEvents[N]) => unknown): () => void };
-  /** Named places in the window. `page-menu` is the menu in a page's head. */
-  slots: { add(slot: "page-menu", item: PageMenuItem): void };
+  /**
+   * Named places in the window. `add("page-menu", ...)` puts an entry in the menu in a page's head.
+   * `mount("side-top")` gives the element at the top of the right column, above the backlinks (empty
+   * it is not drawn), and `reveal` opens the column if it was folded away.
+   */
+  slots: {
+    add(slot: "page-menu", item: PageMenuItem): void;
+    mount(slot: "side-top"): { root: HTMLElement; reveal(): void };
+  };
   /** The pages in the window. */
   pages: {
     current(): string | null;
     flush(): Promise<void>;
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
+    /** Goes to a page, as a click on a link does. */
+    open(path: string, line?: number): Promise<void>;
+    /** A card for a page beside the window's own, to put in a slot; `menu: false` leaves out the page menu. */
+    card(path: string, options?: { menu?: boolean }): PageCard;
   };
   /** The notes folder, or null while none is open. */
   bundle(): Promise<string | null>;
@@ -98,8 +133,17 @@ function contextFor(mod: string): ModContext {
     settings: settingsOf(mod),
     ui: { dialog: (options) => openDialog(options), toast: (text, action) => host.toast(text, action) },
     events: { on: (name, listener) => registry.on(mod, name, listener) },
-    slots: { add: (_slot, item) => registry.addPageMenuItem(mod, item) },
-    pages: { current: () => host.current(), flush: () => host.flush(), moved: (from, to) => host.moved(from, to) },
+    slots: {
+      add: (_slot, item) => registry.addPageMenuItem(mod, item),
+      mount: () => ({ root: sideTop, reveal: () => host.reveal() }),
+    },
+    pages: {
+      current: () => host.current(),
+      flush: () => host.flush(),
+      moved: (from, to) => host.moved(from, to),
+      open: (path, line) => host.open(path, line),
+      card: (path, options) => host.card(path, options),
+    },
     cli: (argv, options) => api.cli(argv, options?.input),
     bundle: () => api.bundle(),
     cm,

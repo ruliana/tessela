@@ -22,5 +22,6 @@ import "./acceptance/home.mjs";
 import "./acceptance/links.mjs";
 import "./acceptance/mods.mjs";
 import "./acceptance/pages.mjs";
+import "./acceptance/peek.mjs";
 
 await runAll();

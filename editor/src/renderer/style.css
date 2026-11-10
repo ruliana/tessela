@@ -379,3 +379,21 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .dialog-actions .secondary { background: none; border: 1px solid var(--border); }
 .dialog-actions button:disabled { opacity: 0.45; cursor: default; }
 .dialog-actions .primary.danger { background: var(--warn); }
+
+/* The slot at the top of the right column that mods draw in; the peek is its first user. */
+.side-top:empty { display: none; }
+.side-top { margin-bottom: 16px; }
+#peek { border: 1px solid var(--border); border-radius: 6px; background: var(--bg); overflow: hidden; outline: none; }
+#peek:focus-visible { border-color: var(--accent); }
+#peek .peek-head { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-bottom: 1px solid var(--border); font: 600 10.5px/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#peek .peek-label { margin-right: auto; }
+#peek .peek-head button { background: none; border: 0; border-radius: 4px; padding: 3px 6px; cursor: pointer; color: var(--muted); font: inherit; letter-spacing: 0; text-transform: none; }
+#peek .peek-head button:hover { background: var(--accent-soft); color: var(--text); }
+#peek .card { min-height: 0; max-height: 46vh; overflow-y: auto; }
+#peek .card .pane-head { padding: 6px 10px; }
+#peek .card:not(.compact) .cm-editor { min-height: 0; }
+#peek .card:not(.compact) .cm-scroller { padding-bottom: 8px; }
+#peek .cm-content { padding-left: 10px; padding-right: 10px; }
+#peek .peek-note { margin: 0; padding: 10px; font-size: 13px; color: var(--muted); }
+#peek .peek-mentions { display: grid; gap: 6px; padding: 0 10px 10px; }
+#peek .peek-mentions h3 { margin: 0; font: 600 12px var(--sans); color: var(--muted); }
