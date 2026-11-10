@@ -1,3 +1,5 @@
+mod fence;
+
 use std::fmt::Arguments;
 use std::io::{self, ErrorKind, Read as _, Write};
 use std::path::{Path, PathBuf};
@@ -229,6 +231,14 @@ enum Command {
         #[arg(long)]
         expect: String,
     },
+    /// Run the body of a ```tessela fence (a live list): a read-only command, then filters
+    Fence {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// Read the fence from this file instead of stdin
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
     /// List the concepts that exist: tags, links and pages
     Vocab {
         #[command(flatten)]
@@ -362,6 +372,13 @@ fn main() -> ExitCode {
             let from = edit::existing_path(&page)?;
             let to = edit::move_target(&from, &dest)?;
             moved(store, &from, &to, expect.as_deref(), dry_run)
+        }),
+        Command::Fence { edit, file } => run_edit(&edit, |_| {
+            let input = read_input(file.as_deref())?;
+            let bundle = Bundle::load(&edit.bundle)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
+            let out = fence::run(&bundle, &input)?;
+            Ok(Done::new(&out, |o| o.text(), true))
         }),
         Command::Remove { edit, page, expect } => run_edit(&edit, |store| {
             let path = edit::existing_path(&page)?;

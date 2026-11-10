@@ -336,13 +336,36 @@ Every command takes `--api N` for the version the caller was written for.
   number is the version of this contract (command names, arguments and JSON); callers
   pass `--api N` for the version they were written for, and the tool refuses on a
   mismatch. `tessela api` prints it. Any change to command names, arguments or JSON bumps it
-(2: every answer got the `api`/`ok` envelope). The operations are written against a `PageStore`
+  (2: every answer got the `api`/`ok` envelope). The operations are written against a `PageStore`
   in `tessela-core`, so a bundle kept elsewhere (remote, database) needs a new store,
   not new callers.
 - `tessela pages`: every concept page, sorted by path, with its `id`, `path`, `title` and
   `type`. The title is what the page calls itself: its frontmatter `title`, else its
   first `#` heading, else its file name with the dashes turned into spaces. Reserved
   files (`index.md`, `log.md`) and hidden folders are not pages.
+- `tessela fence`: runs a live list. A page may hold a code fence with the info string
+  `tessela` whose body is one read-only command (`query`, `index`, `vocab` or `lint`, with
+  the bundle left out), optionally followed by filters:
+
+  ````markdown
+  ```tessela
+  query --ref project/tessela --type journal | rg -v draft | sort -r | head 5
+  ```
+  ````
+
+  The editor draws the rows under the fence and never writes them into the page, so a
+  page stays plain Markdown that shows a command anyone can read. `tessela fence` reads the
+  body on stdin (or `--file`) and prints one line per row, `path:line:text` as `rg` prints it;
+  with `--json` the answer is `{"api": N, "ok": true, "command": "query", "rows": [{"text",
+  "source"}]}`, where `source` is the hit, page, concept or finding the line came from, and
+  `null` once a filter has rewritten the line so that its `path:line:` start is gone. A page
+  can arrive by `git pull` or from an agent, so the line never reaches a shell or a real
+  program. The filters are built into tessela: `rg [-i -v -F -w -e PATTERN]`,
+  `sed 's/re/new/[gi]'` and `sed '/re/d'` (`\1` and `&` in the replacement), `sort [-r -n -u]`,
+  `uniq [-c]`, `head [-n] N` and `wc [-l|-w|-c]`. Patterns are Rust regular expressions;
+  words are split like a shell's (`'...'`, `"..."`, `\`) but nothing is expanded, and a pipe
+  may be broken over lines after a `|`. Anything else (`awk`, `sed -i`, `index --write`, a
+  folder in the command) is refused with the `invalid-input` error.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.

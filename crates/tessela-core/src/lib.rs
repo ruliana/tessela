@@ -5,6 +5,7 @@
 pub mod blocks;
 pub mod bundle;
 pub mod edit;
+pub mod fence;
 pub mod index;
 pub mod lint;
 pub mod logseq;
