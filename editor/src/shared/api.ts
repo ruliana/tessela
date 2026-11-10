@@ -124,7 +124,7 @@ export interface Api {
   /**
    * Runs a `tessela` command on the open notes folder for a mod and returns its JSON answer,
    * `{api, ok, ...}`; a failure (`ok: false`) is an answer too. The folder, `--json` and the API
-   * version are added (the folder first for lint, query, index and vocab, else as `--bundle`).
+   * version are added (the folder first for lint, query, index, vocab and pages, else as `--bundle`).
    * `input` goes to the command's standard input: text, or the bytes of a file (for `attach`).
    */
   cli(argv: string[], input?: string | Uint8Array): Promise<unknown>;
