@@ -22,7 +22,7 @@ use crate::refs::{normalize_concept, tag_spans};
 const MIN_NAME_CHARS: usize = 2;
 
 /// One place where a concept is named in plain words.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Mention {
     /// The words as written: `machine learning`, `ML`.
     pub text: String,

@@ -21,7 +21,7 @@ pub const MARKER: &str =
 
 const DESCRIPTION_CHARS: usize = 120;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct PageEntry {
     /// Path inside the bundle, e.g. `project/tessela.md`.
     pub path: String,
@@ -32,7 +32,7 @@ pub struct PageEntry {
     pub kind: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FolderEntry {
     /// Path of the folder inside the bundle, e.g. `project`.
     pub path: String,
@@ -43,7 +43,7 @@ pub struct FolderEntry {
 }
 
 /// What one folder holds: its sub-folders, and its own pages.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Listing {
     /// The folder's path inside the bundle; empty for the root.
     pub dir: String,
@@ -213,7 +213,7 @@ impl Listing {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, schemars::JsonSchema)]
 pub struct WriteReport {
     /// Index files written, as bundle paths.
     pub written: Vec<String>,

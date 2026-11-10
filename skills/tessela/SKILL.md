@@ -21,6 +21,7 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included; `--json` also gives the folder's `home` and the pages its home page `links` to, the best place to start reading) |
 | List every page with its title and type | `tessela pages . --json` (`pages`: `id`, `path`, `title`, `type`; sorted by path) |
 | Follow changes as they happen | `tessela watch . --json [--exit-on-stdin-close]` (one JSON line per burst: `{"event":"changed","paths":[...]}`; runs until stopped) |
+| See every command, argument and answer shape | `tessela schema` (one JSON document: `commands.NAME.args`, `commands.NAME.answer` as JSON Schema) |
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
 | Check your work | `tessela lint . [--strict] [--json]` |
 | Run a live list (the body of a ```` ```tessela ```` fence) | `tessela fence -b . --json < body.txt`: one read-only command (`query`, `index`, `vocab`, `lint`), then built-in filters (`rg`, `sed`, `sort`, `uniq`, `head`, `wc`); never a shell |

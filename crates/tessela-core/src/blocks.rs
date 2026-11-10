@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::refs::extract_refs;
 
 /// Whether a list item is a checkbox, and ticked: `- [ ]` is open, `- [x]` is done.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskState {
     Open,

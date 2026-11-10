@@ -1,5 +1,7 @@
+mod answers;
 mod changes;
 mod fence;
+mod schema;
 mod watch;
 
 use std::fmt::Arguments;
@@ -7,7 +9,7 @@ use std::io::{self, ErrorKind, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use serde::Serialize;
 use tessela_core::edit::{self, API_VERSION, EditError, ErrorCode, Expect, FsStore, PageStore};
 use tessela_core::{
@@ -210,6 +212,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Print the whole API (commands, arguments, answers) as one JSON document
+    Schema,
     /// Print the API version of the edit commands (read, add, save, rename, move, remove)
     Api {
         /// Print JSON instead of text
@@ -370,6 +374,10 @@ fn main() -> ExitCode {
             prefix,
         } => vocab(common, unwritten, min_count, prefix),
         Command::Api { json } => api(json),
+        Command::Schema => {
+            print_json(&schema::document(&Cli::command()));
+            ExitCode::SUCCESS
+        }
         Command::Read { edit, page } => run_edit(&edit, |store| {
             let path = edit::existing_path(&page)?;
             let read = edit::read_page(store, &path)?;
@@ -571,8 +579,10 @@ fn envelope(mut json: serde_json::Value) -> serde_json::Value {
     json
 }
 
-fn print_ok(json: serde_json::Value) {
-    print_json(&envelope(json));
+fn print_ok<T: Serialize>(answer: &T) {
+    print_json(&envelope(
+        serde_json::to_value(answer).expect("output serializes"),
+    ));
 }
 
 fn moved(
@@ -655,10 +665,9 @@ fn read_bytes(file: Option<&Path>) -> Result<Vec<u8>, EditError> {
 
 fn api(json: bool) -> ExitCode {
     if json {
-        print_json(&serde_json::json!({
-            "api": API_VERSION,
-            "version": env!("CARGO_PKG_VERSION"),
-        }));
+        print_ok(&answers::Api {
+            version: env!("CARGO_PKG_VERSION").into(),
+        });
     } else {
         outln!("{API_VERSION}");
     }
@@ -710,7 +719,7 @@ fn lint(common: Common, strict: bool, min_severity: &str) -> ExitCode {
     );
 
     if common.json {
-        print_ok(serde_json::json!({ "diagnostics": diagnostics }));
+        print_ok(&answers::Lint { diagnostics });
     } else {
         for d in &diagnostics {
             let line = d.line.map_or(String::new(), |l| format!(":{l}"));
@@ -747,13 +756,9 @@ fn run_watch(common: Common, exit_on_stdin_close: bool, poll: bool) -> ExitCode 
         });
     }
     let json = common.json;
-    let line = |event: &str, fields: serde_json::Value| {
+    let line = |event: answers::WatchEvent| {
         if json {
-            let mut value = envelope(serde_json::json!({ "event": event }));
-            value
-                .as_object_mut()
-                .expect("an object")
-                .extend(fields.as_object().cloned().unwrap_or_default());
+            let value = envelope(serde_json::to_value(event).expect("output serializes"));
             outln!(
                 "{}",
                 serde_json::to_string(&value).expect("output serializes")
@@ -767,21 +772,16 @@ fn run_watch(common: Common, exit_on_stdin_close: bool, poll: bool) -> ExitCode 
             ..Default::default()
         },
         |event| match event {
-            watch::Event::Ready(mode) => {
-                line("ready", serde_json::json!({ "mode": mode.as_str() }))
-            }
+            watch::Event::Ready(mode) => line(answers::WatchEvent::Ready { mode }),
             watch::Event::Mode(mode, reason) => {
-                line(
-                    "mode",
-                    serde_json::json!({ "mode": mode.as_str(), "reason": reason }),
-                );
                 if !json {
                     eprintln!("tessela: watching in {} mode: {reason}", mode.as_str());
                 }
+                line(answers::WatchEvent::Mode { mode, reason });
             }
             watch::Event::Changed(paths) => {
                 if json {
-                    line("changed", serde_json::json!({ "paths": paths }));
+                    line(answers::WatchEvent::Changed { paths });
                 } else {
                     for path in &paths {
                         outln!("changed {path}");
@@ -804,18 +804,16 @@ fn pages(common: Common) -> ExitCode {
     let mut pages: Vec<_> = bundle.pages.iter().collect();
     pages.sort_by(|a, b| a.path.cmp(&b.path));
     if common.json {
-        let rows: Vec<_> = pages
+        let rows = pages
             .iter()
-            .map(|p| {
-                serde_json::json!({
-                    "id": p.id,
-                    "path": p.path,
-                    "title": p.title(),
-                    "type": p.kind(),
-                })
+            .map(|p| answers::PageRow {
+                id: p.id.clone(),
+                path: p.path.clone(),
+                title: p.title(),
+                kind: p.kind().map(str::to_string),
             })
             .collect();
-        print_ok(serde_json::json!({ "pages": rows }));
+        print_ok(&answers::Pages { pages: rows });
     } else {
         for p in &pages {
             outln!("{}  {}", p.path, p.title());
@@ -835,7 +833,7 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
     hits.truncate(limit.unwrap_or(usize::MAX));
 
     if common.json {
-        print_ok(serde_json::json!({ "total": total, "hits": hits }));
+        print_ok(&answers::Query { total, hits });
     } else {
         for hit in &hits {
             let label = match hit.kind {
@@ -879,7 +877,7 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
             }
         };
         if common.json {
-            print_ok(serde_json::to_value(&report).expect("output serializes"));
+            print_ok(&report);
         } else {
             for path in &report.written {
                 outln!("wrote {path}");
@@ -896,7 +894,7 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
         index::listing(&bundle, dir)
     };
     if common.json {
-        print_ok(serde_json::to_value(&listing).expect("output serializes"));
+        print_ok(&listing);
     } else {
         let name = bundle
             .root
@@ -923,7 +921,7 @@ fn vocab(common: Common, unwritten: bool, min_count: usize, prefix: Option<Strin
         .collect();
 
     if common.json {
-        print_ok(serde_json::json!({ "concepts": entries }));
+        print_ok(&answers::Vocab { concepts: entries });
     } else {
         let width = entries.iter().map(|e| e.concept.len()).max().unwrap_or(0);
         for e in &entries {
@@ -967,7 +965,7 @@ fn import_logseq(graph: &Path, out: &Path, json: bool) -> ExitCode {
         }
     };
     if json {
-        print_ok(serde_json::to_value(&report).expect("output serializes"));
+        print_ok(&report);
         return ExitCode::SUCCESS;
     }
     outln!(

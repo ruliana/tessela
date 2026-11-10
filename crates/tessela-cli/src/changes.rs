@@ -11,7 +11,7 @@ use serde::Serialize;
 use tessela_core::changes::{Change, diff};
 use tessela_core::edit::{EditError, ErrorCode, check_page_path, content_hash};
 
-#[derive(Clone, Copy, Serialize)]
+#[derive(Clone, Copy, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Added,
@@ -19,7 +19,7 @@ pub enum Status {
     Deleted,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct PageChange {
     pub path: String,
     pub status: Status,
@@ -28,7 +28,7 @@ pub struct PageChange {
     pub changes: Vec<Change>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct Output {
     /// What the notes were compared with, as asked.
     pub since: String,
