@@ -32,7 +32,7 @@ import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
 import { describeMods } from "../shared/mods";
-import { host, modExtensions, modsInfo, loadMods, registry, sideBottom, sideTop, type ModHost } from "./mods";
+import { host, modExtensions, modsInfo, loadMods, registry, sideBottom, sideTop, sidebarSlot, type ModHost } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -464,6 +464,7 @@ function buildShell(bundle: string): void {
       ),
       row("journals-view", "◷", "Journals", "The latest journal days, stacked", () => void showJournals()),
     ),
+    sidebarSlot,
     recentEl,
     el(
       "nav",
@@ -946,30 +947,40 @@ async function renderBacklinks(): Promise<void> {
     const day = id.replace("journals/", "");
     queries.push(api.query({ from: day, to: day, limit: 300 }));
   }
-  let hits: Hit[] = [];
-  try {
-    hits = (await Promise.all(queries)).flat();
-  } catch {
-    // The tool may be missing; the editor still works without backlinks.
-  }
+  const [found, contents] = await Promise.all([
+    Promise.all(queries).catch(() => [] as Hit[][]), // The tool may be missing; the editor still works without backlinks.
+    registry.backlinkContent(path),
+  ]);
+  const hits = found.flat();
   if (run !== backlinkRun) return;
 
+  // Mentions that a mod shows in a group of its own are not listed a second time.
+  const taken = new Set(contents.flatMap((c) => c.taken ?? []));
   const seen = new Set<string>();
   const byPage = new Map<string, Hit[]>();
+  let claimed = 0;
   for (const hit of orderBacklinks(hits)) {
     if (hit.path === path || seen.has(hit.handle)) continue;
     seen.add(hit.handle);
+    if (taken.has(hit.handle)) {
+      claimed++;
+      continue;
+    }
     byPage.set(hit.path, [...(byPage.get(hit.path) ?? []), hit]);
   }
 
   const total = [...byPage.values()].reduce((n, h) => n + h.length, 0);
-  const head = el("h2", { class: "title" }, `Backlinks (${total})`);
-  if (total === 0) {
+  const head = el("h2", { class: "title" }, `Backlinks (${total + claimed})`);
+  const nodes = (first: boolean) => contents.filter((c) => !!c.first === first).map((c) => c.node as Node);
+  if (total + claimed === 0 && contents.length === 0) {
     backlinksBody.replaceChildren(head, el("p", { class: "empty" }, "Nothing mentions this page yet."));
     return;
   }
   const pages = byPage.size;
-  const sub = el("p", { class: "sub" }, `${total === 1 ? "1 mention" : `${total} mentions`} in ${pages === 1 ? "1 page" : `${pages} pages`}`);
+  const sub =
+    total === 0
+      ? ""
+      : el("p", { class: "sub" }, `${total === 1 ? "1 mention" : `${total} mentions`} in ${pages === 1 ? "1 page" : `${pages} pages`}`);
   const groups = [...byPage.entries()].map(([p, list]) => {
     const fromHome = list.some(isHomeHit);
     return el(
@@ -993,7 +1004,7 @@ async function renderBacklinks(): Promise<void> {
       }),
     );
   });
-  backlinksBody.replaceChildren(head, sub, ...groups);
+  backlinksBody.replaceChildren(head, ...nodes(true), sub, ...groups, ...nodes(false));
 }
 
 /** Where in its page a hit sits: the headings above it, or what the hit is when it is not a paragraph. */
