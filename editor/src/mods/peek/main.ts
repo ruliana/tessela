@@ -7,6 +7,7 @@ import type { EditorView } from "@codemirror/view";
 
 import { el } from "../../renderer/dom";
 import type { ModContext, PageCard } from "../../renderer/mods";
+import { dirOf } from "../../shared/pages";
 import { cliOf } from "../kit";
 import { countMentions, mentionsOf, peekAt, type PeekTarget } from "./plan";
 
@@ -16,8 +17,6 @@ interface Hit {
   line: number;
   text: string;
 }
-
-const dirOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
 export default function (ctx: ModContext): void {
   const slot = ctx.slots.mount("side-top");

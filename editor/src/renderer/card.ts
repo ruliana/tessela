@@ -7,7 +7,7 @@ import { formatDate } from "../shared/dates";
 import type { LinkPage } from "../shared/linkFlows";
 import { titleOf } from "../shared/linkFlows";
 import type { PropertiesOverride } from "../shared/mods";
-import { pageId } from "../shared/pages";
+import { dirOf, pageId } from "../shared/pages";
 import type { Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
@@ -66,11 +66,6 @@ export interface Card {
   words(): number;
   setLivePreview(on: boolean): void;
   destroy(): void;
-}
-
-function dirOf(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i < 0 ? "" : path.slice(0, i);
 }
 
 /** The opening of a journal day: its number large, the weekday in small capitals, its date, and a tag for today. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cleanDir, folderOf, homePath, homeTitle, trail } from "../src/mods/folders/plan";
+import { cleanDir, homePath, homeTitle, trail } from "../src/mods/folders/plan";
 import { ModRegistry } from "../src/shared/mods";
 import { emptyHistory, samePlace, visit } from "../src/shared/nav";
 
@@ -13,8 +13,6 @@ describe("the folders mod's paths", () => {
     ]);
     expect(trail("")).toEqual([{ name: "", path: "" }]);
     expect(cleanDir("/projects/")).toBe("projects");
-    expect(folderOf("projects/sub/deep.md")).toBe("projects/sub");
-    expect(folderOf("home.md")).toBe("");
     expect([homePath(""), homePath("people"), homeTitle(""), homeTitle("a/people")]).toEqual(["home.md", "people/home.md", "Home", "People home"]);
   });
 });

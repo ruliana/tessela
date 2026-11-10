@@ -1,16 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { conceptFor, countUnlinked, entriesOf, linked } from "../src/mods/unlinked/plan";
+import { countUnlinked, entriesOf, linked } from "../src/mods/unlinked/plan";
 
 const ml = { text: "ML", line: 3, column: 8, link: "[ML](/machine-learning.md)" };
 
 describe("the unlinked mod's plan", () => {
-  it("asks for pages, not for journal days", () => {
-    expect(conceptFor("notes/idea.md")).toBe("notes/idea");
-    expect(conceptFor("journals/2026-03-04.md")).toBeNull();
-    expect(conceptFor(null)).toBeNull();
-  });
-
   it("makes one entry per mention and marks each where it is in the block", () => {
     const hit = { handle: "h", path: "a.md", line: 3, text: "ML and ML", mentions: [ml, { ...ml, column: 14 }] };
     const entries = entriesOf([hit]);

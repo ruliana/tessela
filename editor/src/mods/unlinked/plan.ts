@@ -1,8 +1,6 @@
 // The pure parts of the unlinked mod: which page asks, how a mention reads in its block, and
 // how a mention becomes a link in the text of its page.
 
-import { isJournalPath, pageId } from "../../shared/pages";
-
 /** One place where a page is named in plain words, as `tessela query --unlinked` reports it. */
 export interface Mention {
   text: string;
@@ -19,12 +17,6 @@ export interface UnlinkedHit {
   line: number;
   text: string;
   mentions?: Mention[];
-}
-
-/** The concept to look for on the page at `path`, or null when the page has no plain-words mentions (a journal day, a non-page). */
-export function conceptFor(path: string | null): string | null {
-  if (!path || !path.endsWith(".md") || isJournalPath(path)) return null;
-  return pageId(path);
 }
 
 /** One mention with the block it is in, which is what the list shows. */

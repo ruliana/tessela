@@ -8,6 +8,18 @@ export function isJournalPath(path: string): boolean {
   return /^journals\/\d{4}-\d{2}-\d{2}\.md$/.test(path);
 }
 
+/** The folder a page is in, without the trailing slash ("" for the root). */
+export function dirOf(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? "" : path.slice(0, i);
+}
+
+/** The concept to ask about for the page at `path`, or null for a journal day or something that is not a page. */
+export function conceptFor(path: string | null): string | null {
+  if (!path || !path.endsWith(".md") || isJournalPath(path)) return null;
+  return pageId(path);
+}
+
 export function journalPath(day: string): string {
   return `journals/${day}.md`;
 }
