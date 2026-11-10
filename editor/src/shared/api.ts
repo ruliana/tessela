@@ -88,13 +88,24 @@ export type OpenFileResult =
   /** The file is inside the bundle but is not a page the editor can open. */
   | { kind: "unsupported"; reason: string };
 
-/** The mods installed in the config folder (mods/<id>/main.js). */
+/** One mod found: in the app (`app`) or in the config folder's mods/ (`config`, which also replaces an app mod of the same id). */
+export interface ModEntry {
+  id: string;
+  source: "app" | "config";
+  /** Switched off in the config folder's settings.json. */
+  off: boolean;
+}
+
+/** The mods installed in the app and in the config folder (mods/<id>/main.js). */
 export interface ModsInfo {
   /** The config folder: mods live in its `mods/` folder. */
   folder: string;
-  /** Started with `--no-mods`: `ids` is then empty. */
+  /** Started with `--no-mods`: `ids` and `mods` are then empty. */
   disabled: boolean;
+  /** The mods the window should load: all of them but the ones switched off. */
   ids: string[];
+  /** Every mod there is, by id, with the ones switched off. */
+  mods: ModEntry[];
 }
 
 export interface Api {
@@ -121,6 +132,10 @@ export interface Api {
   todayPath(): Promise<string>;
   /** Which mods the window should load. */
   mods(): Promise<ModsInfo>;
+  /** Switches a mod off or on for the next time the window loads (kept in the config folder's settings.json). */
+  setModOff(id: string, off: boolean): Promise<void>;
+  /** Loads the window again (the window may not navigate by itself), so the mods are loaded afresh. */
+  reload(): Promise<void>;
   /**
    * Runs a `tessela` command on the open notes folder for a mod and returns its JSON answer,
    * `{api, ok, ...}`; a failure (`ok: false`) is an answer too. The folder, `--json` and the API

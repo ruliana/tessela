@@ -8,7 +8,7 @@ import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry 
 import { journalPath, localDay } from "../shared/pages";
 import { relativeInside, resolveImage, resolveInside } from "./files";
 import { addPageVia, cliInput, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
-import { agentsText, cliArgv, configFolder, installAgents, listMods, resolveModFile } from "./mods";
+import { agentsText, cliArgv, configFolder, installAgents, isModId, listMods, resolveModFile, setModOff } from "./mods";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
 // userData is pinned first: the name feeds its default, and the saved bundle lives there.
@@ -142,6 +142,11 @@ function registerIpc(): void {
   });
   ipcMain.handle("todayPath", () => journalPath(localDay(new Date())));
   ipcMain.handle("mods", () => listMods(config(), modsDisabled, bundledMods));
+  ipcMain.handle("reload", () => win?.webContents.reload());
+  ipcMain.handle("setModOff", (_e, id: unknown, off: unknown) => {
+    if (typeof id !== "string" || !isModId(id) || typeof off !== "boolean") throw new Error("setModOff: a mod id and true or false");
+    setModOff(config(), id, off);
+  });
   // For mods: any tessela command on the open folder (see Api.cli).
   ipcMain.handle("cli", (_e, argv: unknown, input: unknown) =>
     cliVia(tesselaBin(), needBundle(), cliArgv(argv), cliInput(input)),

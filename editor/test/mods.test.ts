@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeMods, ModRegistry } from "../src/shared/mods";
+import { modRows, ModRegistry } from "../src/shared/mods";
 
 const cmd = (id: string, label = id) => ({ id, label, run: () => {} });
 
@@ -43,11 +43,16 @@ describe("ModRegistry", () => {
   });
 });
 
-describe("describeMods", () => {
-  it("lists loaded and failed mods, and says when they are off or none exist", () => {
-    expect(describeMods(["a", "b"], [{ mod: "c", message: "bad" }], "/cfg", false)).toBe("Mods loaded: a, b. Failed: c (bad).");
-    expect(describeMods([], [], "/cfg", false)).toContain("/cfg/mods/NAME/main.js");
-    expect(describeMods([], [], "/cfg", true)).toContain("--no-mods");
+describe("modRows", () => {
+  const info = (extra: object = {}) => ({ folder: "/cfg", disabled: false, ids: ["a", "b"], mods: [{ id: "a", source: "app" as const, off: false }, { id: "b", source: "config" as const, off: false }, { id: "c", source: "config" as const, off: true }], ...extra });
+
+  it("says for each mod where it comes from and whether it loaded, failed or is off, with its errors", () => {
+    const rows = modRows(info(), ["a"], [{ mod: "b", message: "nope" }, { mod: "a", message: "Sync: boom" }]);
+    expect(rows).toEqual([
+      { id: "a", source: "app", status: "loaded", errors: ["Sync: boom"] },
+      { id: "b", source: "config", status: "failed", errors: ["nope"] },
+      { id: "c", source: "config", status: "off", errors: [] },
+    ]);
   });
 });
 
@@ -111,5 +116,50 @@ describe("AGENTS.md in the config folder", () => {
     const text = agentsText(skill);
     expect(text.startsWith("# Writing a mod for the Tessela editor")).toBe(true);
     expect(text).not.toContain("name: tessela-mods");
+  });
+});
+
+describe("which mods are switched off", () => {
+  it("is kept in settings.json, beside what else it holds, and listed with where each mod comes from", async () => {
+    const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { listMods, setModOff } = await import("../src/main/mods");
+    const root = mkdtempSync(path.join(tmpdir(), "tessela-off-"));
+    const put = (dir: string, id: string) => {
+      mkdirSync(path.join(dir, id), { recursive: true });
+      writeFileSync(path.join(dir, id, "main.js"), "");
+    };
+    const bundled = path.join(root, "bundled");
+    const config = path.join(root, "config");
+    put(bundled, "pages");
+    put(bundled, "other");
+    put(path.join(config, "mods"), "pages");
+    put(path.join(config, "mods"), "mine");
+    writeFileSync(path.join(config, "settings.json"), '{"theme":"dark"}');
+    setModOff(config, "other", true);
+    setModOff(config, "other", true);
+    setModOff(config, "mine", true);
+    expect(JSON.parse(readFileSync(path.join(config, "settings.json"), "utf8"))).toEqual({ theme: "dark", mods: { off: ["mine", "other"] } });
+    const info = listMods(config, false, bundled);
+    expect(info.ids).toEqual(["pages"]);
+    expect(info.mods).toEqual([
+      { id: "mine", source: "config", off: true },
+      { id: "other", source: "app", off: true },
+      { id: "pages", source: "config", off: false },
+    ]);
+    setModOff(config, "other", false);
+    expect(listMods(config, false, bundled).ids).toEqual(["other", "pages"]);
+  });
+
+  it("refuses to overwrite a settings.json it cannot read", async () => {
+    const { mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { setModOff } = await import("../src/main/mods");
+    const config = mkdtempSync(path.join(tmpdir(), "tessela-off-"));
+    writeFileSync(path.join(config, "settings.json"), "{ not json");
+    expect(() => setModOff(config, "x", true)).toThrow(/settings\.json/);
+    expect(readFileSync(path.join(config, "settings.json"), "utf8")).toBe("{ not json");
   });
 });
