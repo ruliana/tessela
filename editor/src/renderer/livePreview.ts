@@ -10,6 +10,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import { type Block, editedBlockLines, frontmatterEnd, parseBlocks } from "../shared/blocks";
 import { daysInLine } from "../shared/dates";
 import { journalDest } from "../shared/pages";
+import type { PropertiesArg, PropertiesOverride } from "../shared/mods";
 import { type Properties, bodyRepeatsTitle, bodyStart, parseProperties, showWhen } from "../shared/properties";
 
 class Glyph extends WidgetType {
@@ -317,16 +318,20 @@ class PropertiesWidget extends WidgetType {
     private readonly edit: () => void,
     private readonly toBody: () => void,
     private readonly openLink: (dest: string) => void,
+    private readonly drawn?: (() => HTMLElement | null) | undefined,
   ) {
     super();
   }
   override eq(other: PropertiesWidget): boolean {
-    return other.source === this.source && other.title === this.title;
+    return other.source === this.source && other.title === this.title && (other.drawn === undefined) === (this.drawn === undefined);
   }
   override ignoreEvent(): boolean {
     return true;
   }
   override toDOM(): HTMLElement {
+    // A mod that draws the properties is asked first; one that fails leaves the built-in drawing.
+    const custom = this.drawn?.();
+    if (custom) return custom;
     const { props } = this;
     const wrap = document.createElement("div");
     wrap.className = "cm-props";
@@ -383,6 +388,16 @@ class PropertiesWidget extends WidgetType {
   }
 }
 
+/** What the mod that draws the properties gives, or null when it throws, so the built-in drawing takes over. */
+function drawnBy(override: PropertiesOverride, arg: PropertiesArg): HTMLElement | null {
+  try {
+    return override.draw(arg);
+  } catch (e) {
+    console.error("The mod that draws properties failed:", e);
+    return null;
+  }
+}
+
 /** A journal day's front matter says what the day's heading already does, so it draws nothing. */
 class NothingWidget extends WidgetType {
   override eq(): boolean {
@@ -433,7 +448,10 @@ function tables(opts: PreviewOptions): Extension {
           view.focus();
         };
         const title = bodyRepeatsTitle(head, fmEnd, props.title ?? opts.pageName()) ? null : (props.title ?? opts.pageName());
-        const widget = props.type === "journal" ? new NothingWidget() : new PropertiesWidget(props, title, source, edit, toBody, openLink);
+        const override = opts.properties();
+        const path = opts.pagePath();
+        const drawn = override ? () => drawnBy(override, { path, props, title, source, toBody, editYaml: edit, openLink }) : undefined;
+        const widget = props.type === "journal" ? new NothingWidget() : new PropertiesWidget(props, title, source, edit, toBody, openLink, drawn);
         ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
       }
     }
@@ -482,6 +500,10 @@ export interface PreviewOptions {
   imageUrl: (dest: string) => string | null;
   /** The name of the open page, for a title when the front matter has none. */
   pageName: () => string;
+  /** The path of the open page. */
+  pagePath: () => string;
+  /** What a mod draws in place of the front matter, when one does. */
+  properties: () => PropertiesOverride | undefined;
   /** The editor, once it exists. */
   view: () => EditorView | null;
 }

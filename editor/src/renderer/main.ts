@@ -872,6 +872,7 @@ function cardDeps() {
     livePreview: () => livePreview,
     onTogglePreview: togglePreview,
     extensions: modExtensions,
+    properties: () => registry.override("properties"),
   };
 }
 

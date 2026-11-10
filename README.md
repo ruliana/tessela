@@ -244,6 +244,13 @@ open page as a ```` ```tessela ```` fence.
 `related` is a "Related" group in the right column, in place of a graph (from `tessela related`): the concepts
 mentioned together with the open page, most often first, each with its reason ("together in 7 blocks on 3 pages")
 and a click to open its page, and the home pages that lead to it as a trail, the root's first. Nothing is written.
+`properties` takes over the title and the row of properties at the top of a page (through
+`ctx.override.add("properties", { draw })`, which is handed the page's `props` and returns the element to show):
+a click on the type offers the types the notes use, on a tag the vocabulary (with Remove), "+ tag" adds one,
+"Change date" takes a date or a datetime with its offset (and the `/` menu's Today, Tomorrow, Yesterday and
+Now), and any other plain value is typed over. A change rewrites that one key of the front matter and keeps every
+other byte, in the quoting the value already had; it is saved through `tessela save --expect`, so a page that changed
+meanwhile is never overwritten. A key written across several lines, or with a comment, is left to "Edit properties".
 `changes` is the "Changes" row in the sidebar: what differs between the notes and git (the last commit, or
 any revision typed in, `ORIG_HEAD` for before the last pull), block by block, from `tessela changes`. Each
 change is kept (hidden, nothing written; the window remembers) or put back (the page is saved again without

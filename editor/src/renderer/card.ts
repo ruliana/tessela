@@ -6,6 +6,7 @@ import type { Api, VocabEntry } from "../shared/api";
 import { formatDate } from "../shared/dates";
 import type { LinkPage } from "../shared/linkFlows";
 import { titleOf } from "../shared/linkFlows";
+import type { PropertiesOverride } from "../shared/mods";
 import { pageId } from "../shared/pages";
 import type { Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
@@ -37,6 +38,8 @@ export interface CardDeps {
   onTogglePreview: () => void;
   /** Extensions mods add to the editor. */
   extensions?: (path: string) => Extension[];
+  /** What a mod draws in place of the front matter, when one does. */
+  properties?: () => PropertiesOverride | undefined;
   /** The page was loaded into the card. */
   onOpened?: (path: string) => void;
   /** A save changed the page's title. */
@@ -158,6 +161,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
     ...(deps.extensions ? { extensions: () => deps.extensions?.(path) ?? [] } : {}),
+    ...(deps.properties ? { properties: deps.properties, pagePath: () => path } : {}),
   });
 
   function setStatus(state: "saved" | "dirty" | "conflict", text: string): void {
