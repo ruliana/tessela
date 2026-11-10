@@ -27,7 +27,8 @@ import {
 import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
-import { slugFirst, suggest } from "../shared/complete";
+import { suggest } from "../shared/complete";
+import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../shared/linkFlows";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { dayAt } from "../shared/dates";
 import { journalDest } from "../shared/pages";
@@ -42,6 +43,8 @@ import { bodyStart } from "../shared/properties";
 
 export interface EditorOptions {
   vocab: () => VocabEntry[];
+  /** The pages (and unwritten concepts) a link can point to, with their titles. */
+  pages: () => LinkPage[];
   /** Folder of the open page, for resolving relative links. */
   pageDir: () => string;
   /** Concepts that have a page; null when that is not known. */
@@ -128,18 +131,8 @@ function linkDestAt(state: EditorState, pos: number): string | null {
   return null;
 }
 
-function options(
-  vocab: VocabEntry[],
-  query: string,
-  apply: (concept: string) => string,
-  linkText?: string,
-): Completion[] {
-  const found = suggest(vocab, query);
-  return (linkText === undefined ? found : slugFirst(found, linkText, query)).map((s) => ({
-    label: s.concept,
-    detail: s.detail,
-    apply: apply(s.concept),
-  }));
+function options(vocab: VocabEntry[], query: string, apply: (concept: string) => string): Completion[] {
+  return suggest(vocab, query).map((s) => ({ label: s.concept, detail: s.detail, apply: apply(s.concept) }));
 }
 
 /** The text of the link whose target starts at `at` (the `]` before it), if the `[` is on the line. */
@@ -150,15 +143,63 @@ function linkTextBefore(state: EditorState, at: number): string | undefined {
   return open < 0 ? undefined : before.slice(open + 1);
 }
 
-function completions(vocab: () => VocabEntry[]) {
+function choiceOptions(choices: LinkChoice[], take: (view: EditorView, choice: LinkChoice) => void): Completion[] {
+  return choices.map((c) => ({
+    label: c.text,
+    detail: c.fresh ? "new page" : c.dest.slice(1),
+    apply: (view: EditorView) => take(view, c),
+  }));
+}
+
+/** Addresses and anchors typed after `](` are not pages to look for. */
+const NOT_A_PAGE = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:|#|\.{1,2}\/|~)/;
+
+function completions(vocab: () => VocabEntry[], pages: () => LinkPage[]) {
   return (context: CompletionContext): CompletionResult | null => {
-    const link = context.matchBefore(/\]\([^)\s]*/);
+    // Spaces are allowed while searching: a title is typed as it is written, and a target never has one.
+    const link = context.matchBefore(/\]\([^)\n]*/);
     if (link) {
-      const typed = link.text.slice(2).replace(/^\//, "").replace(/\.md$/, "");
+      const raw = link.text.slice(2);
+      if (NOT_A_PAGE.test(raw)) return null;
+      const label = linkTextBefore(context.state, link.from);
+      const typed = raw.replace(/^\//, "").replace(/\.md$/, "");
+      // Nothing typed yet: look for the page by the link text, so `[Daily TODO](` offers it first.
+      const query = typed !== "" ? typed : (label ?? "");
       return {
         from: link.from + 2,
         filter: false,
-        options: options(vocab(), typed, (c) => `/${c}.md`, linkTextBefore(context.state, link.from)),
+        options: choiceOptions(choicesFor(pages(), query, 12), (view, c) => {
+          // The rest of the target (and the `)` closeBrackets added) is replaced with it.
+          const after = view.state.sliceDoc(context.pos, view.state.doc.lineAt(context.pos).to);
+          const close = after.indexOf(")");
+          const tail = close >= 0 && !/\s/.test(after.slice(0, close)) ? close + 1 : 0;
+          // A link with no text takes the title of the page.
+          const fill = label === "" ? c.text : "";
+          const dest = `${c.dest})`;
+          view.dispatch({
+            changes: [...(fill ? [{ from: link.from, insert: fill }] : []), { from: link.from + 2, to: context.pos + tail, insert: dest }],
+            selection: { anchor: link.from + 2 + fill.length + dest.length },
+            userEvent: "input.complete",
+          });
+        }),
+      };
+    }
+    // A single `[` and a few letters: the page is picked, and the link written with its title.
+    const line = context.state.doc.lineAt(context.pos);
+    const bracket = bracketSearch(line.text.slice(0, context.pos - line.from), line.text.slice(context.pos - line.from));
+    if (bracket && !inCode(context.state, context.pos)) {
+      const open = line.from + bracket.start;
+      return {
+        from: open + 1,
+        filter: false,
+        options: choiceOptions(choicesFor(pages(), bracket.query, 12), (view, c) => {
+          const text = markdownLink(c.text, c.dest);
+          view.dispatch({
+            changes: { from: open, to: context.pos + bracket.closing, insert: text },
+            selection: { anchor: open + text.length },
+            userEvent: "input.complete",
+          });
+        }),
       };
     }
     const tag = context.matchBefore(/#[\p{L}\p{N}_/-]*/u);
@@ -224,7 +265,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         // languages that fenced blocks name.
         yamlFrontmatter({ content: markdown({ codeLanguages: languages, extensions: [GFM, noSetext] }) }),
         syntaxHighlighting(highlight),
-        autocompletion({ override: [completions(opts.vocab), slashSource], icons: false }),
+        autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
         focusMarks(),
         preview.of(previewOn ? previewExtension() : []),
@@ -245,6 +286,21 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         ),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.domEventHandlers({
+          // An address pasted over selected words makes the words its link.
+          paste(event, v) {
+            const sel = v.state.selection;
+            if (sel.ranges.length !== 1 || sel.main.empty || inCode(v.state, sel.main.from)) return false;
+            const link = pasteLink(v.state.sliceDoc(sel.main.from, sel.main.to), event.clipboardData?.getData("text/plain") ?? "");
+            if (link === null) return false;
+            event.preventDefault();
+            v.dispatch({
+              changes: { from: sel.main.from, to: sel.main.to, insert: link },
+              selection: { anchor: sel.main.from + link.length },
+              scrollIntoView: true,
+              userEvent: "input.paste",
+            });
+            return true;
+          },
           focus() {
             opts.onFocus?.();
             return false;

@@ -379,10 +379,22 @@ goes to the first property.
 | A URL (`https://...`)                       | `[](https://...)`       | in the text part  |
 | A file path (`/x.md`, `./x.md`, `~/x.pdf`)  | `[](/x.md)`             | in the text part  |
 | Any other text                              | `[Some text]()`         | in the target     |
-| Nothing                                     | `[]()`                  | in the text part  |
+| Nothing                                     | `[]()`                  | in the target     |
 
-When the cursor lands in the target, the editor offers existing concepts from
-`tessela vocab`, with the slug of the selected text (§4) as the first suggestion.
+When the cursor lands in the target, the editor searches the pages by title and by path,
+and offers a link to a new page named after what was typed (its path is made as in §4).
+Choosing one fills in the target, and the text too when it is empty. With nothing typed
+yet, the pages are searched by the link text, so `[Daily TODO](` offers that page first.
+
+Titles come from the `title:` of the front matter, else the first `#` heading, else the
+file name. The same search opens after typing `](` by hand, and after a single `[` and a
+few letters: `[dai` offers "Daily TODO", and choosing it writes `[Daily TODO](/daily-todo.md)`.
+A `[` that is a task box (`[ ]`, `[x]`), an image (`![`) or the text of a link that already
+exists does not search.
+
+An address (`https://...`, `mailto:...`) pasted over selected text makes the text its link,
+so a title and an address are not typed twice. With nothing selected, or inside code, a
+paste is a plain paste.
 
 ## 12. Importing from Logseq
 

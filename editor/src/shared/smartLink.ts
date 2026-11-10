@@ -1,5 +1,6 @@
 // Ctrl+L: turn the selection into a Markdown link and leave the cursor on the
-// missing half (spec §11).
+// missing half (spec §11). With nothing selected the cursor goes to the target, where
+// searching for a page fills in the target and the (empty) text.
 
 export interface LinkEdit {
   /** What replaces the selection. */
@@ -19,7 +20,7 @@ export function isTarget(selected: string): boolean {
 }
 
 export function smartLink(selected: string): LinkEdit {
-  if (selected === "") return { text: "[]()", cursor: 1, inTarget: false };
+  if (selected === "") return { text: "[]()", cursor: 3, inTarget: true };
   if (isTarget(selected)) {
     return { text: `[](${selected})`, cursor: 1, inTarget: false };
   }

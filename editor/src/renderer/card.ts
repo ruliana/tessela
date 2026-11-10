@@ -4,6 +4,7 @@
 
 import type { Api, VocabEntry } from "../shared/api";
 import { formatDate } from "../shared/dates";
+import type { LinkPage } from "../shared/linkFlows";
 import { pageId } from "../shared/pages";
 import { el } from "./dom";
 import { createEditor, type EditorHandle } from "./editor";
@@ -13,6 +14,8 @@ const SAVE_DELAY_MS = 700;
 export interface CardDeps {
   api: Api;
   vocab: () => VocabEntry[];
+  /** The pages a link can point to, with their titles. */
+  pages: () => LinkPage[];
   /** Concepts that have a page; null when the vocabulary is not known. */
   written: () => Set<string> | null;
   /** The text reached the disk. */
@@ -100,6 +103,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
 
   const editor: EditorHandle = createEditor(host, {
     vocab: deps.vocab,
+    pages: deps.pages,
     pageDir: () => dirOf(path),
     written: deps.written,
     onChange: onEdit,

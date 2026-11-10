@@ -325,18 +325,19 @@ suite("Smart link (Ctrl+L)", null, (test) => {
     await s.key("Control+l");
     assert.equal(await s.body(), "[Some text]()");
     await s.win.waitForSelector(".cm-tooltip-autocomplete");
-    assert.match((await s.texts(".cm-tooltip-autocomplete li"))[0], /some-text/, "the slug of the text is offered first");
+    assert.match((await s.texts(".cm-tooltip-autocomplete li"))[0], /Some text.*new page/, "a link to a new page of that name is offered first");
     await s.key("Escape");
     await s.type("/x.md");
     assert.equal(await s.body(), "[Some text](/x.md)");
   });
 
-  test("with nothing selected it inserts []()", async (s) => {
+  test("with nothing selected it inserts []() with the cursor in the target", async (s) => {
     await s.openWith("link-none", "");
     await s.key("Control+l");
     assert.equal(await s.body(), "[]()");
-    await s.type("name");
-    assert.equal(await s.body(), "[name]()");
+    await s.key("Escape");
+    await s.type("/x.md");
+    assert.equal(await s.body(), "[](/x.md)");
   });
 
   test("a link made with Ctrl+L can be undone", async (s) => {

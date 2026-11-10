@@ -24,6 +24,17 @@ describe("files", () => {
     expect((await listPages(root)).map((p) => p.id)).toEqual(["journals/2026-10-27"]);
   });
 
+  it("lists each page with the title it gives itself", async () => {
+    const root = await bundle();
+    await writeFile(path.join(root, "daily-todo.md"), '---\ntype: concept\ntitle: "Daily TODO"\n---\n\n# Other\n');
+    await writeFile(path.join(root, "reading-list.md"), "---\ntype: concept\n---\n\n# Books to read\n");
+    await writeFile(path.join(root, "bare-page.md"), "no heading");
+    const titles = Object.fromEntries((await listPages(root)).map((p) => [p.path, p.title]));
+    expect(titles["daily-todo.md"]).toBe("Daily TODO");
+    expect(titles["reading-list.md"]).toBe("Books to read");
+    expect(titles["bare-page.md"]).toBe("bare page");
+  });
+
   it("shows pictures of the bundle and nothing else", () => {
     expect(resolveImage("/tmp/b", "assets/a b.PNG")).toBe(path.resolve("/tmp/b/assets/a b.PNG"));
     for (const bad of ["../a.png", "/etc/a.png", ".hidden/a.png", "notes.md", "a.png/../../x.txt", "a\0.png", ""]) {
