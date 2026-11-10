@@ -118,12 +118,12 @@ function registerIpc(): void {
     return folder;
   });
   ipcMain.handle("listPages", () => listPages(needBundle()));
-  ipcMain.handle("vocab", () => runJson<VocabEntry[]>(tesselaBin(), vocabArgv(needBundle())));
+  ipcMain.handle("vocab", () => runJson<VocabEntry[]>(tesselaBin(), vocabArgv(needBundle()), "concepts"));
   ipcMain.handle("query", (_e, args: QueryArgs) =>
-    runJson<Hit[]>(tesselaBin(), queryArgv(needBundle(), args)),
+    runJson<Hit[]>(tesselaBin(), queryArgv(needBundle(), args), "hits"),
   );
   ipcMain.handle("lint", () =>
-    runJson<Diagnostic[]>(tesselaBin(), lintArgv(needBundle()), [1]),
+    runJson<Diagnostic[]>(tesselaBin(), lintArgv(needBundle()), "diagnostics", [1]),
   );
   // Pages are read and written by the same tool agents use, never by the editor itself.
   ipcMain.handle("readPage", (_e, rel: string) => readPageVia(tesselaBin(), needBundle(), rel));

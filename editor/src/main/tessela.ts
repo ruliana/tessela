@@ -7,10 +7,13 @@ import path from "node:path";
 import type { PageFile, QueryArgs, WriteResult } from "../shared/api";
 
 /** The version of the `tessela` edit commands this editor was written for. */
-export const TESSELA_API = 1;
+export const TESSELA_API = 2;
+
+/** What every call says about itself: JSON answers, written for this version of the contract. */
+const CALL = ["--json", "--api", String(TESSELA_API)];
 
 export function queryArgv(bundle: string, q: QueryArgs): string[] {
-  const argv = ["query", bundle, "--json"];
+  const argv = ["query", bundle, ...CALL];
   for (const r of q.refs ?? []) argv.push("--ref", r);
   if (q.any) argv.push("--any");
   if (q.own) argv.push("--own");
@@ -24,30 +27,41 @@ export function queryArgv(bundle: string, q: QueryArgs): string[] {
 }
 
 export function vocabArgv(bundle: string): string[] {
-  return ["vocab", bundle, "--json"];
+  return ["vocab", bundle, ...CALL];
 }
 
 export function lintArgv(bundle: string): string[] {
-  return ["lint", bundle, "--json"];
+  return ["lint", bundle, ...CALL];
 }
 
 /**
- * Runs a tool and parses its JSON output. `okCodes` are exit codes that still come with
- * valid output: `tessela lint` exits with 1 when it finds errors.
+ * Runs a read command (`query`, `vocab`, `lint`, ...) and returns the list it answers with, found
+ * under `key` of the `{"api", "ok", ...}` envelope. `okCodes` are exit codes that still come with
+ * a valid answer: `tessela lint` exits with 1 when it finds errors.
  */
-export function runJson<T>(bin: string, argv: string[], okCodes: number[] = []): Promise<T> {
+export function runJson<T>(bin: string, argv: string[], key: string, okCodes: number[] = []): Promise<T> {
   return new Promise((resolve, reject) => {
     execFile(bin, argv, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
+      let answer: { ok?: boolean; error?: { message?: string }; [key: string]: unknown } | undefined;
+      try {
+        answer = JSON.parse(stdout);
+      } catch {
+        // Reported below.
+      }
+      if (answer?.ok === false) {
+        reject(new Error(`${bin} ${argv[0]} failed: ${answer.error?.message ?? "no reason given"}`));
+        return;
+      }
       const code = typeof error?.code === "number" ? error.code : undefined;
       if (error && !(code !== undefined && okCodes.includes(code))) {
         reject(new Error(`${bin} ${argv[0]} failed: ${stderr.trim() || error.message}`));
         return;
       }
-      try {
-        resolve(JSON.parse(stdout) as T);
-      } catch {
-        reject(new Error(`${bin} ${argv[0]} did not print JSON`));
+      if (!answer || !(key in answer)) {
+        reject(new Error(`${bin} ${argv[0]} did not print the expected JSON`));
+        return;
       }
+      resolve(answer[key] as T);
     });
   });
 }

@@ -74,7 +74,9 @@ journal days in the range and anything, on any page, whose text contains a date
 in the range.
 Every hit has a `handle` that stays the same until the text changes, plus its
 page, line, heading path, refs and parent handle. Text output is for people;
-`--json` is for agents and the editor.
+`--json` is for agents and the editor: the answer is
+`{"api": 2, "ok": true, "hits": [...], "total": N}` (`vocab` answers with `concepts`,
+`lint` with `diagnostics`), and `--api 2` makes the tool refuse when it speaks another version.
 
 ### Vocabulary
 
@@ -109,7 +111,7 @@ since, so nothing is overwritten blindly. Writes are atomic. `--patch` takes a u
 diff that must apply exactly, for fine-grained changes. `rename` and `move` rewrite
 the tags and links that name the page in every page, and keep the moved page's own
 relative links pointing where they did. With `--json` every answer, errors included,
-is `{"api": 1, "ok": true|false, ...}`; `--api 1` makes the tool refuse when it speaks
+is `{"api": 2, "ok": true|false, ...}`; `--api 2` makes the tool refuse when it speaks
 another version. The files stay the source of truth: every call reads the disk, so
 edits made with vim or git are seen. Spec §9 has the rules.
 

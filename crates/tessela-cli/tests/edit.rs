@@ -16,7 +16,7 @@ fn bundle(name: &str) -> PathBuf {
 fn run(dir: &Path, args: &[&str], stdin: &str) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_tessela"))
         .args(args)
-        .args(["--bundle", dir.to_str().unwrap(), "--json", "--api", "1"])
+        .args(["--bundle", dir.to_str().unwrap(), "--json", "--api", "2"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -41,7 +41,7 @@ fn read_save_and_the_conflict_that_follows() {
     let dir = bundle("save");
     let out = run(&dir, &["read", "notes/idea.md"], "");
     let page = json(&out);
-    assert_eq!(page["api"], 1);
+    assert_eq!(page["api"], 2);
     assert_eq!(page["exists"], false);
     assert!(page["hash"].is_null());
 
@@ -103,7 +103,7 @@ fn a_caller_for_another_api_version_is_refused() {
             "a.md",
             "--json",
             "--api",
-            "2",
+            "1",
             "--bundle",
             dir.to_str().unwrap(),
         ])
@@ -116,7 +116,7 @@ fn a_caller_for_another_api_version_is_refused() {
         .args(["api", "--json"])
         .output()
         .unwrap();
-    assert_eq!(json(&out)["api"], 1);
+    assert_eq!(json(&out)["api"], 2);
 }
 
 #[test]

@@ -1,3 +1,5 @@
+mod fence;
+
 use std::fmt::Arguments;
 use std::io::{self, ErrorKind, Read as _, Write};
 use std::path::{Path, PathBuf};
@@ -44,9 +46,12 @@ struct Common {
     /// The bundle folder
     #[arg(default_value = ".")]
     path: PathBuf,
-    /// Print JSON instead of text
+    /// Print JSON instead of text; errors are JSON too
     #[arg(long)]
     json: bool,
+    /// The API version the caller was written for; the command fails when it differs
+    #[arg(long)]
+    api: Option<u32>,
 }
 
 /// What every command that reads or changes pages takes.
@@ -221,6 +226,14 @@ enum Command {
         #[arg(long)]
         expect: String,
     },
+    /// Run the body of a ```tessela fence (a live list): a read-only command, then filters
+    Fence {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// Read the fence from this file instead of stdin
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
     /// List the concepts that exist: tags, links and pages
     Vocab {
         #[command(flatten)]
@@ -354,6 +367,13 @@ fn main() -> ExitCode {
             let to = edit::move_target(&from, &dest)?;
             moved(store, &from, &to, expect.as_deref(), dry_run)
         }),
+        Command::Fence { edit, file } => run_edit(&edit, |_| {
+            let input = read_input(file.as_deref())?;
+            let bundle = Bundle::load(&edit.bundle)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
+            let out = fence::run(&bundle, &input)?;
+            Ok(Done::new(&out, |o| o.text(), true))
+        }),
         Command::Remove { edit, page, expect } => run_edit(&edit, |store| {
             let path = edit::existing_path(&page)?;
             let removed = edit::remove_page(store, &path, &expect)?;
@@ -382,13 +402,8 @@ struct Done {
 
 impl Done {
     fn new<T: Serialize>(value: &T, text: impl Fn(&T) -> String, raw: bool) -> Done {
-        let mut json = serde_json::to_value(value).expect("output serializes");
-        if let Some(map) = json.as_object_mut() {
-            map.insert("api".into(), API_VERSION.into());
-            map.insert("ok".into(), true.into());
-        }
         Done {
-            json,
+            json: envelope(serde_json::to_value(value).expect("output serializes")),
             text: text(value),
             raw,
         }
@@ -415,16 +430,33 @@ fn run_edit(
             outln!("{}", done.text);
             ExitCode::SUCCESS
         }
-        Err(e) => {
-            if args.json {
-                print_json(&serde_json::json!({ "api": API_VERSION, "ok": false, "error": e }));
-            } else {
-                eprintln!("tessela: {e}");
-            }
-            // 1 is for findings (lint), 2 for failures, 3 for a change that lost a race.
-            ExitCode::from(if e.code == ErrorCode::Conflict { 3 } else { 2 })
-        }
+        Err(e) => fail(args.json, &e),
     }
+}
+
+/// Reports a failed command: JSON when the caller asked for it, a line on stderr otherwise.
+/// 1 is for findings (lint), 2 for failures, 3 for a change that lost a race.
+fn fail(json: bool, e: &EditError) -> ExitCode {
+    if json {
+        print_json(&serde_json::json!({ "api": API_VERSION, "ok": false, "error": e }));
+    } else {
+        eprintln!("tessela: {e}");
+    }
+    ExitCode::from(if e.code == ErrorCode::Conflict { 3 } else { 2 })
+}
+
+/// Every `--json` answer carries `api` and `ok`. An object keeps its fields; a list goes
+/// under the name the caller reads it by.
+fn envelope(mut json: serde_json::Value) -> serde_json::Value {
+    if let Some(map) = json.as_object_mut() {
+        map.insert("api".into(), API_VERSION.into());
+        map.insert("ok".into(), true.into());
+    }
+    json
+}
+
+fn print_ok(json: serde_json::Value) {
+    print_json(&envelope(json));
 }
 
 fn moved(
@@ -490,10 +522,18 @@ fn api(json: bool) -> ExitCode {
 }
 
 fn load(common: &Common) -> Result<Bundle, ExitCode> {
-    Bundle::load(&common.path).map_err(|e| {
-        eprintln!("tessela: {e}");
-        ExitCode::from(2)
-    })
+    edit::check_api(common.api)
+        .and_then(|()| {
+            Bundle::load(&common.path).map_err(|e| {
+                let code = if e.kind() == ErrorKind::NotFound {
+                    ErrorCode::NotFound
+                } else {
+                    ErrorCode::Io
+                };
+                EditError::new(code, e.to_string())
+            })
+        })
+        .map_err(|e| fail(common.json, &e))
 }
 
 fn print_json<T: Serialize>(value: &T) {
@@ -526,7 +566,7 @@ fn lint(common: Common, strict: bool, min_severity: &str) -> ExitCode {
     );
 
     if common.json {
-        print_json(&diagnostics);
+        print_ok(serde_json::json!({ "diagnostics": diagnostics }));
     } else {
         for d in &diagnostics {
             let line = d.line.map_or(String::new(), |l| format!(":{l}"));
@@ -561,7 +601,7 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
     hits.truncate(limit.unwrap_or(usize::MAX));
 
     if common.json {
-        print_json(&hits);
+        print_ok(serde_json::json!({ "total": total, "hits": hits }));
     } else {
         for hit in &hits {
             let label = match hit.kind {
@@ -601,7 +641,7 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
             }
         };
         if common.json {
-            print_json(&report);
+            print_ok(serde_json::to_value(&report).expect("output serializes"));
         } else {
             for path in &report.written {
                 outln!("wrote {path}");
@@ -618,7 +658,7 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
         index::listing(&bundle, dir)
     };
     if common.json {
-        print_json(&listing);
+        print_ok(serde_json::to_value(&listing).expect("output serializes"));
     } else {
         let name = bundle
             .root
@@ -645,7 +685,7 @@ fn vocab(common: Common, unwritten: bool, min_count: usize, prefix: Option<Strin
         .collect();
 
     if common.json {
-        print_json(&entries);
+        print_ok(serde_json::json!({ "concepts": entries }));
     } else {
         let width = entries.iter().map(|e| e.concept.len()).max().unwrap_or(0);
         for e in &entries {
@@ -689,7 +729,7 @@ fn import_logseq(graph: &Path, out: &Path, json: bool) -> ExitCode {
         }
     };
     if json {
-        print_json(&report);
+        print_ok(serde_json::to_value(&report).expect("output serializes"));
         return ExitCode::SUCCESS;
     }
     outln!(
