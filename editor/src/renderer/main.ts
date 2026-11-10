@@ -29,6 +29,8 @@ import { createCard, type Card } from "./card";
 import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
+import { describeMods } from "../shared/mods";
+import { modExtensions, modsInfo, loadMods, registry } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -714,8 +716,22 @@ window.addEventListener(
 
 const IS_MAC = navigator.userAgent.includes("Mac");
 
-/** The commands of the palette. Each also has its own button or keys. */
+/** The commands of the palette: the built-in ones, then the mods'. Each built-in one also has its own button or keys. */
 function commandList(): Command[] {
+  return registry.commands(builtinCommands(), (c) => ({
+    id: c.id,
+    label: c.label,
+    ...(c.hint ? { hint: c.hint } : {}),
+    run: () => registry.run(c, { view: active?.view() }),
+  }));
+}
+
+function showMods(): void {
+  const info = modsInfo;
+  showNotice(describeMods(registry.loaded, registry.failures, info?.folder ?? "the config folder", info?.disabled ?? false));
+}
+
+function builtinCommands(): Command[] {
   const key = IS_MAC ? "⌘" : "Ctrl";
   return [
     { id: "today", label: "Go to today", run: () => void showJournals(true) },
@@ -730,6 +746,7 @@ function commandList(): Command[] {
     { id: "theme", label: `Theme: ${label(theme)}, change`, run: cycleTheme },
     { id: "text", label: `Text: ${label(textFace)}, change`, run: toggleText },
     { id: "problems", label: problemsOpen ? "Hide the problems" : "Show the problems", run: toggleProblems },
+    { id: "mods", label: "Show the mods", run: showMods },
   ];
 }
 
@@ -803,6 +820,7 @@ function cardDeps() {
     onOpenExternal: (url: string) => void api.openExternal(url),
     livePreview: () => livePreview,
     onTogglePreview: togglePreview,
+    extensions: modExtensions,
   };
 }
 
@@ -968,4 +986,11 @@ function hitPlace(hit: Hit): string {
   return trail.join(" › ");
 }
 
-start().catch((e) => welcome(String(e)));
+// A command of a mod that fails is said so; the rest of the window goes on.
+registry.onFailure = (f) => {
+  if (document.getElementById("notice")) showNotice(`The mod ${f.mod} failed: ${f.message}`);
+};
+
+loadMods()
+  .then(start)
+  .catch((e) => welcome(String(e)));

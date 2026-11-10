@@ -6,6 +6,9 @@ import type { Api, VocabEntry } from "../shared/api";
 import { formatDate } from "../shared/dates";
 import type { LinkPage } from "../shared/linkFlows";
 import { pageId } from "../shared/pages";
+import type { Extension } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+
 import { el } from "./dom";
 import { createEditor, type EditorHandle } from "./editor";
 
@@ -31,11 +34,15 @@ export interface CardDeps {
   /** Whether Markdown is shown rendered outside the block being edited. */
   livePreview: () => boolean;
   onTogglePreview: () => void;
+  /** Extensions mods add to the editor. */
+  extensions?: () => Extension[];
 }
 
 export interface Card {
   readonly root: HTMLElement;
   readonly path: string;
+  /** The CodeMirror view of the page. */
+  view(): EditorView;
   load(): Promise<void>;
   flush(): Promise<void>;
   /** Tells the card that these pages changed on disk. */
@@ -113,6 +120,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     pageName: () => pageId(path).split("/").pop() ?? "",
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
+    ...(deps.extensions ? { extensions: deps.extensions } : {}),
   });
 
   function setStatus(state: "saved" | "dirty" | "conflict", text: string): void {
@@ -207,6 +215,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
       if (line !== undefined) editor.setText(editor.text(), line);
       editor.focus();
     },
+    view: () => editor.view,
     refresh: () => editor.refresh(),
     statusInfo: () => ({ state: (status.dataset.state as "saved" | "dirty" | "conflict") ?? "saved", text: status.textContent ?? "" }),
     words: () => {

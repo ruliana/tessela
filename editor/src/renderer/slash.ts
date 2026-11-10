@@ -4,6 +4,7 @@ import { type Completion, type CompletionContext, type CompletionResult, startCo
 import type { EditorView } from "@codemirror/view";
 
 import { matchSlash, slashItems } from "../shared/slash";
+import { registry } from "./mods";
 
 export function slashSource(context: CompletionContext): CompletionResult | null {
   const typed = context.matchBefore(/(?:^|\s)\/[\p{L} -]*/u);
@@ -11,7 +12,7 @@ export function slashSource(context: CompletionContext): CompletionResult | null
   const slash = typed.from + typed.text.indexOf("/");
   const line = context.state.doc.lineAt(slash);
   const atLineStart = /^\s*(?:[-*+]\s+|\d+[.)]\s+)*$/.test(line.text.slice(0, slash - line.from));
-  const items = matchSlash(slashItems(new Date()), typed.text.slice(typed.text.indexOf("/") + 1), atLineStart);
+  const items = matchSlash([...slashItems(new Date()), ...registry.slashItems()], typed.text.slice(typed.text.indexOf("/") + 1), atLineStart);
   if (items.length === 0) return null;
   const options: Completion[] = items.map((item) => ({
     label: item.label,
