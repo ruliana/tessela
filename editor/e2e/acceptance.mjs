@@ -21,6 +21,7 @@ import "./acceptance/dates.mjs";
 import "./acceptance/home.mjs";
 import "./acceptance/links.mjs";
 import "./acceptance/mods.mjs";
+import "./acceptance/skillmods.mjs";
 import "./acceptance/pages.mjs";
 import "./acceptance/peek.mjs";
 import "./acceptance/attach.mjs";

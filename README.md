@@ -19,6 +19,8 @@ scenes.
 - [Conventions](docs/conventions.md): what Tessela adds on top of OKF.
 - [Agent skill](skills/tessela/SKILL.md): how an agent should work in a bundle, and which
   changes go through the `tessela` CLI.
+- [Mod-writing skill](skills/tessela-mods/SKILL.md): how to write a mod for the editor, every `ctx` hook
+  and complete examples; it is also the `AGENTS.md` of the config folder.
 
 ## Tools
 
@@ -185,7 +187,8 @@ again (`xvfb-run -a npm run screenshots` on a server).
 The editor can be extended with mods: a folder `mods/NAME/` with a `main.js` in the config folder
 (`$TESSELA_CONFIG`, else the app's data folder, `~/.config/Tessela` on Linux). Mods are trusted
 code (your own or audited) and load before the first page opens; `--no-mods` starts without them,
-and one that throws is skipped and listed under "Show the mods" in the palette (Ctrl+K).
+and one that throws is skipped and listed under "Show the mods" in the palette (Ctrl+K). The whole
+API is in the [mod-writing skill](skills/tessela-mods/SKILL.md).
 
 ```js
 // mods/stamp/main.js
