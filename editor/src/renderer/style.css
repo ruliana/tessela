@@ -537,3 +537,12 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .prop-error { color: #c0392b; font-size: 12px; }
 .prop-error:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { .prop-add-tag, .prop-edit-when { transition: none; } }
+/* The new-page mod: the name, then the types to choose from. */
+.newpage-body { display: flex; flex-direction: column; gap: 8px; }
+.newpage-body small, .newpage-label { color: var(--muted); }
+.newpage-types { display: flex; flex-direction: column; gap: 2px; max-height: 30vh; overflow-y: auto; }
+.newpage-type { display: flex; align-items: baseline; gap: 10px; width: 100%; background: none; border: 0; border-radius: 4px; padding: 4px 8px; text-align: left; cursor: pointer; color: var(--text); font: inherit; }
+.newpage-type:hover { background: var(--accent-soft); }
+.newpage-type[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.newpage-name { flex: none; font-weight: 500; }
+.newpage-description { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
