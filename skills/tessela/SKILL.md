@@ -18,6 +18,7 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included) |
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
 | Check your work | `tessela lint . [--strict] [--json]` |
+| Run a live list (the body of a ```` ```tessela ```` fence) | `tessela fence -b . --json < body.txt`: one read-only command (`query`, `index`, `vocab`, `lint`), then built-in filters (`rg`, `sed`, `sort`, `uniq`, `head`, `wc`); never a shell |
 | Import a Logseq graph into a new bundle | `tessela import-logseq GRAPH OUT` |
 | Add, edit, rename, move or remove a page | the edit commands, next section |
 
