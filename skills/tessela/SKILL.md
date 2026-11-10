@@ -9,7 +9,7 @@ A Tessela bundle is a plain [OKF](https://okf.md/) folder of Markdown files, syn
 
 ## The rule of thumb: tools first, files last
 
-Use the `tessela` CLI for everything it can do. Pass `--json` when you will parse the output. The bundle is the folder you were pointed at (the CLI takes it as a path argument, default `.`).
+Use the `tessela` CLI for everything it can do, changes included. Pass `--json` when you will parse the output. The bundle is the folder you were pointed at (the read-only commands take it as a path argument, default `.`; the edit commands take `--bundle DIR`, default `.`).
 
 | You want to | Run |
 | --- | --- |
@@ -19,6 +19,7 @@ Use the `tessela` CLI for everything it can do. Pass `--json` when you will pars
 | Pick an existing tag or concept instead of inventing one | `tessela vocab . [--unwritten] [--prefix project/]` |
 | Check your work | `tessela lint . [--strict] [--json]` |
 | Import a Logseq graph into a new bundle | `tessela import-logseq GRAPH OUT` |
+| Add, edit, rename, move or remove a page | the edit commands, next section |
 
 Search with `tessela query` before you reach for `rg` or `grep`: each hit is a block with its file, line, handle and heading, and filters combine with AND. Use `--limit N` to cut the output; piping into `head` also works.
 
@@ -29,41 +30,38 @@ What `tessela query` does not do, so `rg` over the Markdown files is the fallbac
 - `--type` returns blocks, so a page with no body text is missing. `tessela index . --dir FOLDER --recursive --json` lists every page below a folder, with its title and type.
 - `--ref NAME` takes a page id, a title or an alias from a page's frontmatter `aliases`. An alias finds the page's backlinks plus the blocks that use the alias itself, but the page id does not find blocks that use an alias, and an alias that several pages share finds all of them. It also matches concepts nested under it (`--ref project` finds `project/tessela`). `--own` drops blocks that only inherit it from a parent item or heading.
 
-## Structural changes: the CLI does not have them yet
+## Changing pages: always through the CLI
 
-The intent is that adding, modifying, removing and renaming pages all go through one CLI, shared by agents and the editor, so every writer follows the same safety rules. **That is not built.** Today `tessela` only has `lint`, `query`, `index`, `vocab` and `import-logseq`; there is no command to create, edit, move or delete a page. The editor writes files itself.
+Adding, editing, renaming, moving and deleting pages all go through the `tessela` edit commands. They are the same door the editor uses, so every writer follows the same safety rules: no overwriting a change you have not seen, atomic writes, and renames that keep links and tags working. **Do not edit the Markdown files directly** (no `sed -i`, no redirecting into a page, no `mv`/`rm` on pages) unless the CLI is missing (see the end of this section).
 
-So, until those commands exist:
+All of them take `--bundle DIR` (default `.`) and the page as a path relative to the bundle, with or without `.md`. Add `--json` and `--api 1` when you parse the output: the answer is `{"api": 1, "ok": true, ...}` or `{"ok": false, "error": {"code", "message"}}`, and `--api 1` makes the tool refuse if it speaks another version. Run `tessela api` if unsure.
 
-- Do not invent a `tessela add/edit/rename/rm` command, and do not look for one. If one shows up in `tessela --help`, prefer it over everything below.
-- Make the change directly in the Markdown files, and follow the writing rules (§9) so you behave like the future CLI would:
-  1. **Read the page right before you change it.** Others (the editor, git, other agents) may have touched it.
-  2. **Change only what you target.** Leave every other byte of the file alone, including frontmatter keys you do not know (§2). Do not reformat, re-wrap or reorder.
-  3. **Write atomically:** write a temporary file in the same folder, then rename it over the page. Never leave a half-written page.
-  4. **Do not overwrite blindly.** If the file changed since you read it, read it again and redo the edit.
-  5. **Run `tessela lint .` afterwards** and fix every error and warning you caused.
-- Tell the user, once, when you do this, that the structural change was made by hand because the CLI has no command for it.
+| You want to | Run |
+| --- | --- |
+| Read a page and get its hash | `tessela read -b . PAGE --json` (`hash`, `text`; `exists: false` and a template for a new page) |
+| Create a page | `tessela add -b . "Machine Learning" [--title T] [--type howto]` (add `--stdin` to send the whole text) |
+| Replace a page | `tessela save -b . PAGE --expect HASH < new-text.md` (`--expect new` when it must not exist yet) |
+| Change a few lines | `tessela save -b . PAGE --expect HASH --patch < changes.diff` (a unified diff, from `diff -u old new` or `git diff`; it must apply exactly) |
+| Rename (same folder) | `tessela rename -b . PAGE NEW-NAME [--dry-run]` |
+| Move to another folder or path | `tessela move -b . PAGE folder/ [--dry-run]` or `... PAGE new/path` |
+| Delete | `tessela remove -b . PAGE --expect HASH` |
+
+### The workflow for every change
+
+1. **Read right before you change**: `tessela read ... --json` gives the `hash` of what is on disk. Others (the editor, git, other agents) may have touched the page, so never reuse an old hash.
+2. **Send the change with that hash** (`--expect HASH`). Change only what you were asked to; keep every other byte, including frontmatter keys you do not know (§2). Do not reformat, re-wrap or reorder.
+3. **On a `conflict` error (exit code 3)**, the page changed since you read it. Read it again (the error also carries `disk_hash`), redo your edit on the new text, and save again. Never retry with a made-up hash and do not delete-and-add to get around it.
+4. **Run `tessela lint .`** afterwards and fix every error and warning you caused.
+
+For a whole-page edit, write the new text to a temporary file and send it with `< file`. For a fine-grained edit, copy the page text to a temporary file, edit the copy, and make the patch with `diff -u`; the patch then applies exactly to the text you read. If `save --patch` says the patch does not apply, read the page again and rebuild the patch.
 
 ### Add a page
 
-1. Choose the name and check it is new: `tessela vocab . --prefix ...` and `tessela query . --page the/path`.
-2. The file name is the name lowercased with whitespace runs turned into `-`; a `/` in a tag or name means a folder (§4). `Machine Learning` becomes `machine-learning.md`, `#project/tessela` becomes `project/tessela.md`. No part may start with `.`. Do not name a page `index`, `log` or `home` (reserved).
-3. Start from this, with the original spelling in `title`:
-
-   ```markdown
-   ---
-   type: concept
-   title: "Machine Learning"
-   ---
-
-   ```
-
-   Other OKF types (`howto`, `reference`, `decision`, ...) are fine when they fit. `type` is required.
-4. End the file with a single newline, LF line endings, UTF-8.
+`tessela add -b . "Machine Learning"` picks the file name for you: the name lowercased with whitespace runs turned into `-`, and a `/` means a folder (§4). `Machine Learning` becomes `machine-learning.md`, `#project/tessela` becomes `project/tessela.md`. It fails with `exists` when the page is there, and refuses `index` and `log` (reserved). The new page starts with `type: concept` and a `title` that keeps your spelling; pass `--type` for another OKF type (`howto`, `reference`, `decision`, ...). First check the name is new with `tessela vocab . --prefix ...` and `tessela query . --page the/path`. To create it with its text in one step: `tessela add -b . NAME --stdin < page.md`. Add the content afterwards by reading the page and saving with its hash.
 
 ### Journal entries
 
-One file per day at `journals/YYYY-MM-DD.md` with `type: journal`, and `title` and `date` both set to the day, quoted (§6). Create the file only when you have something to write in it. Append new blocks at the end; do not rewrite the day.
+One file per day at `journals/YYYY-MM-DD.md` with `type: journal`, and `title` and `date` both set to the day, quoted (§6). `tessela add -b . journals/2026-11-04` makes exactly that. Create the file only when you have something to write in it. Append new blocks at the end; do not rewrite the day.
 
 ### Modify a page
 
@@ -71,15 +69,19 @@ Edit the block or frontmatter key you were asked to, nothing else. Datetimes are
 
 ### Remove a page
 
-Deleting a page can leave links to it. Before removing it, run `tessela query . --ref NAME` and tell the user what still points at it. Links to a missing page are allowed (they read as "mentioned, not written yet", §4), but do not delete a page someone has not asked you to delete. Git is the undo, so make sure the user can see the removal in the diff rather than hiding it in a bigger change.
+`tessela remove` says in `mentioned_by` which pages still mention the removed one. Links to a missing page are allowed (they read as "mentioned, not written yet", §4), but tell the user what is left pointing at it, and do not delete a page someone has not asked you to delete. Git is the undo, so make sure the user can see the removal in the diff rather than hiding it in a bigger change.
 
 ### Rename or move a page
 
-There is no safe automatic way yet: a rename must also rewrite every link and every tag that mentions the old name. Do it as: find all references with `tessela query . --ref OLD --json` (also grep for the old path in links), move the file, fix each reference, then run `tessela lint .` and `tessela query . --ref OLD` to confirm nothing is left. If this touches many pages, ask the user before starting.
+`rename` and `move` rewrite every tag and link that names the page, in every page, and keep the moved page's own relative links working. Run it with `--dry-run` first to see which pages change; it needs no hash unless you pass `--expect`. If the dry run touches many pages, ask the user before running it for real. Afterwards run `tessela lint .`. The `warnings` in the answer list links it could not rewrite (written with escapes); fix those by hand with `read` and `save`. Folders and tags nested below the page (`#old/child`) are separate pages and do not move.
+
+### If the CLI has no edit commands
+
+An older `tessela` (no `read`/`save` in `tessela --help`, or an `api-mismatch` error) cannot do the above. Say so to the user once, update it if you can, and only if you cannot, edit the Markdown by hand, following the same rules: read the page right before you change it, change only what you target, write a temporary file in the same folder and rename it over the page, do not overwrite a file that changed since you read it, and run `tessela lint .` afterwards.
 
 ## Rules that are easy to break
 
-- **No generated files.** Never write `index.md` or `log.md` yourself or with `tessela index --write`, and never keep a hand-made table of contents that a query could produce. Listings are computed: use `tessela index`. A hand-written `index.md`/`log.md` that already exists stays as it is (§1).
+- **No generated files.** Never write `index.md` or `log.md` yourself or with `tessela index --write` (`tessela add` refuses those names too), and never keep a hand-made table of contents that a query could produce. Listings are computed: use `tessela index`. A hand-written `index.md`/`log.md` that already exists stays as it is (§1).
 - **`home.md` is hand-written, optional, per folder, `type: home`.** It is where reading starts for that folder: house rules, the important pages, links to deeper `home.md` files and to `AGENTS.md`. Nothing is inherited from the home pages above it. Open the one for the folder you work in on purpose, and follow its guidance. Only edit a `home.md` when asked. A link from a home page means "this page matters" (§1, §5).
 - **`#` headings only.** No setext headings (a line of `---` or `===` under text). A heading also scopes the tags in it to every block below it (§3), so do not put a tag in a heading casually.
 - **Links** are bundle-relative Markdown links: `[Machine learning](/machine-learning.md)`. No `[[wikilinks]]`. A link to a page that does not exist is fine.

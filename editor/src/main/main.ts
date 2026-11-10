@@ -6,8 +6,8 @@ import { pathToFileURL } from "node:url";
 
 import type { Diagnostic, Hit, OpenFileResult, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
-import { listPages, readPage, relativeInside, resolveImage, resolveInside, watchBundle, writePage } from "./files";
-import { findTessela, lintArgv, queryArgv, runJson, vocabArgv } from "./tessela";
+import { listPages, relativeInside, resolveImage, resolveInside, watchBundle } from "./files";
+import { addPageVia, findTessela, lintArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv } from "./tessela";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
 // userData is pinned first: the name feeds its default, and the saved bundle lives there.
@@ -117,9 +117,13 @@ function registerIpc(): void {
   ipcMain.handle("lint", () =>
     runJson<Diagnostic[]>(tesselaBin(), lintArgv(needBundle()), [1]),
   );
-  ipcMain.handle("readPage", (_e, rel: string) => readPage(needBundle(), rel));
+  // Pages are read and written by the same tool agents use, never by the editor itself.
+  ipcMain.handle("readPage", (_e, rel: string) => readPageVia(tesselaBin(), needBundle(), rel));
   ipcMain.handle("writePage", (_e, rel: string, text: string, expected: string | null) =>
-    writePage(needBundle(), rel, text, expected),
+    savePageVia(tesselaBin(), needBundle(), rel, text, expected),
+  );
+  ipcMain.handle("addPage", (_e, rel: string, title?: string) =>
+    addPageVia(tesselaBin(), needBundle(), rel, title),
   );
   ipcMain.handle("openExternal", async (_event, url: unknown) => {
     // Only addresses meant for another program: never a file or a custom scheme.

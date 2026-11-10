@@ -1,4 +1,4 @@
-// Page paths, IDs and the text of a page that does not exist yet.
+// Page paths and IDs. The text of a new page is made by `tessela add`.
 
 export function pageId(path: string): string {
   return path.replace(/\.md$/i, "");
@@ -45,20 +45,6 @@ export function newPagePath(input: string): string | null {
   if (path === ".md") return null;
   if (path.split("/").some((part) => part.startsWith("."))) return null;
   return path;
-}
-
-function yamlString(s: string): string {
-  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-/** The text a new page starts with: frontmatter that already passes `tessela lint`. */
-export function newPageText(path: string, title?: string): string {
-  if (isJournalPath(path)) {
-    const day = pageId(path).slice("journals/".length);
-    return `---\ntype: journal\ntitle: ${yamlString(day)}\ndate: ${yamlString(day)}\n---\n\n`;
-  }
-  const name = title ?? pageId(path).split("/").pop()?.replace(/-/g, " ") ?? "Untitled";
-  return `---\ntype: concept\ntitle: ${yamlString(name)}\n---\n\n`;
 }
 
 /** Newest day first. Days are `YYYY-MM-DD`, so plain string order is date order. */

@@ -1,10 +1,11 @@
 use std::fmt::Arguments;
-use std::io::{self, ErrorKind, Write};
+use std::io::{self, ErrorKind, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
+use tessela_core::edit::{self, API_VERSION, EditError, ErrorCode, Expect, FsStore, PageStore};
 use tessela_core::{Bundle, HitKind, Linter, Query, Severity, index, logseq, vocabulary};
 
 /// `print!` that ends the run quietly when the reader has closed the pipe (`| head`).
@@ -46,6 +47,20 @@ struct Common {
     /// Print JSON instead of text
     #[arg(long)]
     json: bool,
+}
+
+/// What every command that reads or changes pages takes.
+#[derive(Args)]
+struct EditArgs {
+    /// The bundle folder
+    #[arg(long, short = 'b', default_value = ".")]
+    bundle: PathBuf,
+    /// Print JSON instead of text; errors are JSON too
+    #[arg(long)]
+    json: bool,
+    /// The API version the caller was written for; the command fails when it differs
+    #[arg(long)]
+    api: Option<u32>,
 }
 
 #[derive(Subcommand)]
@@ -121,6 +136,91 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Print the API version of the edit commands (read, add, save, rename, move, remove)
+    Api {
+        /// Print JSON instead of text
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read a page: its text and the hash to base a change on
+    Read {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page, e.g. `project/tessela.md`
+        page: String,
+    },
+    /// Create a page from the template (or from the text on stdin)
+    Add {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page's name or path: `Machine Learning`, `project/tessela`
+        name: String,
+        /// The title, when it should not be the name
+        #[arg(long)]
+        title: Option<String>,
+        /// The frontmatter `type`, when it should not be `concept` (`journal` in journals/)
+        #[arg(long = "type")]
+        kind: Option<String>,
+        /// Read the whole page from stdin instead of using the template
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Replace a page, or change it with a unified diff, based on a hash from `read`
+    Save {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page, e.g. `project/tessela.md`
+        page: String,
+        /// The hash `read` gave, or `new` when the page must not exist yet
+        #[arg(long)]
+        expect: String,
+        /// The input is a unified diff of the page, not its new text
+        #[arg(long)]
+        patch: bool,
+        /// Read the input from this file instead of stdin
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
+    /// Give a page a new name, in the same folder; tags and links that name it follow
+    Rename {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page, e.g. `project/tessela.md`
+        page: String,
+        /// The new name, without folders
+        new_name: String,
+        /// Fail unless the page still has this hash
+        #[arg(long)]
+        expect: Option<String>,
+        /// Only report what would change
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Move a page to another folder (`dest/`) or path; tags and links that name it follow
+    Move {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page, e.g. `project/tessela.md`
+        page: String,
+        /// A folder ending in `/`, or the new path
+        dest: String,
+        /// Fail unless the page still has this hash
+        #[arg(long)]
+        expect: Option<String>,
+        /// Only report what would change
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Delete a page, based on a hash from `read`; says which pages still mention it
+    Remove {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page, e.g. `project/tessela.md`
+        page: String,
+        /// The hash `read` gave
+        #[arg(long)]
+        expect: String,
+    },
     /// List the concepts that exist: tags, links and pages
     Vocab {
         #[command(flatten)]
@@ -182,7 +282,211 @@ fn main() -> ExitCode {
             min_count,
             prefix,
         } => vocab(common, unwritten, min_count, prefix),
+        Command::Api { json } => api(json),
+        Command::Read { edit, page } => run_edit(&edit, |store| {
+            let path = edit::existing_path(&page)?;
+            let read = edit::read_page(store, &path)?;
+            Ok(Done::new(&read, |_| read.text.clone(), true))
+        }),
+        Command::Add {
+            edit,
+            name,
+            title,
+            kind,
+            stdin,
+        } => run_edit(&edit, |store| {
+            let path = edit::path_from_name(&name)?;
+            let text = if stdin { Some(read_input(None)?) } else { None };
+            let title = title.or_else(|| default_title(&name));
+            let saved = edit::add_page(
+                store,
+                &path,
+                title.as_deref(),
+                kind.as_deref(),
+                text.as_deref(),
+            )?;
+            Ok(Done::new(
+                &saved,
+                |s| format!("created {} ({})", s.path, s.hash),
+                false,
+            ))
+        }),
+        Command::Save {
+            edit,
+            page,
+            expect,
+            patch,
+            file,
+        } => run_edit(&edit, |store| {
+            let path = edit::existing_path(&page)?;
+            let input = read_input(file.as_deref())?;
+            let expect = Expect::parse(&expect);
+            let saved = if patch {
+                edit::patch_page(store, &path, &input, &expect)?
+            } else {
+                edit::save_page(store, &path, &input, &expect)?
+            };
+            Ok(Done::new(
+                &saved,
+                |s| format!("saved {} ({})", s.path, s.hash),
+                false,
+            ))
+        }),
+        Command::Rename {
+            edit,
+            page,
+            new_name,
+            expect,
+            dry_run,
+        } => run_edit(&edit, |store| {
+            let from = edit::existing_path(&page)?;
+            let to = edit::rename_target(&from, &new_name)?;
+            moved(store, &from, &to, expect.as_deref(), dry_run)
+        }),
+        Command::Move {
+            edit,
+            page,
+            dest,
+            expect,
+            dry_run,
+        } => run_edit(&edit, |store| {
+            let from = edit::existing_path(&page)?;
+            let to = edit::move_target(&from, &dest)?;
+            moved(store, &from, &to, expect.as_deref(), dry_run)
+        }),
+        Command::Remove { edit, page, expect } => run_edit(&edit, |store| {
+            let path = edit::existing_path(&page)?;
+            let removed = edit::remove_page(store, &path, &expect)?;
+            Ok(Done::new(
+                &removed,
+                |r| {
+                    let mut out = format!("removed {}", r.path);
+                    for p in &r.mentioned_by {
+                        out.push_str(&format!("\nstill mentioned by {p}"));
+                    }
+                    out
+                },
+                false,
+            ))
+        }),
     }
+}
+
+/// What a successful edit command prints: the data as JSON, or a line of text.
+struct Done {
+    json: serde_json::Value,
+    text: String,
+    /// The text is the page itself: print it as it is, with no added newline.
+    raw: bool,
+}
+
+impl Done {
+    fn new<T: Serialize>(value: &T, text: impl Fn(&T) -> String, raw: bool) -> Done {
+        let mut json = serde_json::to_value(value).expect("output serializes");
+        if let Some(map) = json.as_object_mut() {
+            map.insert("api".into(), API_VERSION.into());
+            map.insert("ok".into(), true.into());
+        }
+        Done {
+            json,
+            text: text(value),
+            raw,
+        }
+    }
+}
+
+fn run_edit(
+    args: &EditArgs,
+    op: impl FnOnce(&dyn PageStore) -> Result<Done, EditError>,
+) -> ExitCode {
+    let result = edit::check_api(args.api)
+        .and_then(|()| FsStore::new(&args.bundle))
+        .and_then(|store| op(&store));
+    match result {
+        Ok(done) if args.json => {
+            print_json(&done.json);
+            ExitCode::SUCCESS
+        }
+        Ok(done) if done.raw => {
+            out!("{}", done.text);
+            ExitCode::SUCCESS
+        }
+        Ok(done) => {
+            outln!("{}", done.text);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            if args.json {
+                print_json(&serde_json::json!({ "api": API_VERSION, "ok": false, "error": e }));
+            } else {
+                eprintln!("tessela: {e}");
+            }
+            // 1 is for findings (lint), 2 for failures, 3 for a change that lost a race.
+            ExitCode::from(if e.code == ErrorCode::Conflict { 3 } else { 2 })
+        }
+    }
+}
+
+fn moved(
+    store: &dyn PageStore,
+    from: &str,
+    to: &str,
+    expect: Option<&str>,
+    dry_run: bool,
+) -> Result<Done, EditError> {
+    let moved = edit::move_page(store, from, to, expect, dry_run)?;
+    Ok(Done::new(
+        &moved,
+        |m| {
+            let verb = if m.dry_run { "would move" } else { "moved" };
+            let mut out = format!("{verb} {} to {}", m.from, m.to);
+            for u in &m.updated {
+                out.push_str(&format!(
+                    "\n  {}: {} links, {} tags",
+                    u.path, u.links, u.tags
+                ));
+            }
+            for w in &m.warnings {
+                out.push_str(&format!("\n  check: {w}"));
+            }
+            out
+        },
+        false,
+    ))
+}
+
+fn default_title(name: &str) -> Option<String> {
+    let last = name.trim().trim_start_matches('#').rsplit('/').next()?;
+    let last = last.strip_suffix(".md").unwrap_or(last).trim();
+    // A plain lowercase name gets the title the template derives from the path.
+    (last != last.to_lowercase() || last.contains(char::is_whitespace)).then(|| last.to_string())
+}
+
+fn read_input(file: Option<&Path>) -> Result<String, EditError> {
+    let mut text = String::new();
+    let read = match file {
+        Some(f) => std::fs::read_to_string(f).map(|t| text = t),
+        None => std::io::stdin().read_to_string(&mut text).map(|_| ()),
+    };
+    read.map_err(|e| {
+        EditError::new(
+            ErrorCode::InvalidInput,
+            format!("cannot read the input: {e}"),
+        )
+    })?;
+    Ok(text)
+}
+
+fn api(json: bool) -> ExitCode {
+    if json {
+        print_json(&serde_json::json!({
+            "api": API_VERSION,
+            "version": env!("CARGO_PKG_VERSION"),
+        }));
+    } else {
+        outln!("{API_VERSION}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn load(common: &Common) -> Result<Bundle, ExitCode> {

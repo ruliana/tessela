@@ -22,7 +22,7 @@ import {
   type History,
   type Place,
 } from "../shared/nav";
-import { conceptPath, isJournalPath, journalDays, journalPath, newestFirst, newPagePath, newPageText, pageId } from "../shared/pages";
+import { conceptPath, isJournalPath, journalDays, journalPath, newestFirst, newPagePath, pageId } from "../shared/pages";
 import { summary, visibleProblems } from "../shared/problems";
 import { excerpt, searchable, textHits } from "../shared/search";
 import { createCard, type Card } from "./card";
@@ -670,8 +670,8 @@ async function createPage(): Promise<void> {
   }
   const title = name.trim().replace(/\.md$/i, "").split("/").pop()?.trim();
   try {
-    // A page that already exists is a conflict: the existing one is simply opened.
-    await api.writePage(path, newPageText(path, title), null);
+    // A page that already exists is simply opened.
+    await api.addPage(path, title);
   } catch (e) {
     newPageError.hidden = false;
     newPageError.textContent = `Could not create the page: ${e instanceof Error ? e.message : String(e)}`;

@@ -1,5 +1,7 @@
 //! References: the `#tags` and concept links that name a concept (spec §4).
 
+use std::ops::Range;
+
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
 /// Turns a concept name into its ID: lowercase, whitespace runs become `-`.
@@ -40,7 +42,7 @@ pub fn link_target_id(dest: &str, page_dir: &str) -> Option<String> {
     Some(normalize_concept(&parts.join("/")))
 }
 
-fn has_scheme(dest: &str) -> bool {
+pub(crate) fn has_scheme(dest: &str) -> bool {
     let Some((scheme, _)) = dest.split_once(':') else {
         return false;
     };
@@ -49,8 +51,10 @@ fn has_scheme(dest: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
 }
 
-/// Finds `#tags` in plain text. Tags are not found inside words, paths or URLs.
-fn scan_tags(text: &str, out: &mut Vec<String>) {
+/// Finds `#tags` in plain text: the byte range of each tag's name (just after the `#`)
+/// and the concept ID it names. Tags are not found inside words, paths or URLs.
+pub fn tag_spans(text: &str) -> Vec<(Range<usize>, String)> {
+    let mut found = Vec::new();
     let mut prev: Option<char> = None;
     for (i, c) in text.char_indices() {
         if c == '#'
@@ -64,10 +68,17 @@ fn scan_tags(text: &str, out: &mut Vec<String>) {
                 .map_or(rest.len(), |(j, _)| j);
             let tag = rest[..end].trim_end_matches(['-', '/']);
             if tag.chars().any(char::is_alphabetic) {
-                push_unique(out, normalize_concept(tag));
+                found.push((i + 1..i + 1 + tag.len(), normalize_concept(tag)));
             }
         }
         prev = Some(c);
+    }
+    found
+}
+
+fn scan_tags(text: &str, out: &mut Vec<String>) {
+    for (_, id) in tag_spans(text) {
+        push_unique(out, id);
     }
 }
 

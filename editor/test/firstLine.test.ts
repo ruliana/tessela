@@ -8,7 +8,6 @@ import { GFM } from "@lezer/markdown";
 import { describe, expect, it } from "vitest";
 
 import { noSetext } from "../src/shared/blocks";
-import { newPageText } from "../src/shared/pages";
 import { frontMatterGuard } from "../src/renderer/livePreview";
 
 /** The node names of the page's tree, the way the editor's language builds it (editor.ts). */
@@ -22,7 +21,8 @@ function nodes(text: string): string[] {
   return names;
 }
 
-const page = newPageText("foo.md", "Foo");
+// What `tessela add` writes for a new page.
+const page = '---\ntype: concept\ntitle: "Foo"\n---\n\n';
 
 describe("no setext headings", () => {
   it("text in front of the front matter is not a heading", () => {

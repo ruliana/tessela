@@ -7,7 +7,7 @@ import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
 import { canGoBack, canGoForward, emptyHistory, RECENT_DEFAULT, RECENT_MAX, recentCount, step, touch, visit, type Place } from "../src/shared/nav";
-import { conceptPath, isJournalPath, journalDays, journalDest, localDay, newPagePath, newPageText } from "../src/shared/pages";
+import { conceptPath, isJournalPath, journalDays, journalDest, localDay, newPagePath } from "../src/shared/pages";
 import { smartLink } from "../src/shared/smartLink";
 
 describe("smartLink", () => {
@@ -65,12 +65,6 @@ describe("pages", () => {
     expect(isJournalPath("project/journals/2026-10-27.md")).toBe(false);
     expect(localDay(new Date(2026, 0, 5))).toBe("2026-01-05");
     expect(journalDest("2026-10-27")).toBe("/journals/2026-10-27.md");
-  });
-
-  it("starts new pages with frontmatter that has a type", () => {
-    expect(newPageText("journals/2026-10-27.md")).toContain("type: journal");
-    expect(newPageText("journals/2026-10-27.md")).toContain('date: "2026-10-27"');
-    expect(newPageText("project/my-tessela.md")).toContain('title: "my tessela"');
   });
 });
 
