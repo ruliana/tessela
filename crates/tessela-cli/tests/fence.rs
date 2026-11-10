@@ -62,13 +62,13 @@ fn a_pipe_of_filters_over_a_query() {
     let dir = bundle("pipe");
     let out = fence(
         &dir,
-        &["--json", "--api", "1"],
+        &["--json", "--api", "2"],
         "query --ref rust --type journal | rg -v draft | sort -r | head 2\n",
     );
     let answer = json(&out);
     assert_eq!(
         (answer["api"].clone(), answer["ok"].clone()),
-        (1.into(), true.into())
+        (2.into(), true.into())
     );
     assert_eq!(answer["command"], "query");
     assert_eq!(

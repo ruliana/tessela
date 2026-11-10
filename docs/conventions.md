@@ -322,7 +322,8 @@ Every command takes `--api N` for the version the caller was written for.
   bundles read by tools that do not compute listings. Generated files carry a
   marker line; one that does not (a hand-written `index.md`) is kept unless
   `--force` is given.
-- `tessela read | add | save | rename | move | remove`: the edit commands (§9). They
+- `tessela read | add | save | rename | move | remove`: the edit commands (§9), with
+  `attach` below. They
   take the bundle with `--bundle DIR` (default `.`) and the page as a path relative to
   it, with or without `.md`. `add` and the targets of `rename` and `move` take a name
   the way a person writes it (`Machine Learning` becomes `machine-learning.md`, §4);
@@ -362,6 +363,15 @@ Every command takes `--api N` for the version the caller was written for.
   words are split like a shell's (`'...'`, `"..."`, `\`) but nothing is expanded, and a pipe
   may be broken over lines after a `|`. Anything else (`awk`, `sed -i`, `index --write`, a
   folder in the command) is refused with the `invalid-input` error.
+- `tessela attach PAGE`: stores a file in `assets/` for a page to link to. The bytes come
+  from stdin or `--file`, the kind from `--ext`, the file's name or the first bytes (png,
+  jpg, gif, webp, pdf, svg); `.md` is refused, since that would be a page. The file is named
+  after the page plus a short hash of its content (`assets/project-tessela-9f2c41d0a1b2.png`
+  for `project/tessela.md`), so the same file attached twice for the same page is one file.
+  The answer has `path`, `link` (what a page writes: `![description](/assets/...)`), `hash`,
+  `size` and `created`. It takes `--bundle`, `--json` and `--api` like the edit commands. The
+  page need not exist yet. `tessela lint` reports attachments no page mentions as
+  `tessela/unused-attachment` (informational).
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
