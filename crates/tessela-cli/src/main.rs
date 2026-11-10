@@ -100,6 +100,10 @@ struct QueryArgs {
     /// Only checkbox items (`- [ ]`, `- [x]`): `open`, `done` or `any`
     #[arg(long, value_enum)]
     task: Option<TaskArg>,
+    /// Blocks that write this concept's title, an alias or a vocabulary term as plain
+    /// words without linking it, with where, and the link that would fix it
+    #[arg(long, value_name = "CONCEPT")]
+    unlinked: Option<String>,
     /// Show at most this many blocks
     #[arg(long)]
     limit: Option<usize>,
@@ -134,6 +138,7 @@ impl QueryArgs {
             from: self.from.clone(),
             to: self.to.clone(),
             task: self.task.map(TaskArg::filter),
+            unlinked: self.unlinked.clone(),
         }
     }
 }
@@ -752,6 +757,10 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
             }
             for line in hit.text.lines() {
                 outln!("  {line}");
+            }
+            for m in &hit.mentions {
+                let column = m.column.map_or(String::new(), |c| format!(":{}", c + 1));
+                outln!("  unlinked: \"{}\" at {}{column}", m.text, m.line);
             }
         }
         if hits.len() < total {

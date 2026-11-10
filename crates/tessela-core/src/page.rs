@@ -141,6 +141,19 @@ impl Page {
             .collect()
     }
 
+    /// Frontmatter `aliases` as written: the other names to look for in text.
+    pub fn alias_names(&self) -> Vec<String> {
+        match self.get("aliases") {
+            Some(Value::Sequence(items)) => items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect(),
+            Some(Value::String(one)) => vec![one.clone()],
+            _ => Vec::new(),
+        }
+    }
+
     /// Frontmatter `tags`, normalized to concept IDs.
     pub fn frontmatter_tags(&self) -> Vec<String> {
         let Some(Value::Sequence(tags)) = self.get("tags") else {
