@@ -289,7 +289,7 @@ export function mapPos(result: Result, pos: Pos): Pos {
 }
 
 /** The lines a selection touches; a selection that ends at column 0 does not touch that line. */
-export function selectedLines(sel: Sel): [number, number] {
+function selectedLines(sel: Sel): [number, number] {
   const [a, b] = ordered(sel);
   const last = b.col === 0 && b.line > a.line ? b.line - 1 : b.line;
   return [a.line, last];

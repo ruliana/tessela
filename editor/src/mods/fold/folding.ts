@@ -54,7 +54,7 @@ function isReplacement(tr: Transaction): boolean {
 }
 
 /** The keys of the blocks that are folded now, in page order. */
-export function foldKeys(state: EditorState): string[] {
+function foldKeys(state: EditorState): string[] {
   return foldsOf(state)
     .filter((f) => isFolded(state, hidden(state, f)))
     .map((f) => f.key);
@@ -309,11 +309,6 @@ const zoomField = StateField.define<ZoomState | null>({
     EditorView.atomicRanges.of((view) => view.state.field(f)?.deco ?? Decoration.none),
   ],
 });
-
-/** Whether the window shows one block instead of the page. */
-export function zoomed(state: EditorState): boolean {
-  return state.field(zoomField) !== null;
-}
 
 function zoomToLine(view: EditorView, line: number): void {
   const { state } = view;

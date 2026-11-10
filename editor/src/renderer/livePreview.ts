@@ -98,7 +98,7 @@ function pageBlocks(doc: Text): { lines: string[]; blocks: Block[] } {
  * a block comes from the same parser that Escape and Tab use, so a list item shows its own lines
  * and a paragraph after a blank line is never part of the item above it.
  */
-export function editedLines(state: EditorState): Set<number> {
+function editedLines(state: EditorState): Set<number> {
   const lines = new Set<number>();
   const { lines: text, blocks } = pageBlocks(state.doc);
   for (const { from, to } of state.selection.ranges) {

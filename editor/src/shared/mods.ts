@@ -151,7 +151,7 @@ export interface ModFailure {
   message: string;
 }
 
-export function slashFrom(item: ModSlash): SlashItem {
+function slashFrom(item: ModSlash): SlashItem {
   return {
     label: item.label,
     detail: item.detail ?? item.text,

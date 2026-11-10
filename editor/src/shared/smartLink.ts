@@ -14,7 +14,7 @@ export interface LinkEdit {
 const URL_LIKE = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:\/\/|mailto:)\S+$/;
 const PATH_LIKE = /^(?:\/|\.{1,2}\/|~\/|[a-zA-Z]:[\\/])\S*$/;
 
-export function isTarget(selected: string): boolean {
+function isTarget(selected: string): boolean {
   const s = selected.trim();
   return URL_LIKE.test(s) || PATH_LIKE.test(s);
 }
