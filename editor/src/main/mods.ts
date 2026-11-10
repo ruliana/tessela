@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { ModsInfo } from "../shared/api";
+import type { ModEntry, ModsInfo } from "../shared/api";
 
 /** The config folder: `$TESSELA_CONFIG`, else the app's own data folder. */
 export function configFolder(userData: string, env: string | undefined): string {
@@ -28,15 +28,54 @@ function modsIn(dir: string): string[] {
   }
 }
 
+/** The ids switched off in the config folder's settings.json (`{"mods": {"off": [...]}}`); none when it is missing or unreadable. */
+function offIn(folder: string): string[] {
+  try {
+    const off = (JSON.parse(readFileSync(path.join(folder, "settings.json"), "utf8")) as { mods?: { off?: unknown } }).mods?.off;
+    return Array.isArray(off) ? off.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
- * The mods to load: the app's own (`bundled`, a folder of mod folders) and every folder in the
- * config folder's mods/ that has a main.js, by name. A mod of the config folder replaces the app's
- * with the same name. Nothing when mods are off.
+ * The mods: the app's own (`bundled`, a folder of mod folders) and every folder in the config
+ * folder's mods/ that has a main.js, by name. A mod of the config folder replaces the app's with the
+ * same name. `ids` are the ones to load, which leaves out those switched off; nothing is loaded when
+ * mods are off altogether.
  */
 export function listMods(folder: string, disabled: boolean, bundled?: string): ModsInfo {
-  if (disabled) return { folder, disabled, ids: [] };
-  const ids = new Set([...(bundled ? modsIn(bundled) : []), ...modsIn(path.join(folder, "mods"))]);
-  return { folder, disabled, ids: [...ids].sort() };
+  if (disabled) return { folder, disabled, ids: [], mods: [] };
+  const own = new Set(modsIn(path.join(folder, "mods")));
+  const off = new Set(offIn(folder));
+  const mods: ModEntry[] = [...new Set([...(bundled ? modsIn(bundled) : []), ...own])]
+    .sort()
+    .map((id) => ({ id, source: own.has(id) ? "config" : "app", off: off.has(id) }));
+  return { folder, disabled, ids: mods.filter((m) => !m.off).map((m) => m.id), mods };
+}
+
+/**
+ * Switches a mod off or on, in the config folder's settings.json, which keeps whatever else it
+ * holds. A file that is not JSON is left as it is and the call fails: it is the person's.
+ */
+export function setModOff(folder: string, id: string, off: boolean): void {
+  const file = path.join(folder, "settings.json");
+  let settings: { mods?: { off?: unknown } } & Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+      settings = parsed as typeof settings;
+    } catch (e) {
+      throw new Error(`settings.json cannot be read (${e instanceof Error ? e.message : String(e)}); fix or remove it first`);
+    }
+  }
+  const now = new Set(offIn(folder));
+  if (off) now.add(id);
+  else now.delete(id);
+  settings.mods = { ...(typeof settings.mods === "object" && settings.mods !== null ? settings.mods : {}), off: [...now].sort() };
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
 /** The file a mod asked for, or an error when it is not inside that mod's own folder. */

@@ -23,6 +23,7 @@ The config folder is `$TESSELA_CONFIG` when set, else the app's data folder (`~/
 - `main.js` is a plain ES module (no build step, no TypeScript, no bare imports) with a default export that gets `ctx`: `export default function (ctx) { ... }`. It may be `async`: the window waits for it before the first page opens.
 - A mod with the id of one that comes with the app **replaces** it (put your own `outline/` to change the outline). The ones that come with the app are `agenda`, `attach`, `changes`, `fold`, `folders`, `gfm-extras`, `live-lists`, `new-page`, `outline`, `pages`, `peek`, `properties`, `related`, `search` and `unlinked`; their source is `editor/src/mods/<id>/` in the Tessela repo and is the best place to look for how something is done.
 - Mods are loaded once, before the first page opens. After editing one, restart the editor.
+- **The Mods panel** ("Show the mods" in the palette) lists every mod with where it comes from (`app` or `yours`), whether it loaded, failed or is off, and the errors it reported, and has a switch for each. A switch is kept in the config folder's `settings.json` as `{"mods": {"off": ["id", ...]}}` (an agent can edit that file too: it is the person's, so keep every other key) and takes effect when the window loads again, which "Apply and reload" does.
 - Start the editor with `--no-mods` to run without any (when a mod breaks the window). `--bundle DIR` picks the notes folder; `TESSELA_CONFIG=/some/folder` picks the config folder, which is how you try a mod without touching the real one.
 
 ## The rules
@@ -30,7 +31,7 @@ The config folder is `$TESSELA_CONFIG` when set, else the app's data folder (`~/
 1. **Mods are trusted code** (the owner's own, or audited). There is no sandbox, so write what you would be happy to run.
 2. **Notes change only through `ctx.cli`**, the same `tessela` commands an agent uses. A mod never writes into the notes folder itself. The editor typing into a page (a command that edits the open document through its `view`) is fine: that is the person writing.
 3. **Note text is data.** Put it in the page with `textContent`, never `innerHTML`, and never `eval` it or pass it to a shell.
-4. **A broken mod must not break the editor.** A mod that throws while loading is switched off for the session and listed (in the Mods panel and in "Show the mods"); a command, event listener, fence or view that throws is reported the same way and the rest goes on. Do not catch errors only to hide them.
+4. **A broken mod must not break the editor.** A mod that throws while loading is switched off for the session and listed in the Mods panel; a command, event listener, fence or view that throws is reported the same way and the rest goes on. Do not catch errors only to hide them.
 5. **Anything an agent should be able to do too belongs in the `tessela` CLI**, not in a mod. A mod draws and asks; the CLI does.
 
 ## `ctx`
@@ -170,5 +171,5 @@ export default function (ctx) {
 
 1. Write `mods/<id>/main.js` in the config folder (or in a scratch config folder: `TESSELA_CONFIG=/tmp/cfg`).
 2. Start the editor on a notes folder: `npm start -- --bundle ~/notes` in the repo's `editor/`, or the installed app with `--bundle`.
-3. The palette command "Show the mods" says which mods loaded and which failed, and why. If the editor itself misbehaves, start it with `--no-mods` to tell whether a mod is to blame.
+3. The palette command "Show the mods" opens the Mods panel: which mods loaded and which failed, and why. If the editor itself misbehaves, start it with `--no-mods` to tell whether a mod is to blame.
 4. Add a test next to what you change when the mod is one that comes with the app: pure logic in a `plan.ts` with a unit test in `editor/test/`, and an acceptance test in `editor/e2e/acceptance/` that drives the real window (`npm run e2e:acceptance`).

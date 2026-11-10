@@ -557,3 +557,16 @@ button.related-name:hover { color: var(--accent); }
 .newpage-type[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .newpage-name { flex: none; font-weight: 500; }
 .newpage-description { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+
+/* The Mods panel. */
+.mods-panel { display: grid; gap: 6px; }
+.mods-folder { color: var(--muted); font-size: 12.5px; }
+.mod-row { display: grid; gap: 2px; padding: 5px 0; border-top: 1px solid var(--border); }
+.mod-head { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
+.mod-head input { margin: 0; accent-color: var(--accent); }
+.mod-name { font-weight: 600; }
+.mod-source { color: var(--muted); font-size: 12px; }
+.mod-status { margin-left: auto; font-size: 12px; color: var(--muted); }
+.mod-row.failed .mod-status { color: var(--error); }
+.mod-row.off .mod-name { color: var(--muted); font-weight: 400; }
+.mod-error { margin-left: 24px; font: 12px/1.4 var(--mono); color: var(--error); white-space: pre-wrap; overflow-wrap: anywhere; }

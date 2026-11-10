@@ -115,8 +115,8 @@ suite("Mods in the config folder", files, (test) => {
 
   test("the palette can show which mods are loaded", async (s) => {
     await runCommand(s, "Show the mods");
-    const text = await s.win.textContent("#notice");
-    for (const id of Object.keys(good)) assert.ok(text.includes(id), text);
+    await s.win.waitForSelector(".mods-panel");
+    for (const id of Object.keys(good)) assert.equal(await s.win.textContent(`.mod-row[data-mod="${id}"] .mod-status`), "Loaded", id);
   });
 }, { mods: good });
 
@@ -138,8 +138,11 @@ suite("A broken mod", files, (test) => {
     await s.type("still typing");
     assert.match(await s.body(), /still typing/);
     await runCommand(s, "Show the mods");
-    const text = await s.win.textContent("#notice");
-    assert.ok(/broken/.test(text) && /on purpose/.test(text), text);
+    await s.win.waitForSelector(".mods-panel");
+    assert.equal(await s.win.textContent('.mod-row[data-mod="broken"] .mod-status'), "Failed");
+    assert.match(await s.win.textContent('.mod-row[data-mod="broken"] .mod-error'), /on purpose/);
+    assert.equal(await s.win.textContent('.mod-row[data-mod="hello"] .mod-status'), "Loaded");
+    await s.key("Escape");
   });
 
   test("a command that throws is reported and does not stop the editor", async (s) => {

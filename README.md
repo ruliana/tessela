@@ -187,7 +187,8 @@ again (`xvfb-run -a npm run screenshots` on a server).
 The editor can be extended with mods: a folder `mods/NAME/` with a `main.js` in the config folder
 (`$TESSELA_CONFIG`, else the app's data folder, `~/.config/Tessela` on Linux). Mods are trusted
 code (your own or audited) and load before the first page opens; `--no-mods` starts without them,
-and one that throws is skipped and listed under "Show the mods" in the palette (Ctrl+K). The whole
+and one that throws is skipped and listed in the Mods panel ("Show the mods" in the palette, Ctrl+K),
+where each mod can also be switched off or on (kept in the config folder's `settings.json`). The whole
 API is in the [mod-writing skill](skills/tessela-mods/SKILL.md).
 
 ```js

@@ -2,6 +2,7 @@
 // extensions). This is the registry behind it. It knows nothing of the window, so it is easy to
 // test; the window's side is renderer/mods.ts.
 
+import type { ModsInfo } from "./api";
 import type { Properties } from "./properties";
 import type { SlashItem } from "./slash";
 
@@ -357,11 +358,22 @@ export class ModRegistry<V = unknown, E = unknown> {
   }
 }
 
-/** One line for the notice: which mods are loaded and which failed. */
-export function describeMods(loaded: string[], failures: ModFailure[], folder: string, disabled: boolean): string {
-  if (disabled) return "Mods are switched off (--no-mods).";
-  const parts: string[] = [];
-  parts.push(loaded.length > 0 ? `Mods loaded: ${loaded.join(", ")}.` : `No mods are loaded. Put one in ${folder}/mods/NAME/main.js.`);
-  if (failures.length > 0) parts.push(`Failed: ${failures.map((f) => `${f.mod} (${f.message})`).join("; ")}.`);
-  return parts.join(" ");
+/** What the Mods panel shows of one mod. */
+export interface ModRow {
+  id: string;
+  source: "app" | "config";
+  /** `failed` when it threw while loading (then it is not running), `off` when switched off in settings.json. */
+  status: "loaded" | "failed" | "off";
+  /** What went wrong, loading or since: each is a line. */
+  errors: string[];
+}
+
+/** The mods with whether each loaded, failed or is off, and the failures that were reported for it. */
+export function modRows(info: ModsInfo, loaded: string[], failures: ModFailure[]): ModRow[] {
+  return info.mods.map((m) => ({
+    id: m.id,
+    source: m.source,
+    status: m.off ? "off" : loaded.includes(m.id) ? "loaded" : "failed",
+    errors: failures.filter((f) => f.mod === m.id).map((f) => f.message),
+  }));
 }

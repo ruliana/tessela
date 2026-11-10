@@ -31,8 +31,8 @@ import { createCard, type Card } from "./card";
 import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
-import { describeMods } from "../shared/mods";
-import { host, modExtensions, modsInfo, loadMods, registry, sideBottom, sideTop, sidebarSlot, type ModHost } from "./mods";
+import { openModsPanel } from "./modsPanel";
+import { host, modExtensions, loadMods, registry, sideBottom, sideTop, sidebarSlot, type ModHost } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -772,11 +772,6 @@ function runCommand(id: string): void {
     ?.run();
 }
 
-function showMods(): void {
-  const info = modsInfo;
-  showNotice(describeMods(registry.loaded, registry.failures, info?.folder ?? "the config folder", info?.disabled ?? false));
-}
-
 function builtinCommands(): Command[] {
   const key = IS_MAC ? "⌘" : "Ctrl";
   return [
@@ -792,7 +787,7 @@ function builtinCommands(): Command[] {
     { id: "theme", label: `Theme: ${label(theme)}, change`, run: cycleTheme },
     { id: "text", label: `Text: ${label(textFace)}, change`, run: toggleText },
     { id: "problems", label: problemsOpen ? "Hide the problems" : "Show the problems", run: toggleProblems },
-    { id: "mods", label: "Show the mods", run: showMods },
+    { id: "mods", label: "Show the mods", run: openModsPanel },
   ];
 }
 

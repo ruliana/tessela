@@ -32,9 +32,9 @@ suite("The mods in the mod-writing skill", files, (test) => {
     await s.win.locator("#palette").waitFor();
     await s.type("Show the mods");
     await s.key("Enter");
-    const text = await s.win.textContent("#notice");
-    for (const id of Object.keys(mods)) assert.ok(text.includes(id), text);
-    assert.ok(!/Failed/.test(text), text);
+    await s.win.waitForSelector(".mods-panel");
+    for (const id of Object.keys(mods)) assert.equal(await s.win.textContent(`.mod-row[data-mod="${id}"] .mod-status`), "Loaded", id);
+    await s.key("Escape");
   });
 
   test("stamp: its keys put today's date in the page", async (s) => {
