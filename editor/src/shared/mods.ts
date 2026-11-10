@@ -62,6 +62,25 @@ export interface FenceArg {
 /** Draws a fence's body: the result (text or a DOM node, or a promise of one) is shown under the fence. */
 export type FenceRender = (fence: FenceArg) => unknown;
 
+/** What a view is asked to draw: `arg` is what the view was opened with (a folder, say). */
+export interface ViewArg {
+  arg?: string;
+}
+
+/** A view a mod gives: it fills the middle of the window, as the journals do, and has a row in the sidebar. */
+export interface ModView {
+  /** Names the view for `views.open` and the history. */
+  id: string;
+  /** The sidebar row's text. */
+  label: string;
+  /** The sidebar row's tooltip. */
+  title?: string;
+  /** One character before the label. */
+  glyph?: string;
+  /** Fills `container`. Called again, on the same container, when the notes change while the view is shown. */
+  render: (container: HTMLElement, view: ViewArg) => unknown;
+}
+
 /**
  * What a mod puts in the backlinks of a page: a node of its own, drawn above the mentions page by
  * page (`first`) or below them. `taken` are handles of mentions it shows itself, so they are not
@@ -106,6 +125,7 @@ export class ModRegistry<V = unknown, E = unknown> {
   private extensions: Owned<{ extension: E }>[] = [];
   private pageMenu: Owned<PageMenuItem>[] = [];
   private listeners: Listener[] = [];
+  private viewById = new Map<string, Owned<ModView>>();
   private backlinkGroups: Owned<{ group: BacklinkGroup }>[] = [];
   private fenceRenders = new Map<string, Owned<{ render: FenceRender }>>();
   readonly loaded: string[] = [];
@@ -127,6 +147,19 @@ export class ModRegistry<V = unknown, E = unknown> {
 
   addPageMenuItem(mod: string, item: PageMenuItem): void {
     this.pageMenu.push({ ...item, mod });
+  }
+
+  /** A mod's view. One with the id of another replaces it. */
+  addView(mod: string, view: ModView): void {
+    this.viewById.set(view.id, { ...view, mod });
+  }
+
+  view(id: string): Owned<ModView> | undefined {
+    return this.viewById.get(id);
+  }
+
+  views(): Owned<ModView>[] {
+    return [...this.viewById.values()];
   }
 
   addBacklinkGroup(mod: string, group: BacklinkGroup): void {
@@ -245,6 +278,7 @@ export class ModRegistry<V = unknown, E = unknown> {
     this.extensions = this.extensions.filter((e) => e.mod !== mod);
     this.pageMenu = this.pageMenu.filter((i) => i.mod !== mod);
     this.listeners = this.listeners.filter((l) => l.mod !== mod);
+    for (const [id, v] of this.viewById) if (v.mod === mod) this.viewById.delete(id);
     this.backlinkGroups = this.backlinkGroups.filter((g) => g.mod !== mod);
     for (const [info, f] of this.fenceRenders) if (f.mod === mod) this.fenceRenders.delete(info);
   }
