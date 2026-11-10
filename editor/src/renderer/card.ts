@@ -114,7 +114,7 @@ function pageMenu(items: { label: string; run: () => void }[]): HTMLElement {
   return el("span", { class: "page-menu-wrap" }, button, list);
 }
 
-export function createCard(path: string, deps: CardDeps, opts: { compact?: boolean } = {}): Card {
+export function createCard(path: string, deps: CardDeps, opts: { compact?: boolean; menu?: boolean } = {}): Card {
   const { api } = deps;
   /** Hash of the file on disk when we last read or wrote it; null if it has no file yet. */
   let hash: string | null = null;
@@ -133,7 +133,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     pageId(path).replace(/^journals\//, ""),
   );
   const status = el("span", { class: "status" });
-  const menuItems = opts.compact ? [] : (deps.pageMenu?.(path) ?? []);
+  const menuItems = opts.compact || opts.menu === false ? [] : (deps.pageMenu?.(path) ?? []);
   const head = menuItems.length > 0 ? el("span", { class: "head-end" }, status, pageMenu(menuItems)) : status;
   const banner = el("div", { class: "banner", hidden: true });
   const host = el("div", { class: "editor" });
