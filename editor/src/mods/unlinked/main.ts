@@ -4,9 +4,8 @@
 // is never overwritten: the save names the hash it read, and a conflict only refreshes the list.
 
 import type { ModContext } from "../../renderer/mods";
+import { cliOf } from "../kit";
 import { conceptFor, countUnlinked, entriesOf, linked, type Entry, type UnlinkedHit } from "./plan";
-
-type Answer<T> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
 
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "", props: Partial<HTMLElementTagNameMap[K]> = {}): HTMLElementTagNameMap[K] =>
   Object.assign(document.createElement(tag), { textContent: text }, props);
@@ -16,7 +15,7 @@ const PAUSE = 400;
 
 export default function (ctx: ModContext): void {
   const slot = ctx.slots.mount("side-bottom");
-  const cli = <T>(argv: string[], input?: string) => ctx.cli(argv, input === undefined ? undefined : { input }) as Promise<Answer<T>>;
+  const cli = cliOf(ctx);
 
   let run = 0;
   let timer: number | undefined;

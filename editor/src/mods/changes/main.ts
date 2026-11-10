@@ -5,9 +5,8 @@
 // Everything is read and written through `ctx.cli`; note text goes in as text, never as HTML.
 
 import type { ModContext } from "../../renderer/mods";
+import { cliOf, failureText } from "../kit";
 import { type Change, type ChangesAnswer, type PageChange, keptKey, putBack, remember, restoredPage, summary } from "./plan";
-
-type Answer<T> = ({ ok: true } & T) | { ok: false; error: { code: string; message: string } };
 
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] =>
   Object.assign(document.createElement(tag), { className, textContent: text });
@@ -15,8 +14,7 @@ const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", tex
 const MARKS = { added: "+", removed: "−", changed: "~" } as const;
 
 export default function (ctx: ModContext): void {
-  const cli = <T>(argv: string[], input?: string) => ctx.cli(argv, input === undefined ? undefined : { input }) as Promise<Answer<T>>;
-  const failure = (a: { ok: false; error: { message: string } }) => a.error.message;
+  const cli = cliOf(ctx);
 
   const keptNow = (): string[] => {
     const saved = ctx.settings.get("kept");
@@ -42,14 +40,14 @@ export default function (ctx: ModContext): void {
   async function revert(path: string, change: Change): Promise<void> {
     await ctx.pages.flush();
     const page = await cli<{ exists: boolean; text: string; hash: string | null }>(["read", path]);
-    if (!page.ok) return ctx.ui.toast(`Could not read ${path}: ${failure(page)}`);
+    if (!page.ok) return ctx.ui.toast(`Could not read ${path}: ${failureText(page)}`);
     const next = page.exists && page.hash ? putBack(page.text, change) : null;
     if (next === null || !page.hash) {
       ctx.ui.toast(`${path} has changed since this list was drawn. The list is drawn again.`);
       return redraw();
     }
     const saved = await cli<object>(["save", path, "--expect", page.hash], next);
-    if (!saved.ok) ctx.ui.toast(`Could not put the change back: ${failure(saved)}`);
+    if (!saved.ok) ctx.ui.toast(`Could not put the change back: ${failureText(saved)}`);
     await redraw();
   }
 
@@ -58,7 +56,7 @@ export default function (ctx: ModContext): void {
     const text = restoredPage(page);
     if (text === null) return ctx.ui.toast(`There is nothing to write ${page.path} from.`);
     const saved = await cli<object>(["save", page.path, "--expect", "new"], text);
-    if (!saved.ok) ctx.ui.toast(`Could not write ${page.path} again: ${failure(saved)}`);
+    if (!saved.ok) ctx.ui.toast(`Could not write ${page.path} again: ${failureText(saved)}`);
     await redraw();
   }
 
@@ -66,7 +64,7 @@ export default function (ctx: ModContext): void {
   async function discard(page: PageChange): Promise<void> {
     await ctx.pages.flush();
     const read = await cli<{ exists: boolean; hash: string | null }>(["read", page.path]);
-    if (!read.ok) return ctx.ui.toast(`Could not read ${page.path}: ${failure(read)}`);
+    if (!read.ok) return ctx.ui.toast(`Could not read ${page.path}: ${failureText(read)}`);
     if (!read.exists || !read.hash) return redraw();
     const dialog = ctx.ui.dialog({
       title: `Delete ${page.path}?`,
@@ -75,7 +73,7 @@ export default function (ctx: ModContext): void {
     });
     if ((await dialog.closed) !== "ok") return;
     const removed = await cli<{ path: string }>(["remove", page.path, "--expect", read.hash]);
-    if (!removed.ok) return ctx.ui.toast(`Could not delete ${page.path}: ${failure(removed)}`);
+    if (!removed.ok) return ctx.ui.toast(`Could not delete ${page.path}: ${failureText(removed)}`);
     await ctx.pages.moved(page.path, null);
     await redraw();
   }
@@ -146,7 +144,7 @@ export default function (ctx: ModContext): void {
     }
     const answer = await cli<ChangesAnswer>(["changes", "--since", since]);
     if (mine !== run) return;
-    if (!answer.ok) return void body.replaceChildren(node("p", "changes-error", failure(answer)));
+    if (!answer.ok) return void body.replaceChildren(node("p", "changes-error", failureText(answer)));
 
     const kept = new Set(keptNow());
     const pages = answer.pages

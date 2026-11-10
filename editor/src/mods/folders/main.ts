@@ -4,7 +4,8 @@
 // Nothing is saved: a folder without a home page only offers to write one.
 
 import type { ModContext } from "../../renderer/mods";
-import { type Answer, type Listing, type PageEntry, cleanDir, folderOf, homePath, homeTitle, JOURNAL_SHOWN, leaf, pagesIn, trail } from "./plan";
+import { cliOf, failureText } from "../kit";
+import { type Listing, type PageEntry, cleanDir, folderOf, homePath, homeTitle, JOURNAL_SHOWN, leaf, pagesIn, trail } from "./plan";
 
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] =>
   Object.assign(document.createElement(tag), { className, textContent: text });
@@ -34,10 +35,8 @@ export default function (ctx: ModContext): void {
   };
 
   async function writeHome(dir: string): Promise<void> {
-    const answer = (await ctx.cli(["add", homePath(dir), "--type", "home", "--title", homeTitle(dir)])) as
-      | { ok: true; path: string }
-      | { ok: false; error: { message: string } };
-    if (!answer.ok) return ctx.ui.toast(`Could not write the home page: ${answer.error.message}`);
+    const answer = await cliOf(ctx)<{ path: string }>(["add", homePath(dir), "--type", "home", "--title", homeTitle(dir)]);
+    if (!answer.ok) return ctx.ui.toast(`Could not write the home page: ${failureText(answer)}`);
     await ctx.pages.open(answer.path);
   }
 
@@ -98,9 +97,9 @@ export default function (ctx: ModContext): void {
     async render(container, { arg }) {
       const dir = cleanDir(arg);
       const mine = ++run;
-      const answer = (await ctx.cli(["index", "--dir", dir])) as Answer;
+      const answer = await cliOf(ctx)<Listing>(["index", "--dir", dir]);
       if (mine !== run) return;
-      if (!answer.ok) return void container.replaceChildren(node("p", "folders-error", answer.error.message));
+      if (!answer.ok) return void container.replaceChildren(node("p", "folders-error", failureText(answer)));
       draw(container, answer);
     },
   });
