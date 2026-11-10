@@ -334,6 +334,10 @@ Every command takes `--api N` for the version the caller was written for.
   bundles read by tools that do not compute listings. Generated files carry a
   marker line; one that does not (a hand-written `index.md`) is kept unless
   `--force` is given.
+  For a folder page, the listing also names the folder's `home` (its `home.md`) and the
+  `links`: the existing pages that home page links to or tags, in the order it first
+  mentions them (for the root these are the pinned pages), and each sub-folder says
+  whether it has a `home` of its own (`has_home`).
 - `tessela read | add | save | rename | move | remove`: the edit commands (§9), with
   `attach` below. They
   take the bundle with `--bundle DIR` (default `.`) and the page as a path relative to
