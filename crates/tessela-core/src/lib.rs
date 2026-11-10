@@ -4,6 +4,7 @@
 
 pub mod blocks;
 pub mod bundle;
+pub mod changes;
 pub mod edit;
 pub mod fence;
 pub mod index;

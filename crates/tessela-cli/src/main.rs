@@ -1,3 +1,4 @@
+mod changes;
 mod fence;
 mod watch;
 
@@ -307,6 +308,15 @@ enum Command {
         #[arg(long)]
         expect: String,
     },
+    /// What changed in the notes since a git revision, block by block (reads git, writes nothing)
+    Changes {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The state to compare with: a commit, `HEAD~3`, `origin/main`, `ORIG_HEAD` (before the
+        /// last pull or merge); the last commit when left out
+        #[arg(long, default_value = "HEAD")]
+        since: String,
+    },
     /// Run the body of a ```tessela fence (a live list): a read-only command, then filters
     Fence {
         #[command(flatten)]
@@ -468,6 +478,10 @@ fn main() -> ExitCode {
             let from = edit::existing_path(&page)?;
             let to = edit::move_target(&from, &dest)?;
             moved(store, &from, &to, expect.as_deref(), dry_run)
+        }),
+        Command::Changes { edit, since } => run_edit(&edit, |_| {
+            let out = changes::run(&edit.bundle, &since)?;
+            Ok(Done::new(&out, |o| o.text(), true))
         }),
         Command::Fence { edit, file } => run_edit(&edit, |_| {
             let input = read_input(file.as_deref())?;
