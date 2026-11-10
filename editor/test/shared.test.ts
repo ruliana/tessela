@@ -28,8 +28,8 @@ describe("smartLink", () => {
     expect(edit.inTarget).toBe(true);
   });
 
-  it("with nothing selected makes an empty link with the cursor in the text", () => {
-    expect(smartLink("")).toEqual({ text: "[]()", cursor: 1, inTarget: false });
+  it("with nothing selected makes an empty link with the cursor in the target, to search for a page", () => {
+    expect(smartLink("")).toEqual({ text: "[]()", cursor: 3, inTarget: true });
   });
 });
 

@@ -2,7 +2,8 @@
 // Pure functions on text, so the options can be measured (test/linkFlows.test.ts)
 // before any of them is wired into the editor.
 
-import { score } from "./palette";
+import type { PageEntry, VocabEntry } from "./api";
+import { candidates, score } from "./palette";
 import { newPagePath, pageId } from "./pages";
 
 /** A page the link picker can offer: where it lives and what it is called. */
@@ -83,4 +84,11 @@ export function pasteLink(selected: string, clipboard: string): string | null {
   const dest = clipboard.trim();
   if (selected.trim() === "" || /[\n\r]/.test(selected) || !WEB_ADDRESS.test(dest)) return null;
   return markdownLink(selected, dest);
+}
+
+/** What the pickers search: every page by its title, and the concepts that are mentioned but have no page yet. */
+export function linkPages(pages: PageEntry[], vocab: VocabEntry[]): LinkPage[] {
+  const out: LinkPage[] = pages.map((p) => ({ path: p.path, title: p.title ?? titleOf("", p.path) }));
+  for (const c of candidates(pages, vocab)) if (c.unwritten) out.push({ path: c.path, title: c.label });
+  return out;
 }

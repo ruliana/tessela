@@ -6,6 +6,7 @@ import { type FSWatcher, promises as fs, watch } from "node:fs";
 import path from "node:path";
 
 import type { PageEntry, PageFile, WriteResult } from "../shared/api";
+import { titleOf } from "../shared/linkFlows";
 import { newPageText, pageId } from "../shared/pages";
 
 export function hashText(text: string): string {
@@ -86,6 +87,24 @@ export async function writePage(
 
 const RESERVED = new Set(["index.md", "log.md"]);
 
+/** The title of a page, read from the first few kilobytes of the file (front matter and the top of the text). */
+async function titleAtTop(file: string, rel: string): Promise<string> {
+  let head = "";
+  try {
+    const handle = await fs.open(file, "r");
+    try {
+      const buf = Buffer.alloc(4096);
+      const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+      head = buf.subarray(0, bytesRead).toString("utf8");
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // A file that cannot be read is listed by its name.
+  }
+  return titleOf(head, rel);
+}
+
 /** Every concept page in the bundle, like `tessela` itself sees them. */
 export async function listPages(root: string): Promise<PageEntry[]> {
   const found: PageEntry[] = [];
@@ -95,7 +114,7 @@ export async function listPages(root: string): Promise<PageEntry[]> {
       const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) await walk(path.join(dir, entry.name), rel);
       else if (entry.name.endsWith(".md") && !RESERVED.has(entry.name)) {
-        found.push({ id: pageId(rel), path: rel });
+        found.push({ id: pageId(rel), path: rel, title: await titleAtTop(path.join(dir, entry.name), rel) });
       }
     }
   }

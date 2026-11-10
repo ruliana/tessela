@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { choicesFor, pasteLink, splitAlias, titleOf } from "../src/shared/linkFlows";
+import { choicesFor, linkPages, pasteLink, splitAlias, titleOf } from "../src/shared/linkFlows";
 import { PAGES, SCENARIOS, WAYS, measure, slips, table, type Way } from "./support/bench";
 
 const way = (id: string): Way => WAYS.find((w) => w.id === id)!;
@@ -117,6 +117,19 @@ describe("the pieces", () => {
 
   it("choicesFor: a title that is already a page is not offered as new", () => {
     expect(choicesFor(PAGES, "Tessela").some((c) => c.fresh)).toBe(false);
+  });
+
+  it("linkPages: pages by title, plus concepts that are mentioned but have no page", () => {
+    const pages = [{ id: "daily-todo", path: "daily-todo.md", title: "Daily TODO" }, { id: "bare", path: "bare.md" }];
+    const vocab = [
+      { concept: "later", has_page: false, mentions: 1, pages: 1, deprecated: false, use_instead: null, note: null },
+      { concept: "bare", has_page: true, mentions: 1, pages: 1, deprecated: false, use_instead: null, note: null },
+    ];
+    expect(linkPages(pages, vocab)).toEqual([
+      { path: "daily-todo.md", title: "Daily TODO" },
+      { path: "bare.md", title: "bare" },
+      { path: "later.md", title: "later" },
+    ]);
   });
 
   it("splitAlias: text after | is the link text", () => {

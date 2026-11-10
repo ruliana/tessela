@@ -10,6 +10,7 @@ import "./style.css";
 
 import type { Diagnostic, Hit, PageEntry, VocabEntry } from "../shared/api";
 import { isHomeHit, orderBacklinks } from "../shared/backlinks";
+import { linkPages } from "../shared/linkFlows";
 import {
   canGoBack,
   canGoForward,
@@ -782,6 +783,7 @@ function cardDeps() {
   return {
     api,
     vocab: () => vocab,
+    pages: () => linkPages(pages, vocab),
     written: () => written,
     onSaved: () => {
       void refreshIndex();

@@ -120,7 +120,8 @@ Ctrl+N makes a new page and Ctrl+O opens a Markdown file.
 
 Opens on the latest journal days, saves as you type, shows backlinks, searches the
 text of your notes, lists what `tessela lint` finds, suggests existing tags, and
-turns a selection into a link with Ctrl+L (Super+L on macOS). The **Rendered** button
+turns a selection into a link with Ctrl+L (Super+L on macOS), searches pages for a link
+after `[[` or Ctrl+L, and turns selected text into a link when you paste an address over it. The **Rendered** button
 (Ctrl/Cmd+Alt+M) shows the Markdown rendered and switches to the raw text only in the
 block you are editing. Details are in spec §11. `npm test` runs the unit tests and `npm run e2e` drives a real window, and `npm run e2e:acceptance`
 checks every feature of the editor there (`ONLY=regex` runs some of them).

@@ -61,6 +61,8 @@ export interface QueryArgs {
 export interface PageEntry {
   id: string;
   path: string;
+  /** What the page calls itself (front matter `title:`, else its first `#` heading). Absent from older callers. */
+  title?: string;
 }
 
 export interface PageFile {

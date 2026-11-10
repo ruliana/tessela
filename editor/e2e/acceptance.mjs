@@ -19,5 +19,6 @@ import "./acceptance/tiles.mjs";
 import "./acceptance/palette.mjs";
 import "./acceptance/dates.mjs";
 import "./acceptance/home.mjs";
+import "./acceptance/links.mjs";
 
 await runAll();
