@@ -34,7 +34,7 @@ What `tessela query` does not do, so `rg` over the Markdown files is the fallbac
 
 Adding, editing, renaming, moving and deleting pages all go through the `tessela` edit commands. They are the same door the editor uses, so every writer follows the same safety rules: no overwriting a change you have not seen, atomic writes, and renames that keep links and tags working. **Do not edit the Markdown files directly** (no `sed -i`, no redirecting into a page, no `mv`/`rm` on pages) unless the CLI is missing (see the end of this section).
 
-All of them take `--bundle DIR` (default `.`) and the page as a path relative to the bundle, with or without `.md`. Add `--json` and `--api 1` when you parse the output: the answer is `{"api": 1, "ok": true, ...}` or `{"ok": false, "error": {"code", "message"}}`, and `--api 1` makes the tool refuse if it speaks another version. Run `tessela api` if unsure.
+All of them take `--bundle DIR` (default `.`) and the page as a path relative to the bundle, with or without `.md`. Add `--json` and `--api 2` when you parse the output: the answer is `{"api": 2, "ok": true, ...}` or `{"api": 2, "ok": false, "error": {"code", "message"}}`, and `--api 2` makes the tool refuse if it speaks another version. This holds for the read commands too (`query` answers `hits` and `total`, `vocab` `concepts`, `lint` `diagnostics`, `index` the listing), which take `--api` as well. Run `tessela api` if unsure.
 
 | You want to | Run |
 | --- | --- |
