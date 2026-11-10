@@ -1020,6 +1020,7 @@ Object.assign(host, {
   current: currentPath,
   flush: async () => void (await Promise.all(cards.map((c) => c.flush()))),
   moved: pageMoved,
+  open: (path: string, line?: number) => showPage(path, line),
 });
 
 // A command of a mod that fails is said so; the rest of the window goes on.
