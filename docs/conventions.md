@@ -401,6 +401,18 @@ Every command takes `--api N` for the version the caller was written for.
   every minute). `--poll` always looks at the files, for folders the system cannot watch.
   Hidden folders and files that are not Markdown are not reported. `--exit-on-stdin-close`
   ends it when its caller goes away. It is not a server: saves stay one call each.
+- `tessela changes [--since REV]`: what differs between the notes on disk and git, so "what
+  changed while I was away" has an exact answer. `REV` is any git revision (default `HEAD`,
+  the last commit; `ORIG_HEAD` is where the last pull or merge started from). It reads git
+  (`diff`, `show`, `ls-files`) and writes nothing, and needs the bundle to be in a git
+  repository (a folder of a larger one sees only its own pages). The answer lists the pages
+  that were `added`, `modified` or `deleted` (with `hash`, to base a patch on) and for each
+  the `changes`: `added`, `removed` or `changed` units, where a unit is a block, a heading
+  or the `properties` (front matter). A change has `handle`, `heading_path`, `line`, `text`
+  and `raw` (the source lines) as they are now, and for a `changed` one `old_text`,
+  `old_line` and `old_raw`, which is what a client needs to keep a change or put the old
+  text back with `save --patch`. A removed unit has the line it had before. This is the
+  honest form of OKF's `log.md`: computed when asked, never a file.
 - `tessela vocab`: the tags and concepts that exist (pages, tags, links and
   `vocabulary.md` terms), with mention counts, page counts and the
   `vocabulary.md` guidance.
