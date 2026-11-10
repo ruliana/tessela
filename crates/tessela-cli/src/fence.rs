@@ -133,31 +133,11 @@ fn first_stage(bundle: &Bundle, words: &[String]) -> Result<Vec<Source>, EditErr
         }
     };
     match parsed.command {
-        Command::Query {
-            common,
-            refs,
-            any,
-            own,
-            text,
-            kind,
-            page,
-            from,
-            to,
-            limit,
-        } => {
+        Command::Query { common, filters } => {
             check_path(&common.path)?;
-            let query = tessela_core::Query {
-                refs,
-                any,
-                own,
-                text,
-                kind,
-                page,
-                from,
-                to,
-            };
+            let query = filters.query();
             let mut hits = query.run(bundle);
-            hits.truncate(limit.unwrap_or(usize::MAX));
+            hits.truncate(filters.limit.unwrap_or(usize::MAX));
             Ok(hits
                 .into_iter()
                 .map(|hit| {

@@ -8,7 +8,9 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
 use tessela_core::edit::{self, API_VERSION, EditError, ErrorCode, Expect, FsStore, PageStore};
-use tessela_core::{Bundle, HitKind, Linter, Query, Severity, index, logseq, vocabulary};
+use tessela_core::{
+    Bundle, HitKind, Linter, Query, Severity, TaskFilter, index, logseq, vocabulary,
+};
 
 /// `print!` that ends the run quietly when the reader has closed the pipe (`| head`).
 macro_rules! out {
@@ -68,6 +70,74 @@ struct EditArgs {
     api: Option<u32>,
 }
 
+/// The filters of `query`, shared with the first stage of a fence.
+#[derive(Args)]
+struct QueryArgs {
+    /// A concept the block must mention (repeatable); `#tag` or a name
+    #[arg(long = "ref", short = 'r')]
+    refs: Vec<String>,
+    /// Match blocks that mention any of the --ref concepts, not all
+    #[arg(long)]
+    any: bool,
+    /// Ignore refs inherited from parent items and headings
+    #[arg(long)]
+    own: bool,
+    /// Text the block contains (case-insensitive)
+    #[arg(long, short = 't')]
+    text: Option<String>,
+    /// Only pages with this frontmatter `type`
+    #[arg(long = "type")]
+    kind: Option<String>,
+    /// Only this page ID, or a folder when it ends with `/`
+    #[arg(long)]
+    page: Option<String>,
+    /// First day to include (YYYY-MM-DD): journal days and dates written in blocks
+    #[arg(long)]
+    from: Option<String>,
+    /// Last day to include (YYYY-MM-DD): journal days and dates written in blocks
+    #[arg(long)]
+    to: Option<String>,
+    /// Only checkbox items (`- [ ]`, `- [x]`): `open`, `done` or `any`
+    #[arg(long, value_enum)]
+    task: Option<TaskArg>,
+    /// Show at most this many blocks
+    #[arg(long)]
+    limit: Option<usize>,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum TaskArg {
+    Open,
+    Done,
+    Any,
+}
+
+impl TaskArg {
+    fn filter(self) -> TaskFilter {
+        match self {
+            TaskArg::Open => TaskFilter::Open,
+            TaskArg::Done => TaskFilter::Done,
+            TaskArg::Any => TaskFilter::Any,
+        }
+    }
+}
+
+impl QueryArgs {
+    fn query(&self) -> Query {
+        Query {
+            refs: self.refs.clone(),
+            any: self.any,
+            own: self.own,
+            text: self.text.clone(),
+            kind: self.kind.clone(),
+            page: self.page.clone(),
+            from: self.from.clone(),
+            to: self.to.clone(),
+            task: self.task.map(TaskArg::filter),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Check a bundle against OKF and the Tessela conventions
@@ -85,33 +155,8 @@ enum Command {
     Query {
         #[command(flatten)]
         common: Common,
-        /// A concept the block must mention (repeatable); `#tag` or a name
-        #[arg(long = "ref", short = 'r')]
-        refs: Vec<String>,
-        /// Match blocks that mention any of the --ref concepts, not all
-        #[arg(long)]
-        any: bool,
-        /// Ignore refs inherited from parent items and headings
-        #[arg(long)]
-        own: bool,
-        /// Text the block contains (case-insensitive)
-        #[arg(long, short = 't')]
-        text: Option<String>,
-        /// Only pages with this frontmatter `type`
-        #[arg(long = "type")]
-        kind: Option<String>,
-        /// Only this page ID, or a folder when it ends with `/`
-        #[arg(long)]
-        page: Option<String>,
-        /// First day to include (YYYY-MM-DD): journal days and dates written in blocks
-        #[arg(long)]
-        from: Option<String>,
-        /// Last day to include (YYYY-MM-DD): journal days and dates written in blocks
-        #[arg(long)]
-        to: Option<String>,
-        /// Show at most this many blocks
-        #[arg(long)]
-        limit: Option<usize>,
+        #[command(flatten)]
+        filters: QueryArgs,
     },
     /// List what a folder holds, as an OKF `index.md` (computed, nothing is written)
     Index {
@@ -270,30 +315,7 @@ fn main() -> ExitCode {
             strict,
             min_severity,
         } => lint(common, strict, &min_severity),
-        Command::Query {
-            common,
-            refs,
-            any,
-            own,
-            text,
-            kind,
-            page,
-            from,
-            to,
-            limit,
-        } => {
-            let query = Query {
-                refs,
-                any,
-                own,
-                text,
-                kind,
-                page,
-                from,
-                to,
-            };
-            run_query(common, query, limit)
-        }
+        Command::Query { common, filters } => run_query(common, filters.query(), filters.limit),
         Command::Index {
             common,
             dir,

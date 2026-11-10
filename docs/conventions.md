@@ -85,6 +85,7 @@ structure of the page body; nothing about them is stored in the file.
 | Top-level code fence, table, quote     | Yes                                       |
 | Code fence, table, quote inside an item | Part of that item's block                |
 | Paragraph after a nested list, inside an item | A block of its own, a child of that item |
+| List item that starts with `[ ]` or `[x]` | A task: its block has `task: open` or `done`; the box is not part of the text |
 | Heading                                | Not a block, but a backlink holder (§5); its refs apply to the blocks below it |
 | Frontmatter                            | Not a block; it belongs to the page and can be a backlink (§5) |
 
@@ -313,6 +314,9 @@ Every command takes `--api N` for the version the caller was written for.
   `--ref <alias>` finds the page's backlinks, plus the blocks that use the alias
   itself. It does not work the other way: `--ref <page>` does not find blocks that
   use one of its aliases.
+  `--task open|done|any` keeps only checkbox items (§3), so a task is a plain `- [ ]` and its
+  due date is a date written in it: `--task open --to 2026-11-15` lists what is open on
+  journal days up to the 15th or names a date up to it. Hits carry `task`.
 - `tessela index`: what a folder holds, as an OKF `index.md` (§6 of OKF):
   sub-folders, then the folder's own pages (its `home.md` first) with their
   `description` or first line, then its journal days, newest first. It prints to

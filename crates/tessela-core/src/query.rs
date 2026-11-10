@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::blocks::{Block, Heading};
+use crate::blocks::{Block, Heading, TaskState};
 use crate::bundle::Bundle;
 use crate::page::Page;
 use crate::refs::normalize_concept;
@@ -33,6 +33,30 @@ pub struct Query {
     pub from: Option<String>,
     /// Last day to include, `YYYY-MM-DD`. See `from`.
     pub to: Option<String>,
+    /// Only checkbox items, open or done. Headings and pages are never tasks.
+    pub task: Option<TaskFilter>,
+}
+
+/// Which checkbox items `--task` keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskFilter {
+    /// `- [ ]`
+    Open,
+    /// `- [x]`
+    Done,
+    /// Either
+    Any,
+}
+
+impl TaskFilter {
+    fn accepts(self, task: Option<TaskState>) -> bool {
+        match (self, task) {
+            (_, None) => false,
+            (TaskFilter::Open, Some(state)) => state == TaskState::Open,
+            (TaskFilter::Done, Some(state)) => state == TaskState::Done,
+            (TaskFilter::Any, Some(_)) => true,
+        }
+    }
 }
 
 /// What kind of thing a hit is. Anything that can hold a reference can be found,
@@ -68,6 +92,8 @@ pub struct Hit {
     pub dates: Vec<String>,
     /// Handle of the enclosing list item, if any.
     pub parent: Option<String>,
+    /// Blocks that are checkbox items: `open` or `done`.
+    pub task: Option<TaskState>,
     /// The hit is on a `home.md` page. A link from a home page marks the target as
     /// important, so these hits come first (spec §5).
     pub home: bool,
@@ -101,6 +127,7 @@ impl Query {
                         wanted.iter().all(|w| mentions_any(have, w))
                     };
                 refs_ok
+                    && self.task.is_none_or(|t| t.accepts(hit.task))
                     && text
                         .as_ref()
                         .is_none_or(|t| hit.text.to_lowercase().contains(t))
@@ -191,6 +218,7 @@ fn block_hit(page: &Page, block: &Block) -> Hit {
         refs: block.refs.clone(),
         path_refs: block.path_refs.clone(),
         parent: block.parent.map(|p| page.blocks[p].handle.clone()),
+        task: block.task,
         home: page.is_home(),
         modified: page.modified,
     }
@@ -210,6 +238,7 @@ fn heading_hit(page: &Page, heading: &Heading) -> Hit {
         refs: heading.refs.clone(),
         path_refs: heading.path_refs.clone(),
         parent: None,
+        task: None,
         home: page.is_home(),
         modified: page.modified,
     }
@@ -230,6 +259,7 @@ fn page_hit(page: &Page) -> Hit {
         refs: page.refs.clone(),
         path_refs: page.refs.clone(),
         parent: None,
+        task: None,
         home: page.is_home(),
         modified: page.modified,
     }
