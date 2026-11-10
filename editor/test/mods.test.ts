@@ -50,3 +50,28 @@ describe("describeMods", () => {
     expect(describeMods([], [], "/cfg", true)).toContain("--no-mods");
   });
 });
+
+describe("the mods that come with the app", () => {
+  it("are listed with the user's, and a user mod with the same name replaces one", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { listMods, resolveModFile } = await import("../src/main/mods");
+    const root = mkdtempSync(path.join(tmpdir(), "tessela-mods-"));
+    const put = (dir: string, id: string) => {
+      mkdirSync(path.join(dir, id), { recursive: true });
+      writeFileSync(path.join(dir, id, "main.js"), "");
+    };
+    const bundled = path.join(root, "bundled");
+    const config = path.join(root, "config");
+    put(bundled, "pages");
+    put(bundled, "other");
+    put(path.join(config, "mods"), "pages");
+    put(path.join(config, "mods"), "mine");
+    expect(listMods(config, false, bundled).ids).toEqual(["mine", "other", "pages"]);
+    expect(listMods(config, true, bundled).ids).toEqual([]);
+    expect(resolveModFile(config, "pages", "main.js", bundled)).toBe(path.join(config, "mods/pages/main.js"));
+    expect(resolveModFile(config, "other", "main.js", bundled)).toBe(path.join(bundled, "other/main.js"));
+    expect(() => resolveModFile(config, "other", "../pages/main.js", bundled)).toThrow();
+  });
+});

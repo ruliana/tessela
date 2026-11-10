@@ -11,7 +11,8 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type ModCommand, type ModSlash, ModRegistry } from "../shared/mods";
+import { type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 
 export const registry = new ModRegistry<EditorView, Extension>();
 
@@ -19,6 +20,20 @@ export const registry = new ModRegistry<EditorView, Extension>();
 export let modsInfo: ModsInfo | null = null;
 
 const cm = { state, view, language, commands, autocomplete };
+
+/** What the window lends mods (set by main.ts): the parts of the window a mod may ask for. */
+export interface ModHost {
+  /** Says something in the sidebar's notice, with a button when there is an `action`. */
+  toast(text: string, action?: { label: string; run: () => void }): void;
+  /** The page being worked on, or null when none is. */
+  current(): string | null;
+  /** Saves what the open pages have not saved yet. */
+  flush(): Promise<void>;
+  /** A page changed place (`to`) or was deleted (`to` null): the window follows it. */
+  moved(from: string, to: string | null): Promise<void>;
+}
+
+export const host: ModHost = { toast: () => {}, current: () => null, flush: async () => {}, moved: async () => {} };
 
 function settingsOf(mod: string) {
   const key = `tessela.mod.${mod}`;
@@ -51,6 +66,22 @@ export interface ModContext {
   settings: { get(name: string): unknown; set(name: string, value: unknown): void };
   /** Runs a tessela command on the open notes folder and returns its `{api, ok, ...}` JSON (see Api.cli). */
   cli(argv: string[], options?: { input?: string }): Promise<unknown>;
+  /** Parts of the window every mod looks alike with. */
+  ui: {
+    dialog(options: DialogOptions): Dialog;
+    toast(text: string, action?: { label: string; run: () => void }): void;
+  };
+  /** What happens in the window; `on` returns the way to stop listening. */
+  events: { on<N extends ModEventName>(name: N, listener: (payload: ModEvents[N]) => unknown): () => void };
+  /** Named places in the window. `page-menu` is the menu in a page's head. */
+  slots: { add(slot: "page-menu", item: PageMenuItem): void };
+  /** The pages in the window. */
+  pages: {
+    current(): string | null;
+    flush(): Promise<void>;
+    /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
+    moved(from: string, to: string | null): Promise<void>;
+  };
   /** The notes folder, or null while none is open. */
   bundle(): Promise<string | null>;
   /** The CodeMirror packages the editor uses, so a mod does not bundle its own copy. */
@@ -65,6 +96,10 @@ function contextFor(mod: string): ModContext {
     slash: { add: (item) => registry.addSlash(mod, item) },
     editor: { extend: (extension) => registry.addExtension(mod, extension) },
     settings: settingsOf(mod),
+    ui: { dialog: (options) => openDialog(options), toast: (text, action) => host.toast(text, action) },
+    events: { on: (name, listener) => registry.on(mod, name, listener) },
+    slots: { add: (_slot, item) => registry.addPageMenuItem(mod, item) },
+    pages: { current: () => host.current(), flush: () => host.flush(), moved: (from, to) => host.moved(from, to) },
     cli: (argv, options) => api.cli(argv, options?.input),
     bundle: () => api.bundle(),
     cm,
