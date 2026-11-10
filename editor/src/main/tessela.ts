@@ -144,12 +144,12 @@ interface EditFailure {
  * Runs an edit command (`read`, `add`, `save`, ...), passing `input` on stdin. The tool prints
  * JSON on success and on failure, so a non-zero exit with JSON is a result, not a crash.
  */
-export function runEdit<T>(bin: string, bundle: string, argv: string[], input = ""): Promise<T | EditFailure> {
+export function runEdit<T>(bin: string, bundle: string, argv: string[], input: string | Uint8Array = ""): Promise<T | EditFailure> {
   return runCall(bin, [...argv, "--bundle", bundle, ...CALL], argv[0] ?? "", input);
 }
 
 /** Runs one `tessela` call whose answer is JSON on stdout, success or failure alike. */
-function runCall<T>(bin: string, full: string[], name: string, input: string): Promise<T | EditFailure> {
+function runCall<T>(bin: string, full: string[], name: string, input: string | Uint8Array): Promise<T | EditFailure> {
   return new Promise((resolve, reject) => {
     const child = execFile(bin, full, { maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
       try {
@@ -219,6 +219,12 @@ export async function addPageVia(bin: string, bundle: string, rel: string, title
   throw failure("add", r);
 }
 
+/** What a mod sent to a command's standard input: text or bytes, else nothing. */
+export function cliInput(input: unknown): string | Uint8Array {
+  if (typeof input === "string" || input instanceof Uint8Array) return input;
+  return "";
+}
+
 /** The commands that take the folder as their first argument; the others take `--bundle`. */
 const POSITIONAL = new Set(["lint", "query", "index", "vocab"]);
 
@@ -226,7 +232,7 @@ const POSITIONAL = new Set(["lint", "query", "index", "vocab"]);
  * Runs any `tessela` command for a mod, adding the folder, `--json` and the API version. The answer
  * is the command's `{api, ok, ...}` JSON as it is; a failure (`ok: false`) is a result, not an error.
  */
-export function cliVia(bin: string, bundle: string, argv: string[], input = ""): Promise<unknown> {
+export function cliVia(bin: string, bundle: string, argv: string[], input: string | Uint8Array = ""): Promise<unknown> {
   const [command = "", ...rest] = argv;
   if (!POSITIONAL.has(command)) return runEdit(bin, bundle, argv, input);
   return runCall(bin, [command, bundle, ...rest, ...CALL], command, input);
