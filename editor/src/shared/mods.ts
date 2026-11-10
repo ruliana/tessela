@@ -51,6 +51,15 @@ export interface PageMenuItem {
   run: (page: { path: string }) => unknown;
 }
 
+/** What a fence renderer is told: the text between the fence's lines and the page it is in. */
+export interface FenceArg {
+  body: string;
+  path: string;
+}
+
+/** Draws a fence's body: the result (text or a DOM node, or a promise of one) is shown under the fence. */
+export type FenceRender = (fence: FenceArg) => unknown;
+
 export interface ModFailure {
   mod: string;
   message: string;
@@ -81,6 +90,7 @@ export class ModRegistry<V = unknown, E = unknown> {
   private extensions: Owned<{ extension: E }>[] = [];
   private pageMenu: Owned<PageMenuItem>[] = [];
   private listeners: Listener[] = [];
+  private fenceRenders = new Map<string, Owned<{ render: FenceRender }>>();
   readonly loaded: string[] = [];
   readonly failures: ModFailure[] = [];
   /** Told about every failure, so the window can say so. */
@@ -100,6 +110,20 @@ export class ModRegistry<V = unknown, E = unknown> {
 
   addPageMenuItem(mod: string, item: PageMenuItem): void {
     this.pageMenu.push({ ...item, mod });
+  }
+
+  /** A mod draws the code fences whose info string is `info`. Another mod's renderer for it is replaced. */
+  addFence(mod: string, info: string, render: FenceRender): void {
+    this.fenceRenders.set(info, { render, mod });
+  }
+
+  /** The renderer for the fences named `info`, if a mod gave one. */
+  fenceRenderer(info: string): FenceRender | undefined {
+    return this.fenceRenders.get(info)?.render;
+  }
+
+  hasFences(): boolean {
+    return this.fenceRenders.size > 0;
   }
 
   /** The mods' entries for the menu in a page's head. */
@@ -182,6 +206,7 @@ export class ModRegistry<V = unknown, E = unknown> {
     this.extensions = this.extensions.filter((e) => e.mod !== mod);
     this.pageMenu = this.pageMenu.filter((i) => i.mod !== mod);
     this.listeners = this.listeners.filter((l) => l.mod !== mod);
+    for (const [info, f] of this.fenceRenders) if (f.mod === mod) this.fenceRenders.delete(info);
   }
 
   fail(mod: string, message: string): void {

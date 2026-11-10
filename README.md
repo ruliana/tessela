@@ -212,6 +212,8 @@ ctx.ui.toast("Saved somewhere", { label: "Undo", run })      // a note in the si
 ctx.slots.add("page-menu", { label: "Do it…", run: ({ path }) => {} })  // the ⋯ menu in a page's head
 ctx.events.on("title-edited", ({ path, from, to }) => {})    // also page-opened, page-saved, changed
 ctx.pages.current(); ctx.pages.moved(from, to)               // the page shown; after a rename, move or delete
+ctx.pages.open("notes/idea.md", 12)                          // show a page (at a line), as a link would
+ctx.fences.add("tessela", async ({ body, path }) => node)    // draw what is under a closed ``` fence of that info string
 ```
 
 The app's own features are mods too (`editor/src/mods/NAME/main.ts`, built to `dist/mods`), and a mod
@@ -219,7 +221,10 @@ of the same name in the config folder replaces them. `pages` renames, moves and 
 page ("Rename page…", "Move page…" and "Delete page…" in the palette and in the page's ⋯ menu), shows
 what will change first, and offers to rename the file when its title was edited.
 `fold` folds and zooms (Ctrl+Up and Ctrl+Down, Ctrl+Alt+Right and Left; see conventions §11): it keeps
-which blocks are folded in its settings, by page, and never in the notes. A mod can hand
+which blocks are folded in its settings, by page, and never in the notes. `live-lists` draws
+the ```` ```tessela ```` fences of the conventions (`tessela fence`) as rows under the fence, asks again when
+the notes change, and opens the page of a row when it is clicked; nothing it draws is written to the page.
+A mod can hand
 `ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
 the page that editor shows.
 
