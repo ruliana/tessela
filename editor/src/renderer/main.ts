@@ -195,7 +195,7 @@ function setRecentShown(value: string): void {
 }
 
 /** What the middle of the window shows: one page, or the latest journal days stacked. */
-type View = { kind: "page"; path: string } | { kind: "journals"; count: number };
+type View = { kind: "page"; path: string } | { kind: "journals"; count: number } | { kind: "mod"; id: string; arg?: string };
 let view: View | null = null;
 let cards: Card[] = [];
 /** Cards that mods keep beside these (a peek): they save and follow the disk like the others. */
@@ -463,6 +463,8 @@ function buildShell(bundle: string): void {
         el("span", { class: "d" }, todayDay),
       ),
       row("journals-view", "◷", "Journals", "The latest journal days, stacked", () => void showJournals()),
+      // The views mods gave (they are loaded before the window is built).
+      ...registry.views().map((v) => row(`view-${v.id}`, v.glyph ?? "▤", v.label, v.title ?? v.label, () => void showModView(v.id))),
     ),
     sidebarSlot,
     recentEl,
@@ -529,6 +531,12 @@ function renderLists(): void {
   recentList.replaceChildren(
     ...recent.slice(0, recentShown).map((path) => item(pageId(path).replace(/^journals\//, ""), path)),
   );
+
+  for (const v of registry.views()) {
+    const row = document.getElementById(`view-${v.id}`);
+    if (view?.kind === "mod" && view.id === v.id) row?.setAttribute("aria-current", "page");
+    else row?.removeAttribute("aria-current");
+  }
 
   journalsSection.hidden = journals.length === 0;
   rootCount.textContent = pages.length === 0 ? "" : `· ${pages.length} ${pages.length === 1 ? "page" : "pages"}`;
@@ -886,7 +894,41 @@ async function go(by: -1 | 1): Promise<void> {
   places = next;
   const place = places.places[places.at];
   if (place?.kind === "page") await showPage(place.path);
+  else if (place?.kind === "view") await showModView(place.id, place.arg);
   else await showJournals();
+}
+
+/** Shows a view a mod gave, in the middle of the window where the pages and the journals are. */
+async function showModView(id: string, arg?: string): Promise<void> {
+  const mod = registry.view(id);
+  if (!mod) return void (await showJournals());
+  await closeCards();
+  view = { kind: "mod", id, ...(arg === undefined ? {} : { arg }) };
+  arrive({ kind: "view", id, ...(arg === undefined ? {} : { arg }) });
+  const container = el("div", { class: "mod-view", id: `view-${id}-pane` });
+  container.dataset.view = id;
+  stackEl.replaceChildren(container);
+  stackEl.scrollTop = 0;
+  renderStrip();
+  renderLists();
+  backlinksBody.replaceChildren();
+  await drawModView();
+}
+
+/** Asks the view being shown to draw itself again (the notes changed), keeping where the list was scrolled to. */
+async function drawModView(): Promise<void> {
+  if (view?.kind !== "mod") return;
+  const { id, arg } = view;
+  const mod = registry.view(id);
+  const container = stackEl.querySelector<HTMLElement>(".mod-view");
+  if (!mod || !container) return;
+  const top = stackEl.scrollTop;
+  try {
+    await mod.render(container, { ...(arg === undefined ? {} : { arg }) });
+  } catch (e) {
+    registry.fail(mod.mod, `view ${id}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (view?.kind === "mod" && view.id === id) stackEl.scrollTop = top;
 }
 
 async function showJournals(focusToday = false): Promise<void> {
@@ -929,6 +971,7 @@ async function openAt(hit: Hit): Promise<void> {
 async function onChanged(paths: string[]): Promise<void> {
   registry.emit("changed", { paths });
   void refreshIndex();
+  void drawModView();
   await Promise.all([...cards, ...modCards].map((c) => c.diskChanged(paths)));
   await renderBacklinks();
 }
@@ -1028,6 +1071,7 @@ async function pageMoved(from: string, to: string | null): Promise<void> {
   const shown = view?.kind === "page" && view.path === from;
   await refreshIndex();
   if (shown) await (to ? showPage(to) : showJournals());
+  else void drawModView();
   renderNav();
   renderLists();
 }
@@ -1038,6 +1082,7 @@ Object.assign(host, {
   flush: async () => void (await Promise.all([...cards, ...modCards].map((c) => c.flush()))),
   moved: pageMoved,
   open: showPage,
+  showView: showModView,
   card(path, options) {
     const card = createCard(path, cardDeps(), options);
     modCards.add(card);

@@ -76,6 +76,25 @@ export interface BacklinkContent {
 /** Draws a group for the open page, or nothing (null) when the page has none. */
 export type BacklinkGroup = (page: { path: string }) => BacklinkContent | null | undefined | Promise<BacklinkContent | null | undefined>;
 
+/** What a view is asked to draw: `arg` is what the view was opened with (a folder, say). */
+export interface ViewArg {
+  arg?: string;
+}
+
+/** A view a mod gives: it fills the middle of the window, as the journals do, and has a row in the sidebar. */
+export interface ModView {
+  /** Names the view for `views.open` and the history. */
+  id: string;
+  /** The sidebar row's text. */
+  label: string;
+  /** The sidebar row's tooltip. */
+  title?: string;
+  /** One character before the label. */
+  glyph?: string;
+  /** Fills `container`. Called again, on the same container, when the notes change while the view is shown. */
+  render: (container: HTMLElement, view: ViewArg) => unknown;
+}
+
 export interface ModFailure {
   mod: string;
   message: string;
@@ -107,6 +126,7 @@ export class ModRegistry<V = unknown, E = unknown> {
   private pageMenu: Owned<PageMenuItem>[] = [];
   private listeners: Listener[] = [];
   private backlinkGroups: Owned<{ group: BacklinkGroup }>[] = [];
+  private viewById = new Map<string, Owned<ModView>>();
   private fenceRenders = new Map<string, Owned<{ render: FenceRender }>>();
   readonly loaded: string[] = [];
   readonly failures: ModFailure[] = [];
@@ -149,6 +169,19 @@ export class ModRegistry<V = unknown, E = unknown> {
       }),
     );
     return made.filter((c): c is BacklinkContent => c !== null);
+  }
+
+  /** A mod's view. One with the id of another replaces it. */
+  addView(mod: string, view: ModView): void {
+    this.viewById.set(view.id, { ...view, mod });
+  }
+
+  view(id: string): Owned<ModView> | undefined {
+    return this.viewById.get(id);
+  }
+
+  views(): Owned<ModView>[] {
+    return [...this.viewById.values()];
   }
 
   /** A mod draws the code fences whose info string is `info`. Another mod's renderer for it is replaced. */
@@ -246,6 +279,7 @@ export class ModRegistry<V = unknown, E = unknown> {
     this.pageMenu = this.pageMenu.filter((i) => i.mod !== mod);
     this.listeners = this.listeners.filter((l) => l.mod !== mod);
     this.backlinkGroups = this.backlinkGroups.filter((g) => g.mod !== mod);
+    for (const [id, v] of this.viewById) if (v.mod === mod) this.viewById.delete(id);
     for (const [info, f] of this.fenceRenders) if (f.mod === mod) this.fenceRenders.delete(info);
   }
 
