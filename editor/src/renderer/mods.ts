@@ -11,7 +11,7 @@ import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
 import type { ModsInfo } from "../shared/api";
-import { type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type PageMenuItem, ModRegistry } from "../shared/mods";
+import { type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { fenceExtension, refreshFences } from "./fences";
 
@@ -40,9 +40,11 @@ export interface ModHost {
   moved(from: string, to: string | null): Promise<void>;
   /** Shows a page, at `line` when given. */
   open(path: string, line?: number): Promise<void>;
+  /** Shows a mod's view in the middle of the window. */
+  showView(id: string, arg?: string): Promise<void>;
 }
 
-export const host: ModHost = { toast: () => {}, current: () => null, flush: async () => {}, moved: async () => {}, open: async () => {} };
+export const host: ModHost = { toast: () => {}, current: () => null, flush: async () => {}, moved: async () => {}, open: async () => {}, showView: async () => {} };
 
 // Whatever a fence's renderer shows may come from other pages: ask again when the notes change.
 registry.on("fences", "changed", () => refreshFences());
@@ -100,6 +102,12 @@ export interface ModContext {
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
   };
+  /** Views of a mod's own: each has a row in the sidebar and fills the middle of the window, as the journals do. */
+  views: {
+    add(view: ModView): void;
+    /** Shows the view, handing it `arg`; going back in the window returns to what was shown before. */
+    open(id: string, arg?: string): Promise<void>;
+  };
   /** The notes folder, or null while none is open. */
   bundle(): Promise<string | null>;
   /** The CodeMirror packages the editor uses, so a mod does not bundle its own copy. */
@@ -120,6 +128,7 @@ function contextFor(mod: string): ModContext {
     slots: { add: (_slot, item) => registry.addPageMenuItem(mod, item) },
     pages: { current: () => host.current(), flush: () => host.flush(), open: (path, line) => host.open(path, line), moved: (from, to) => host.moved(from, to) },
     cli: (argv, options) => api.cli(argv, options?.input),
+    views: { add: (view) => registry.addView(mod, view), open: (id, arg) => host.showView(id, arg) },
     bundle: () => api.bundle(),
     cm,
   };

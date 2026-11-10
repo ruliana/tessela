@@ -1,7 +1,7 @@
 // Where the user has been: the back/forward history and the "Recent" list.
 
 /** A place the middle of the window can show. */
-export type Place = { kind: "page"; path: string } | { kind: "journals" };
+export type Place = { kind: "page"; path: string } | { kind: "journals" } | { kind: "view"; id: string; arg?: string };
 
 export interface History {
   places: Place[];
@@ -17,7 +17,9 @@ export function emptyHistory(): History {
 
 export function samePlace(a: Place | undefined, b: Place): boolean {
   if (!a || a.kind !== b.kind) return false;
-  return a.kind === "journals" || (b.kind === "page" && a.path === b.path);
+  if (a.kind === "journals") return true;
+  if (a.kind === "view") return b.kind === "view" && a.id === b.id && (a.arg ?? "") === (b.arg ?? "");
+  return b.kind === "page" && a.path === b.path;
 }
 
 /** Showing `place` by the user's own doing: what lay ahead of the current place is dropped. */
