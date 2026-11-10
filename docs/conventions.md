@@ -476,9 +476,12 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
   journal, also anything that mentions its date), grouped by page. Groups from a
   home page (§1) come first, the most specific folder's first, with a "Home" tag
   and a tinted background. The other groups follow, the most recently changed page first.
-- "New page" (Ctrl+N) asks for a name, where `/` makes folders, and creates the file
-  at once from the page template (typing the name in the search box and pressing Enter
-  also opens the page, but its file only appears on the first edit). "Open file…"
+- "New page" (Ctrl+N) asks for a name, where `/` makes folders, and for a type, and creates
+  the file at once (typing the name in the search box and pressing Enter also opens the
+  page, but its file only appears on the first edit). The types are "Page" (the default) and one
+  for each template of the bundle (§10), listed with the template's description; the up and down
+  keys in the name choose one. The page is made by `tessela add NAME --type TYPE`, so it
+  starts from the template. A name that exists opens that page, whatever the type chosen. "Open file…"
   (Ctrl+O) picks a Markdown file; one inside the root opens as a page (reserved files
   like `index.md` too), and one outside it offers its folder as the new root instead.
 - The search box filters page names and also searches the text of the notes

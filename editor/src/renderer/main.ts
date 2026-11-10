@@ -471,7 +471,7 @@ function buildShell(bundle: string): void {
     el(
       "nav",
       { class: "places" },
-      row("new-page", "+", "New page", `New page (${key}+N)`, () => showNewPage(), `${key} N`),
+      row("new-page", "+", "New page", `New page (${key}+N)`, () => runCommand("new-page"), `${key} N`),
       row("open-file", "↗", "Open file…", `Open a file (${key}+O)`, () => void openFile(), `${key} O`),
     ),
     newPageEl,
@@ -747,6 +747,13 @@ function commandList(): Command[] {
   }));
 }
 
+/** Runs the command with this id, a mod's if one took its place (as New page can). */
+function runCommand(id: string): void {
+  commandList()
+    .find((c) => c.id === id)
+    ?.run();
+}
+
 function showMods(): void {
   const info = modsInfo;
   showNotice(describeMods(registry.loaded, registry.failures, info?.folder ?? "the config folder", info?.disabled ?? false));
@@ -808,7 +815,7 @@ window.addEventListener(
 window.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || !document.getElementById("new-page")) return;
   const key = e.key.toLowerCase();
-  if (key === "n" && !e.shiftKey) showNewPage();
+  if (key === "n" && !e.shiftKey) runCommand("new-page");
   else if (key === "o" && e.shiftKey) void changeRoot();
   else if (key === "o") void openFile();
   else return;
@@ -1081,7 +1088,11 @@ Object.assign(host, {
   current: currentPath,
   flush: async () => void (await Promise.all([...cards, ...modCards].map((c) => c.flush()))),
   moved: pageMoved,
-  open: showPage,
+  // A page a mod just made is not in the lists until the watcher says so: look again first.
+  open: async (path: string, line?: number) => {
+    if (!pages.some((p) => p.path === path)) await refreshIndex();
+    await showPage(path, line);
+  },
   showView: showModView,
   card(path, options) {
     const card = createCard(path, cardDeps(), options);

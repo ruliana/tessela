@@ -239,6 +239,9 @@ change is kept (hidden, nothing written; the window remembers) or put back (the 
 it through `tessela save`); a new page can be deleted and a deleted one written again. A mod can hand
 `ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
 the page that editor shows.
+`new-page` takes the place of the window's name box for New page (Ctrl+N, the sidebar button, the palette):
+it asks for a name and a type, the types being the bundle's `templates/NAME.md` with "Page" first, and
+makes the page with `tessela add NAME --type TYPE`. A mod's command with the id `new-page` replaces it.
 
 To build an app that carries its own `tessela` binary:
 
