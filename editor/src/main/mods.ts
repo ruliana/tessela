@@ -17,25 +17,33 @@ export function isModId(id: string): boolean {
   return MOD_ID.test(id);
 }
 
-/** The mods to load: every folder in mods/ that has a main.js, by name. Nothing when mods are off. */
-export function listMods(folder: string, disabled: boolean): ModsInfo {
-  if (disabled) return { folder, disabled, ids: [] };
-  const dir = path.join(folder, "mods");
-  let names: string[] = [];
+/** The ids of the folders in `dir` that have a main.js. */
+function modsIn(dir: string): string[] {
   try {
-    names = readdirSync(dir, { withFileTypes: true })
+    return readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.isDirectory() && isModId(e.name) && existsSync(path.join(dir, e.name, "main.js")))
       .map((e) => e.name);
   } catch {
-    // No mods folder: no mods.
+    return []; // No mods folder: no mods.
   }
-  return { folder, disabled, ids: names.sort() };
+}
+
+/**
+ * The mods to load: the app's own (`bundled`, a folder of mod folders) and every folder in the
+ * config folder's mods/ that has a main.js, by name. A mod of the config folder replaces the app's
+ * with the same name. Nothing when mods are off.
+ */
+export function listMods(folder: string, disabled: boolean, bundled?: string): ModsInfo {
+  if (disabled) return { folder, disabled, ids: [] };
+  const ids = new Set([...(bundled ? modsIn(bundled) : []), ...modsIn(path.join(folder, "mods"))]);
+  return { folder, disabled, ids: [...ids].sort() };
 }
 
 /** The file a mod asked for, or an error when it is not inside that mod's own folder. */
-export function resolveModFile(folder: string, id: string, rel: string): string {
+export function resolveModFile(folder: string, id: string, rel: string, bundled?: string): string {
   if (!isModId(id) || rel === "" || rel.includes("\0") || path.isAbsolute(rel)) throw new Error(`not a mod file: ${id}/${rel}`);
-  const base = path.resolve(folder, "mods", id);
+  const own = path.resolve(folder, "mods", id);
+  const base = bundled && !existsSync(path.join(own, "main.js")) ? path.resolve(bundled, id) : own;
   const full = path.resolve(base, rel);
   if (path.relative(base, full).startsWith("..")) throw new Error(`outside the mod: ${id}/${rel}`);
   return full;

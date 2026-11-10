@@ -51,3 +51,24 @@ export function recentCount(value: unknown): number {
 export function touch(recent: string[], path: string): string[] {
   return [path, ...recent.filter((p) => p !== path)].slice(0, RECENT_KEPT);
 }
+
+/**
+ * The history after a page changed place (`to`) or was deleted (`to` null): its entries follow it
+ * or go, and the place being shown stays the nearest one.
+ */
+export function relocate(h: History, from: string, to: string | null): History {
+  const places: Place[] = [];
+  let at = -1;
+  h.places.forEach((p, i) => {
+    const q: Place | null = p.kind === "page" && p.path === from ? (to === null ? null : { kind: "page", path: to }) : p;
+    if (q && !samePlace(places[places.length - 1], q)) places.push(q);
+    if (i <= h.at) at = places.length - 1;
+  });
+  return { places, at: places.length === 0 ? -1 : Math.max(at, 0) };
+}
+
+/** The recent list after a page changed place (`to`) or was deleted (`to` null). */
+export function relocateRecent(recent: string[], from: string, to: string | null): string[] {
+  const moved = recent.flatMap((p) => (p !== from ? [p] : to === null ? [] : [to]));
+  return moved.filter((p, i) => moved.indexOf(p) === i);
+}
