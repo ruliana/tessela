@@ -128,8 +128,6 @@ export interface ModContext {
     open(path: string, line?: number): Promise<void>;
     /** After `rename`, `move` or `remove` through `cli`: the window follows the page (`to` null: it is gone). */
     moved(from: string, to: string | null): Promise<void>;
-    /** Goes to a page, as a click on a link does. */
-    open(path: string, line?: number): Promise<void>;
     /** A card for a page beside the window's own, to put in a slot; `menu: false` leaves out the page menu. */
     card(path: string, options?: { menu?: boolean }): PageCard;
   };
