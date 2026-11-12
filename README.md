@@ -14,6 +14,10 @@ synced with git. Rust tools lint, query and list the vocabulary of that bundle,
 and import a Logseq graph. An Electron editor uses the same tools behind the
 scenes.
 
+Tessela is local first: your notes and the tools run on your own machine, with
+no server. Every call goes through one small CLI, so Tessela could be rebuilt
+for remote access without much work. That is not the goal of this version.
+
 ![Tessela editor showing a page and the pages that link to it](docs/screenshots/page-backlinks.png)
 
 - [Conventions](docs/conventions.md): what Tessela adds on top of OKF.
