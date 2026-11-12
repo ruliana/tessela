@@ -1090,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "tessela-cli"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "clap",
  "jsonschema",
@@ -1104,7 +1104,7 @@ dependencies = [
 
 [[package]]
 name = "tessela-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "blake3",
  "diffy",
