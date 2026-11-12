@@ -184,12 +184,16 @@ again (`xvfb-run -a npm run screenshots` on a server).
 
 ### Mods
 
+![A page drawn with mods: a callout, a footnote, a formula and a live list](docs/screenshots/mods.png)
+
 The editor can be extended with mods: a folder `mods/NAME/` with a `main.js` in the config folder
 (`$TESSELA_CONFIG`, else the app's data folder, `~/.config/Tessela` on Linux). Mods are trusted
-code (your own or audited) and load before the first page opens; `--no-mods` starts without them,
-and one that throws is skipped and listed in the Mods panel ("Show the mods" in the palette, Ctrl+K),
-where each mod can also be switched off or on (kept in the config folder's `settings.json`). The whole
-API is in the [mod-writing skill](skills/tessela-mods/SKILL.md).
+code (your own or audited) and load before the first page opens.
+
+- `--no-mods` starts without them, and a mod that throws is skipped and listed in the Mods panel.
+- The Mods panel ("Show the mods" in the palette, Ctrl+K) can also switch each mod off or on; that is
+  kept in the config folder's `settings.json`.
+- The whole API is in the [mod-writing skill](skills/tessela-mods/SKILL.md).
 
 ```js
 // mods/stamp/main.js
@@ -222,56 +226,137 @@ ctx.slots.mount("sidebar").root                              // an element in th
 ctx.backlinks.add(async ({ path }) => ({ node, first: true, taken: [handle] }))  // a group in the backlinks of the open page
 ```
 
+#### The mods that come with the editor
+
 The app's own features are mods too (`editor/src/mods/NAME/main.ts`, built to `dist/mods`), and a mod
-of the same name in the config folder replaces them. `pages` renames, moves and deletes the open
-page ("Rename page…", "Move page…" and "Delete page…" in the palette and in the page's ⋯ menu), shows
-what will change first, and offers to rename the file when its title was edited.
-`fold` folds and zooms (Ctrl+Up and Ctrl+Down, Ctrl+Alt+Right and Left; see conventions §11): it keeps
-which blocks are folded in its settings, by page, and never in the notes. `live-lists` draws
-the ```` ```tessela ```` fences of the conventions (`tessela fence`) as rows under the fence, asks again when
-the notes change, and opens the page of a row when it is clicked; nothing it draws is written to the page.
-`unlinked` lists, under the backlinks, the places in other pages that name the open page in plain words
-(`tessela query --unlinked`), each with a Link button that writes the link through `tessela save`;
-it draws into `ctx.slots.mount("side-bottom")`, the element below the backlinks.
-`agenda` turns plain `- [ ]` items and the dates written in them into an agenda: a journal day lists the
-open tasks that name it in a "Due" group at the top of its backlinks (today also lists the overdue ones),
-ticking a task on its tile is written as a one-line patch through `tessela save --patch`, and a month
-strip in the sidebar marks the days that have a file and the days that are only mentioned.
-`outline` lists the headings of the open page as a group at the top of its backlinks (a click puts the cursor on
-one; it is drawn from the saved page, so it follows once the page is saved), adds "Go to heading" to the
-palette, and makes Alt+Up and Alt+Down on a heading line move its section (what is under it, down to the
-next heading of its level) past the neighbour of the same level, without moving it out of its parent.
-`search` replaces the search under the sidebar's search box (through `ctx.override.add("search", ...)`): words in
-any order, "quoted phrases", `#tag`, `type:`, `in:`, `from:`/`to:` and a bare `YYYY-MM-DD` become one `tessela query`,
-page titles and headings are searched with the text, the command is shown, and "Keep as live list" puts it in the
-open page as a ```` ```tessela ```` fence.
-`related` is a "Related" group in the right column, in place of a graph (from `tessela related`): the concepts
-mentioned together with the open page, most often first, each with its reason ("together in 7 blocks on 3 pages")
-and a click to open its page, and the home pages that lead to it as a trail, the root's first. Nothing is written.
-`properties` takes over the title and the row of properties at the top of a page (through
-`ctx.override.add("properties", { draw })`, which is handed the page's `props` and returns the element to show):
-a click on the type offers the types the notes use, on a tag the vocabulary (with Remove), "+ tag" adds one,
-"Change date" takes a date or a datetime with its offset (and the `/` menu's Today, Tomorrow, Yesterday and
-Now), and any other plain value is typed over. A change rewrites that one key of the front matter and keeps every
-other byte, in the quoting the value already had; it is saved through `tessela save --expect`, so a page that changed
-meanwhile is never overwritten. A key written across several lines, or with a comment, is left to "Edit properties".
-`changes` is the "Changes" row in the sidebar: what differs between the notes and git (the last commit, or
-any revision typed in, `ORIG_HEAD` for before the last pull), block by block, from `tessela changes`. Each
-change is kept (hidden, nothing written; the window remembers) or put back (the page is saved again without
-it through `tessela save`); a new page can be deleted and a deleted one written again. A mod can hand
-`ctx.editor.extend` a function instead of an extension, to be called for each editor with `{ path }`,
-the page that editor shows.
-`new-page` takes the place of the window's name box for New page (Ctrl+N, the sidebar button, the palette):
-it asks for a name and a type, the types being the bundle's `templates/NAME.md` with "Page" first, and
+of the same name in the config folder replaces them. None of them writes anything on its own: notes
+change only through `tessela save` and its relatives.
+
+| Mod          | What it does                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| `pages`      | Renames, moves and deletes the open page, after showing what will change.                          |
+| `fold`       | Folds and zooms blocks; the folds are kept in its settings, by page, never in the notes.            |
+| `live-lists` | Draws the `tessela` fences of the conventions as rows under the fence.                             |
+| `unlinked`   | Lists the places that name the open page in plain words, with a Link button.                       |
+| `agenda`     | Turns `- [ ]` items and the dates in them into a "Due" group and a month strip.                    |
+| `outline`    | Lists the headings of the open page and moves a section with Alt+Up and Alt+Down.                  |
+| `search`     | Replaces the sidebar search: words, phrases, `#tag`, `type:`, `in:`, `from:` and `to:`.             |
+| `related`    | A "Related" group: the concepts mentioned together with the open page, and the home pages' trail.  |
+| `properties` | Takes over the title and the row of properties at the top of a page.                               |
+| `changes`    | The "Changes" row: what differs between the notes and git, block by block.                         |
+| `new-page`   | Asks for a name and a type when you make a page, from the bundle's `templates/NAME.md`.             |
+| `gfm-extras` | Draws GitHub-flavored Markdown the editor did not: callouts, footnotes, math and Mermaid.          |
+| `peek`       | Shows what a link, a `#tag` or a date points to in the right column, without leaving the page.     |
+| `attach`     | Stores a file pasted or dropped into a page with `tessela attach` and links it at the cursor.      |
+| `folders`    | The "Folders" row: one folder at a time, with its `home.md`, sub-folders, pages and journal days.  |
+
+##### `pages`
+
+Renames, moves and deletes the open page ("Rename page…", "Move page…" and "Delete page…" in the
+palette and in the page's ⋯ menu), shows what will change first, and offers to rename the file when
+its title was edited.
+
+##### `fold`
+
+Folds and zooms (Ctrl+Up and Ctrl+Down, Ctrl+Alt+Right and Left; see conventions §11). It keeps which
+blocks are folded in its settings, by page, and never in the notes.
+
+##### `live-lists`
+
+Draws the ```` ```tessela ```` fences of the conventions (`tessela fence`) as rows under the fence, asks
+again when the notes change, and opens the page of a row when it is clicked. Nothing it draws is
+written to the page.
+
+##### `unlinked`
+
+Lists, under the backlinks, the places in other pages that name the open page in plain words
+(`tessela query --unlinked`), each with a Link button that writes the link through `tessela save`. It
+draws into `ctx.slots.mount("side-bottom")`, the element below the backlinks.
+
+##### `agenda`
+
+Turns plain `- [ ]` items and the dates written in them into an agenda:
+
+- A journal day lists the open tasks that name it in a "Due" group at the top of its backlinks (today
+  also lists the overdue ones).
+- Ticking a task on its tile is written as a one-line patch through `tessela save --patch`.
+- A month strip in the sidebar marks the days that have a file and the days that are only mentioned.
+
+##### `outline`
+
+- Lists the headings of the open page as a group at the top of its backlinks. A click puts the cursor
+  on one; it is drawn from the saved page, so it follows once the page is saved.
+- Adds "Go to heading" to the palette.
+- Alt+Up and Alt+Down on a heading line move its section (what is under it, down to the next heading
+  of its level) past the neighbour of the same level, without moving it out of its parent.
+
+##### `search`
+
+Replaces the search under the sidebar's search box (through `ctx.override.add("search", ...)`). Words
+in any order, "quoted phrases", `#tag`, `type:`, `in:`, `from:`/`to:` and a bare `YYYY-MM-DD` become
+one `tessela query`; page titles and headings are searched with the text, the command is shown, and
+"Keep as live list" puts it in the open page as a ```` ```tessela ```` fence.
+
+##### `related`
+
+A "Related" group in the right column, in place of a graph (from `tessela related`):
+
+- The concepts mentioned together with the open page, most often first, each with its reason
+  ("together in 7 blocks on 3 pages") and a click to open its page.
+- The home pages that lead to it, as a trail with the root's first.
+
+Nothing is written.
+
+##### `properties`
+
+Takes over the title and the row of properties at the top of a page (through
+`ctx.override.add("properties", { draw })`, which is handed the page's `props` and returns the
+element to show):
+
+- A click on the type offers the types the notes use, and on a tag the vocabulary (with Remove);
+  "+ tag" adds one.
+- "Change date" takes a date or a datetime with its offset (and the `/` menu's Today, Tomorrow,
+  Yesterday and Now); any other plain value is typed over.
+- A change rewrites that one key of the front matter and keeps every other byte, in the quoting the
+  value already had. It is saved through `tessela save --expect`, so a page that changed meanwhile is
+  never overwritten.
+- A key written across several lines, or with a comment, is left to "Edit properties".
+
+##### `changes`
+
+The "Changes" row in the sidebar: what differs between the notes and git (the last commit, or any
+revision typed in, `ORIG_HEAD` for before the last pull), block by block, from `tessela changes`.
+
+- Each change is kept (hidden, nothing written; the window remembers) or put back (the page is saved
+  again without it through `tessela save`).
+- A new page can be deleted and a deleted one written again.
+
+##### `new-page`
+
+Takes the place of the window's name box for New page (Ctrl+N, the sidebar button, the palette). It
+asks for a name and a type, the types being the bundle's `templates/NAME.md` with "Page" first, and
 makes the page with `tessela add NAME --type TYPE`. A mod's command with the id `new-page` replaces it.
-`gfm-extras` draws the GitHub-flavored Markdown the editor did not: `> [!NOTE]` (also TIP, IMPORTANT, WARNING,
-CAUTION) as a callout, footnotes (`[^1]` as its number, numbered by first use, with the note as its tooltip; a click goes to
-the definition and back), `$x$` inline math and `$$` blocks, and ```` ```math ```` and ```` ```mermaid ```` fences as
-formulas and diagrams under the source. Where the cursor is, the Markdown shows as written, and nothing it draws is written
-to the page, so the page reads the same on GitHub. KaTeX (as MathML, so no fonts) and Mermaid are loaded the first time a
-page has one. Its palette commands are "Copy link to this heading" (`[Text](/page.md#anchor)`, which the editor follows),
-"Copy as quote" (the selection, or the line, as a quote with a link to its page) and "Insert footnote"; the `/` menu has
-Callout, Math block and Diagram.
+
+##### `gfm-extras`
+
+Draws the GitHub-flavored Markdown the editor did not:
+
+- `> [!NOTE]` (also TIP, IMPORTANT, WARNING, CAUTION) as a callout.
+- Footnotes: `[^1]` as its number, numbered by first use, with the note as its tooltip; a click goes
+  to the definition and back.
+- `$x$` inline math and `$$` blocks, and ```` ```math ```` and ```` ```mermaid ```` fences as formulas
+  and diagrams under the source.
+
+Where the cursor is, the Markdown shows as written, and nothing it draws is written to the page, so the
+page reads the same on GitHub. KaTeX (as MathML, so no fonts) and Mermaid are loaded the first time a
+page has one. Its palette commands are "Copy link to this heading" (`[Text](/page.md#anchor)`, which
+the editor follows), "Copy as quote" (the selection, or the line, as a quote with a link to its page)
+and "Insert footnote"; the `/` menu has Callout, Math block and Diagram.
+
+A mod can hand `ctx.editor.extend` a function instead of an extension, to be called for each editor
+with `{ path }`, the page that editor shows.
+
+### Packaging the app
 
 To build an app that carries its own `tessela` binary:
 

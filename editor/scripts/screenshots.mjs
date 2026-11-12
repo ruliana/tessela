@@ -84,6 +84,17 @@ title: Reading list
 - [x] *How to Take Smart Notes*, on keeping a slip box
 - [ ] *Designing Data-Intensive Applications*, chapter on logs and replication
 - [ ] The #okf specification, front to back
+
+> [!TIP]
+> Mods draw this callout, the footnote[^1] and the formula $e^{i\\pi} + 1 = 0$. The page stays plain Markdown.
+
+## Mentioned in the journals
+
+\`\`\`tessela
+query --ref okf --type journal | head 3
+\`\`\`
+
+[^1]: Footnotes are numbered by first use.
 `,
   [`journals/${day(0)}.md`]: `---
 type: journal
@@ -170,6 +181,7 @@ const open = async (name) => {
 await win.evaluate(() => localStorage.setItem("tessela.livePreview", "1"));
 await win.reload();
 await settle();
+await win.addStyleTag({ content: "*::-webkit-scrollbar { display: none; }" }); // no scrollbars in the pictures
 
 // 1. The journals, light.
 await win.click("#theme-toggle"); // system -> light
@@ -180,7 +192,12 @@ await shot("journals.png");
 await open("okf");
 await shot("page-backlinks.png");
 
-// 3. The same, dark.
+// 3. A page that uses mods: a callout, a footnote, math and a live list.
+await open("reading-list");
+await win.waitForTimeout(1500);
+await shot("mods.png");
+
+// 4. The first page again, dark.
 await win.click("#theme-toggle"); // light -> dark
 await win.waitForTimeout(300);
 await open("project/tessela");
