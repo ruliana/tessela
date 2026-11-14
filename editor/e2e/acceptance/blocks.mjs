@@ -205,6 +205,20 @@ suite("Block move and select", null, (test) => {
     assert.equal(await s.selected(), "Beta line\ncontinues");
   });
 
+  test("Esc again widens the selection, block by block, until the whole page", async (s) => {
+    await s.openWith("sel-grow", "# One\n\nText\n\n- a\n  - b\n\n## Two\n\nDeep\n\n# Three\n\nLast");
+    for (let i = 0; i < 8; i++) await s.key("ArrowUp"); // from "Last" to "- b"
+    await s.key("Escape");
+    assert.equal(await s.selected(), "  - b");
+    await s.key("Escape");
+    assert.equal(await s.selected(), "- a\n  - b");
+    await s.key("Escape");
+    assert.equal(await s.selected(), "# One\n\nText\n\n- a\n  - b\n\n## Two\n\nDeep");
+    await s.key("Escape");
+    const page = await s.selected();
+    assert.ok(page.startsWith("---\n") && page.endsWith("Last"), page);
+  });
+
   test("Esc on an item does not take in the paragraph after the blank line below it", async (s) => {
     await s.openWith("sel-gap-item", "- Talk to Santista.\n\n This looks good\n Test another row\n\nAnother paragraph");
     for (let i = 0; i < 5; i++) await s.key("ArrowUp");

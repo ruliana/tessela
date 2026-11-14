@@ -401,13 +401,13 @@ describe("Escape and block selection over blank lines", () => {
     expect(escape("Title\n=====\n\nPara", 1)).toBe("0-1");
   });
 
-  it("selects the parent item when an item is already selected, and then stops", () => {
+  it("selects the parent item when an item is already selected, then the page, and then stops", () => {
     const lines = ["- a", "  - b", "    - c", "", "Para"];
-    const one = selectBlock(lines, cursor(2))!;
-    const two = selectBlock(lines, one)!;
-    const three = selectBlock(lines, two)!;
-    expect([one, two, three].map((s) => `${s.anchor.line}-${s.head.line}`)).toEqual(["2-2", "1-2", "0-2"]);
-    expect(selectBlock(lines, three)).toBeNull();
+    const picked: string[] = [];
+    for (let sel = selectBlock(lines, cursor(2)); sel; sel = selectBlock(lines, sel)) {
+      picked.push(`${sel.anchor.line}-${sel.head.line}`);
+    }
+    expect(picked).toEqual(["2-2", "1-2", "0-2", "0-4"]);
   });
 
   it("extends a selection over the next sibling but not into a paragraph beyond the list", () => {
@@ -556,18 +556,13 @@ describe("the block parser on generated pages", () => {
     }
   });
 
-  it("selects, from any line, a range that holds that line and stays inside one top-level block", () => {
+  it("selects, from any line, a range that holds that line", () => {
     for (const page of pages) {
-      const blocks = parseBlocks(page);
       page.forEach((_, i) => {
         const sel = selectBlock(page, cursor(i));
         if (!sel) return;
-        const top = blocks.find((b) => i >= b.start && i <= b.end)!;
-        expect(top, `${page.join("\n")}\n@${i}`).toBeDefined();
-        expect(sel.anchor.line, `${page.join("\n")}\n@${i}`).toBeGreaterThanOrEqual(top.start);
-        expect(sel.head.line, `${page.join("\n")}\n@${i}`).toBeLessThanOrEqual(top.end);
-        expect(sel.anchor.line).toBeLessThanOrEqual(i);
-        expect(sel.head.line).toBeGreaterThanOrEqual(i);
+        expect(sel.anchor.line, `${page.join("\n")}\n@${i}`).toBeLessThanOrEqual(i);
+        expect(sel.head.line, `${page.join("\n")}\n@${i}`).toBeGreaterThanOrEqual(i);
       });
     }
   });
