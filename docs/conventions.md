@@ -508,7 +508,8 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Tab                           | Paragraph becomes a list item; an item nests under the one before it   |
 | Shift+Tab                     | Nested item moves out; a top-level item becomes a paragraph again      |
 | Alt+Up / Alt+Down             | Move the block, with what it owns, past its neighbour                  |
-| Esc, then Shift+Up / Shift+Down | Select the block at the cursor (Esc again: its parent), then more blocks |
+| Esc, then Esc again           | Select the block at the cursor, then the one around it each time: parent item, list, section, the whole page |
+| Shift+Up / Shift+Down         | On a selected block, take in more blocks                              |
 | Ctrl+Up / Ctrl+Down           | Fold, or open, the block at the cursor; pressed again, the block around it |
 | Ctrl+Alt+Right / Left         | Zoom in on the block at the cursor, or back out one level              |
 | Ctrl+B, Ctrl+I, Ctrl+E        | Bold, italic, code (the word at the cursor when nothing is selected)   |

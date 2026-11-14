@@ -489,16 +489,59 @@ function cover(lines: string[], from: Block, to: Block): Sel {
   return { anchor: { line: from.start, col: 0 }, head: lineEnd(lines, to.end) };
 }
 
-/** Escape: selects the block at the cursor; again, the block that holds it. */
+const HEADING_LEVEL = /^ {0,3}(#{1,6})( |$)/;
+
+/**
+ * Every range Escape can widen to, as whole lines: each block (the items inside a list too), each
+ * section, which is a heading and what follows it up to the next heading of the same level or
+ * above, and the whole page.
+ */
+function ranges(lines: string[], blocks: Block[]): [number, number][] {
+  const found: [number, number][] = [[0, lines.length - 1]];
+  const walk = (list: Block[]): void => {
+    for (const b of list) {
+      found.push([b.start, b.end]);
+      walk(b.children);
+    }
+  };
+  walk(blocks);
+  const headings = blocks.filter((b) => b.kind === "heading");
+  headings.forEach((h, i) => {
+    const level = HEADING_LEVEL.exec(lines[h.start]!)![1]!.length;
+    const next = headings.slice(i + 1).find((n) => HEADING_LEVEL.exec(lines[n.start]!)![1]!.length <= level);
+    let end = next ? next.start - 1 : lines.length - 1;
+    while (end > h.start && blank(lines[end])) end--;
+    found.push([h.start, end]);
+  });
+  return found;
+}
+
+function before(a: Pos, b: Pos): boolean {
+  return a.line < b.line || (a.line === b.line && a.col < b.col);
+}
+
+/**
+ * Escape: selects the block at the cursor, and each time again the next one out: the item or
+ * paragraph, the item that holds it, the list, the section under its heading, the section that
+ * holds that, and in the end the whole page. Null when the whole page is selected already.
+ */
 export function selectBlock(lines: string[], sel: Sel): Sel | null {
-  const blocks = parseBlocks(lines);
-  const group = aligned(lines, blocks, sel);
-  if (group) {
-    const parent = group[0]!.parent;
-    return parent && parent.kind === "item" ? cover(lines, parent, parent) : null;
+  const [from, to] = ordered(sel);
+  // A cursor in a gap between blocks has nothing to take in.
+  if (from.line === to.line && from.col === to.col && !blockAt(parseBlocks(lines), from.line)) return null;
+  let best: Sel | null = null;
+  let size = Infinity;
+  for (const [start, end] of ranges(lines, parseBlocks(lines))) {
+    const first: Pos = { line: start, col: 0 };
+    const last = lineEnd(lines, end);
+    // It must hold the selection and be wider than it.
+    if (before(from, first) || before(last, to) || (!before(first, from) && !before(to, last))) continue;
+    if (end - start < size) {
+      size = end - start;
+      best = { anchor: first, head: last };
+    }
   }
-  const b = selectableAt(blocks, sel.head.line);
-  return b ? cover(lines, b, b) : null;
+  return best;
 }
 
 /** Shift+Up / Shift+Down on a block selection: takes in the next block in that direction. */

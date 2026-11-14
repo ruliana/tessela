@@ -204,6 +204,28 @@ describe("block selection", () => {
     expect(selectBlock(first.lines, once)).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 5 } });
   });
 
+  it("keeps widening, through the sections, until the whole page is selected", () => {
+    const page = "---\ntype: concept\n---\n\nIntro\n\n# One\n\nText|\n\n## Two\n\nDeep\n\n# Three\n\nLast";
+    const { lines, sel } = setup(page);
+    const picked: string[] = [];
+    let now: Sel | null = sel;
+    while ((now = selectBlock(lines, now))) {
+      const [a, b] = [now.anchor, now.head];
+      picked.push(`${a.line}-${b.line}`);
+    }
+    // Text, then the section "One" with "Two" inside it, then the whole page.
+    expect(picked).toEqual(["8-8", "6-12", "0-16"]);
+  });
+
+  it("goes from an item to its list, and from there to the whole page", () => {
+    const { lines, sel } = setup("- a|\n- b");
+    const item = selectBlock(lines, sel)!;
+    expect(item).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 0, col: 3 } });
+    const all = { anchor: { line: 0, col: 0 }, head: { line: 1, col: 3 } };
+    expect(selectBlock(lines, item)).toEqual(all);
+    expect(selectBlock(lines, all)).toBeNull();
+  });
+
   it("extends over the neighbouring block", () => {
     const { lines, sel } = setup("- a\n- b|\n- c\n- d");
     const one = selectBlock(lines, sel)!;
