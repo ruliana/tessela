@@ -63,6 +63,15 @@ suite("Search and page list", bundle, (test) => {
     assert.match(await s.win.textContent("#results .hit"), /searchable-needle/);
   });
 
+  test("text hits stay readable in a short window", async (s) => {
+    await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 640));
+    await s.win.fill("#search", "searchable-needle");
+    await s.win.waitForSelector("#results .hit");
+    await s.win.waitForFunction(() => document.querySelector("#results").getBoundingClientRect().height > 60);
+    const [box, hit] = await s.win.evaluate(() => [document.querySelector("#results").getBoundingClientRect().height, document.querySelector("#results .hit").getBoundingClientRect().height]);
+    assert.ok(box >= hit, `the results box (${box}px) shows the hit (${hit}px)`);
+  });
+
   test("text search is not case sensitive", async (s) => {
     await s.win.fill("#search", "SEARCHABLE-NEEDLE");
     await s.win.waitForSelector("#results .hit");
