@@ -11,6 +11,7 @@
      (links, concepts, tags), amber is time, red is a problem. */
   --accent: #1b6b5d;
   --accent-soft: #ddebe6;
+  --selection: rgba(27, 107, 93, 0.24);
   --link: #1b6b5d;
   --date: #9a5a08;
   --warn: #9a5a08;
@@ -53,6 +54,7 @@
     --border: #2c3531;
     --accent: #6cc4ae;
     --accent-soft: #243630;
+    --selection: rgba(108, 196, 174, 0.3);
     --link: #6cc4ae;
     --date: #e6b365;
     --warn: #e6b365;
@@ -81,6 +83,7 @@
   --border: #2c3531;
   --accent: #6cc4ae;
   --accent-soft: #243630;
+  --selection: rgba(108, 196, 174, 0.3);
   --link: #6cc4ae;
   --date: #e6b365;
   --warn: #e6b365;
@@ -147,7 +150,10 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .editor .cm-line { padding: 1.5px 24px; }
 .editor .cm-cursor { border-left-color: var(--text); }
 .editor .cm-focused { outline: none; }
-.editor .cm-selectionBackground, .editor .cm-focused .cm-selectionBackground { background: var(--accent-soft) !important; }
+/* The selection layer sits above the text and is translucent: behind it, a code block's own
+   background would paint over the highlight and hide it. */
+.editor .cm-selectionLayer { z-index: 150 !important; }
+.editor .cm-selectionBackground, .editor .cm-focused .cm-selectionBackground { background: var(--selection) !important; }
 /* Fold and zoom: a chevron in the margin of a line that can fold, the chip a fold leaves, the way back above a zoom. */
 .editor .cm-line { position: relative; }
 .cm-foldmark { position: absolute; left: 4px; top: 0; width: 16px; text-align: center; color: var(--muted); cursor: pointer; opacity: 0; transform: rotate(90deg); transition: opacity 0.12s; user-select: none; }
