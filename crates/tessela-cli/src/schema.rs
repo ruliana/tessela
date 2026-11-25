@@ -18,6 +18,7 @@ pub fn answer(name: &str, g: &mut SchemaGenerator) -> Option<Schema> {
         "query" => g.subschema_for::<answers::Query>(),
         "vocab" => g.subschema_for::<answers::Vocab>(),
         "lint" => g.subschema_for::<answers::Lint>(),
+        "update" => g.subschema_for::<answers::Update>(),
         "watch" => g.subschema_for::<answers::WatchEvent>(),
         "index" => Schema::try_from(json!({ "oneOf": [
             g.subschema_for::<Listing>(),

@@ -12,11 +12,15 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
+flate2 = "1"
 notify = "8"
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.10"
+tar = "0.4"
 tessela-core = { path = "../tessela-core" }
+ureq = { version = "3", features = ["json", "platform-verifier"] }
 walkdir = "2.5.0"
 
 [dev-dependencies]

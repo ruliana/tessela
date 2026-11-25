@@ -397,6 +397,11 @@ Pushing a tag like `v0.1.0` builds the `tessela` command line tool for Linux
 `tessela-<tag>-<target>.tar.gz` files, with checksums, to the GitHub release.
 The workflow can also be run by hand from the Actions tab for an existing tag.
 
+An installed `tessela` updates itself: `tessela update` downloads the newest release
+for its platform, checks it against the published checksum and replaces the binary
+(`--check` only says whether there is one; `--json` works as everywhere). The copy that
+comes inside the editor is updated with the editor.
+
 ## Development
 
 ```

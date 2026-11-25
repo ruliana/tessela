@@ -2,6 +2,7 @@ mod answers;
 mod changes;
 mod fence;
 mod schema;
+mod update;
 mod watch;
 
 use std::fmt::Arguments;
@@ -230,6 +231,18 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Replace this tool with the newest release on GitHub (Linux and macOS)
+    Update {
+        /// Only say whether a newer release exists; install nothing
+        #[arg(long)]
+        check: bool,
+        /// Print JSON instead of text; errors are JSON too
+        #[arg(long)]
+        json: bool,
+        /// The API version the caller was written for; the command fails when it differs
+        #[arg(long)]
+        api: Option<u32>,
+    },
     /// Print the whole API (commands, arguments, answers) as one JSON document
     Schema,
     /// Print the API version of the edit commands (read, add, save, rename, move, remove)
@@ -402,6 +415,7 @@ fn main() -> ExitCode {
             prefix,
         } => vocab(common, unwritten, min_count, prefix),
         Command::Api { json } => api(json),
+        Command::Update { check, json, api } => run_update(check, json, api),
         Command::Schema => {
             print_json(&schema::document(&Cli::command()));
             ExitCode::SUCCESS
@@ -709,6 +723,32 @@ fn read_bytes(file: Option<&Path>) -> Result<Vec<u8>, EditError> {
         ));
     }
     Ok(bytes)
+}
+
+fn run_update(check: bool, json: bool, api: Option<u32>) -> ExitCode {
+    match edit::check_api(api).and_then(|()| update::run(check)) {
+        Ok(done) if json => {
+            print_ok(&done);
+            ExitCode::SUCCESS
+        }
+        Ok(done) if done.updated => {
+            outln!("updated {} to {}", done.current, done.latest);
+            ExitCode::SUCCESS
+        }
+        Ok(done) if done.update_available => {
+            outln!(
+                "{} is available (this is {}); run `tessela update` to install it",
+                done.latest,
+                done.current
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(done) => {
+            outln!("tessela {} is the newest release", done.current);
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(json, &e),
+    }
 }
 
 fn api(json: bool) -> ExitCode {
