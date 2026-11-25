@@ -9,6 +9,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 
 import { type Block, editedBlockLines, frontmatterEnd, parseBlocks } from "../shared/blocks";
 import { daysInLine } from "../shared/dates";
+import { allowedHtml } from "../shared/html";
 import { journalDest } from "../shared/pages";
 import type { PropertiesArg, PropertiesOverride } from "../shared/mods";
 import { type Properties, bodyRepeatsTitle, bodyStart, parseProperties, showWhen } from "../shared/properties";
@@ -218,17 +219,24 @@ function parseTable(lines: string[]): ParsedTable | null {
 
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\*[^*]+\*)|\[([^\]]*)\]\(([^)\s]*)\)/g;
 
+/** Appends text with the HTML on the allowlist (shared/html.ts) drawn; anything else in it stays as typed. */
+function appendHtml(text: string, parent: HTMLElement): void {
+  for (const piece of allowedHtml(text)) {
+    parent.append(typeof piece === "string" ? piece : document.createElement(piece.element));
+  }
+}
+
 /** Appends plain text; a date in it is a link to its journal day. */
 function appendText(text: string, parent: HTMLElement): void {
   let last = 0;
   for (const d of daysInLine(text)) {
-    parent.append(text.slice(last, d.from));
+    appendHtml(text.slice(last, d.from), parent);
     const a = Object.assign(document.createElement("a"), { textContent: text.slice(d.from, d.to), className: "date" });
     a.dataset.href = journalDest(d.day);
     parent.append(a);
     last = d.to;
   }
-  parent.append(text.slice(last));
+  appendHtml(text.slice(last), parent);
 }
 
 /** Appends the text of a table cell with its inline Markdown (code, bold, italic, strike, links) drawn. */
@@ -239,11 +247,12 @@ function renderInline(text: string, parent: HTMLElement): void {
     appendText(text.slice(last, at), parent);
     last = at + m[0].length;
     if (m[1]) parent.append(Object.assign(document.createElement("code"), { textContent: m[1].slice(1, -1) }));
-    else if (m[2]) parent.append(Object.assign(document.createElement("strong"), { textContent: m[2].slice(2, -2) }));
-    else if (m[3]) parent.append(Object.assign(document.createElement("del"), { textContent: m[3].slice(2, -2) }));
-    else if (m[4]) parent.append(Object.assign(document.createElement("em"), { textContent: m[4].slice(1, -1) }));
+    else if (m[2]) appendHtml(m[2].slice(2, -2), parent.appendChild(document.createElement("strong")));
+    else if (m[3]) appendHtml(m[3].slice(2, -2), parent.appendChild(document.createElement("del")));
+    else if (m[4]) appendHtml(m[4].slice(1, -1), parent.appendChild(document.createElement("em")));
     else {
-      const a = Object.assign(document.createElement("a"), { textContent: m[5] ?? "" });
+      const a = document.createElement("a");
+      appendHtml(m[5] ?? "", a);
       a.dataset.href = m[6] ?? "";
       parent.append(a);
     }
