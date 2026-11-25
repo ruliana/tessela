@@ -563,3 +563,69 @@ export function extendBlocks(lines: string[], sel: Sel, dir: "up" | "down"): Sel
   const p = previous(blocks, first);
   return p ? cover(lines, p, last) : null;
 }
+
+// ---- select mode ---------------------------------------------------------------
+// After Escape the selected blocks stay selected as blocks: the arrows go from block to block,
+// Enter adds a block below, and anything else goes back to editing.
+
+/** Every block that can be selected, in the order they are read: an item comes before its children. */
+function readingOrder(blocks: Block[]): Block[] {
+  const found: Block[] = [];
+  const walk = (list: Block[]): void => {
+    for (const b of list) {
+      if (movable(b)) found.push(b);
+      walk(b.children);
+    }
+  };
+  walk(blocks);
+  return found;
+}
+
+/**
+ * Up / Down in select mode: selects the block that comes before or after the selected ones, as the
+ * page is read. Code blocks, quotes and tables are blocks like any other. Null at the ends.
+ */
+export function stepBlock(lines: string[], sel: Sel, dir: "up" | "down"): Sel | null {
+  const [first, last] = selectedLines(sel);
+  const all = readingOrder(parseBlocks(lines));
+  const b = dir === "down" ? all.find((c) => c.start > last) : all.findLast((c) => c.start < first);
+  return b ? cover(lines, b, b) : null;
+}
+
+/** The first and last character of the selected lines: where Space and the arrows put the cursor. */
+export function selectedSpan(lines: string[], sel: Sel): { start: Pos; end: Pos } {
+  const [first, last] = selectedLines(sel);
+  return { start: { line: first, col: 0 }, end: lineEnd(lines, last) };
+}
+
+/** A text to put in the page, where, and where the cursor goes inside it. */
+export interface Insertion {
+  at: Pos;
+  insert: string;
+  caret: number;
+}
+
+/**
+ * Enter in select mode: a new block below the selected ones. Below an item it is another item
+ * of the same list; below anything else it is a paragraph, with a blank line to set it apart.
+ */
+export function blockBelow(lines: string[], sel: Sel): Insertion {
+  const [first, last] = selectedLines(sel);
+  // The outermost block that ends where the selection does.
+  const owner = readingOrder(parseBlocks(lines)).find((b) => b.start >= first && b.end === last);
+  const m = owner?.kind === "item" ? ITEM.exec(lines[owner.start]!) : null;
+  if (m) {
+    const marker = /^\d/.test(m[2]!) ? `${parseInt(m[2]!, 10) + 1}${m[2]!.slice(-1)}` : m[2]!;
+    const task = /^ *[-*+] +\[[ xX]\]/.test(lines[owner!.start]!) ? "[ ] " : "";
+    const insert = `\n${m[1]}${marker} ${task}`;
+    return { at: lineEnd(lines, last), insert, caret: insert.length };
+  }
+  if (last + 1 >= lines.length) return { at: lineEnd(lines, last), insert: "\n\n", caret: 2 };
+  if (blank(lines[last + 1])) {
+    // The gap is already there: the paragraph goes after it, with the same gap below.
+    return last + 2 >= lines.length
+      ? { at: lineEnd(lines, last + 1), insert: "\n", caret: 1 }
+      : { at: lineEnd(lines, last + 1), insert: "\n\n", caret: 1 };
+  }
+  return { at: lineEnd(lines, last), insert: "\n\n\n", caret: 2 };
+}

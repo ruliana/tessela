@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type Result,
   type Sel,
+  blockBelow,
   extendBlocks,
   indent,
   mapPos,
@@ -10,6 +11,7 @@ import {
   outdent,
   parseBlocks,
   selectBlock,
+  stepBlock,
 } from "../src/shared/blocks";
 
 /** `text` with `|` at the cursor, or `<` and `>` around a selection. Returns lines and selection. */
@@ -244,5 +246,42 @@ describe("block selection", () => {
     const { lines } = setup("- abc\n- def");
     const partial: Sel = { anchor: { line: 0, col: 2 }, head: { line: 0, col: 4 } };
     expect(extendBlocks(lines, partial, "down")).toBeNull();
+  });
+});
+
+describe("select mode", () => {
+  const page = ["Intro", "", "```js", "let a", "", "let b", "```", "", "- one", "  - child", "- two", "", "> quote"];
+  const sel = (line: number, end = line): Sel => ({ anchor: { line, col: 0 }, head: { line: end, col: page[end]!.length } });
+  const lines = (s: Sel | null) => (s ? [s.anchor.line, s.head.line] : null);
+
+  it("steps through the blocks in the order they are read, code blocks and nested items included", () => {
+    expect(lines(stepBlock(page, sel(0), "down"))).toEqual([2, 6]);
+    expect(lines(stepBlock(page, sel(2, 6), "down"))).toEqual([8, 9]);
+    expect(lines(stepBlock(page, sel(8, 9), "down"))).toEqual([10, 10]);
+    expect(lines(stepBlock(page, sel(8, 8), "down"))).toEqual([9, 9]);
+    expect(lines(stepBlock(page, sel(9), "down"))).toEqual([10, 10]);
+    expect(lines(stepBlock(page, sel(10), "up"))).toEqual([9, 9]);
+    expect(lines(stepBlock(page, sel(12), "up"))).toEqual([10, 10]);
+    expect(lines(stepBlock(page, sel(8), "up"))).toEqual([2, 6]);
+  });
+
+  it("stays put at the first and the last block", () => {
+    expect(stepBlock(page, sel(0), "up")).toBeNull();
+    expect(stepBlock(page, sel(12), "down")).toBeNull();
+    expect(stepBlock(["---", "type: x", "---", "", "Only"], sel(4), "up")).toBeNull();
+  });
+
+  it("adds an item below an item, after the items nested in it", () => {
+    const below = blockBelow(page, sel(8, 9));
+    expect(below).toEqual({ at: { line: 9, col: 9 }, insert: "\n- ", caret: 3 });
+    expect(blockBelow(page, sel(9)).insert).toBe("\n  - ");
+    expect(blockBelow(["1. a", "- [x] b"], sel(0)).insert).toBe("\n2. ");
+    expect(blockBelow(["- [x] b"], sel(0)).insert).toBe("\n- [ ] ");
+  });
+
+  it("adds a paragraph below any other block, with the gap kept", () => {
+    expect(blockBelow(page, sel(2, 6))).toEqual({ at: { line: 7, col: 0 }, insert: "\n\n", caret: 1 });
+    expect(blockBelow(page, sel(12))).toEqual({ at: { line: 12, col: 7 }, insert: "\n\n", caret: 2 });
+    expect(blockBelow(["# H", "text"], sel(0)).insert).toBe("\n\n\n");
   });
 });

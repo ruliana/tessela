@@ -35,6 +35,7 @@ import type { PropertiesOverride } from "../shared/mods";
 import { journalDest } from "../shared/pages";
 import { smartLink } from "../shared/smartLink";
 import { blockKeymap } from "./blockKeys";
+import { selectMode } from "./selectMode";
 import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { focusMarks, livePreview, renderedLine } from "./livePreview";
@@ -330,7 +331,9 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
             if (pos === null) return false;
             const line = v.state.doc.lineAt(pos);
             // A link drawn as text opens with a plain click; one shown as Markdown is being edited.
-            const dest = modifier || renderedLine(v, line.number) ? linkDestAt(v.state, pos) : null;
+            // (A click on selected blocks edits them, like any click: it does not follow a link.)
+            const drawn = renderedLine(v, line.number) && !v.state.field(selectMode, false);
+            const dest = modifier || drawn ? linkDestAt(v.state, pos) : null;
             if (dest !== null) {
               event.preventDefault();
               openDest(dest);
@@ -338,7 +341,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
             }
             // A date leads to its journal day: with a plain click where the line is drawn as text,
             // with Ctrl/Cmd where it is being edited. Dates in code are only text.
-            const day = modifier || renderedLine(v, line.number) ? dayAt(line.text, pos - line.from) : null;
+            const day = modifier || drawn ? dayAt(line.text, pos - line.from) : null;
             if (day !== null && !inCode(v.state, line.from + day.from)) {
               event.preventDefault();
               openDest(journalDest(day.day));

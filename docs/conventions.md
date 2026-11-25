@@ -517,6 +517,11 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Alt+Up / Alt+Down             | Move the block, with what it owns, past its neighbour                  |
 | Esc, then Esc again           | Select the block at the cursor, then the one around it each time: parent item, list, section, the whole page |
 | Shift+Up / Shift+Down         | On a selected block, take in more blocks                              |
+| Up / Down (select mode)       | Select the block before or after, in reading order: code blocks, quotes, tables and nested items are blocks too |
+| Enter (select mode)           | Add a block below the selected ones (another item below an item) and edit it |
+| Space, Left (select mode)     | Edit, with the cursor at the start of the selected blocks              |
+| Right (select mode)           | Edit, with the cursor at the end of the selected blocks                |
+| Any character (select mode)   | Edit, typing it at the start of the selected blocks                    |
 | Ctrl+Up / Ctrl+Down           | Fold, or open, the block at the cursor; pressed again, the block around it |
 | Ctrl+Alt+Right / Left         | Zoom in on the block at the cursor, or back out one level              |
 | Ctrl+B, Ctrl+I, Ctrl+E        | Bold, italic, code (the word at the cursor when nothing is selected)   |
@@ -526,6 +531,10 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Ctrl+Enter                    | Tick or untick a task; makes a task of an item or a paragraph         |
 | `/`                           | Menu: headings, lists, tasks, quote, code, table, dates, link, tag     |
 | Ctrl+F                        | Find in the page                                                      |
+
+Esc leaves the cursor in *select mode*: the selected blocks are drawn as Markdown, like the blocks
+without the cursor, and the keys above act on blocks. A click anywhere, or any other key that moves
+the cursor or changes the text, goes back to editing.
 
 Fold and zoom change what the editor shows, never the page. A heading folds its section (up
 to the next heading as high or higher), a list item folds what is nested in it and its wrapped
