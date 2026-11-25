@@ -6,7 +6,7 @@ import { slugFirst, suggest } from "../src/shared/complete";
 import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget, normalizeConcept, refsInLine } from "../src/shared/links";
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
-import { canGoBack, canGoForward, emptyHistory, RECENT_DEFAULT, RECENT_MAX, recentCount, step, touch, visit, type Place } from "../src/shared/nav";
+import { canGoBack, canGoForward, emptyHistory, RECENT_DEFAULT, RECENT_MAX, recentCount, recentShown, step, touch, visit, type Place } from "../src/shared/nav";
 import { conceptFor, conceptPath, dirOf, isJournalPath, journalDays, journalDest, localDay, newPagePath, newPageTitle } from "../src/shared/pages";
 import { smartLink } from "../src/shared/smartLink";
 
@@ -294,6 +294,12 @@ describe("recent pages", () => {
     expect(recentCount("8")).toBe(8);
     expect(recentCount(500)).toBe(RECENT_MAX);
     for (const bad of [0, -2, "x", null, undefined, NaN]) expect(recentCount(bad)).toBe(RECENT_DEFAULT);
+  });
+
+  it("leaves journal days out of the shown pages unless asked, and counts only what it shows", () => {
+    const list = ["journals/2026-11-25.md", "a.md", "journals/2026-11-24.md", "b.md", "c.md"];
+    expect(recentShown(list, 2, false)).toEqual(["a.md", "b.md"]);
+    expect(recentShown(list, 2, true)).toEqual(["journals/2026-11-25.md", "a.md"]);
   });
 });
 

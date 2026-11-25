@@ -21,7 +21,7 @@ The config folder is `$TESSELA_CONFIG` when set, else the app's data folder (`~/
 ```
 
 - `main.js` is a plain ES module (no build step, no TypeScript, no bare imports) with a default export that gets `ctx`: `export default function (ctx) { ... }`. It may be `async`: the window waits for it before the first page opens.
-- A mod with the id of one that comes with the app **replaces** it (put your own `outline/` to change the outline). The ones that come with the app are `agenda`, `attach`, `changes`, `fold`, `folders`, `gfm-extras`, `live-lists`, `new-page`, `outline`, `pages`, `peek`, `properties`, `related`, `search` and `unlinked`; their source is `editor/src/mods/<id>/` in the Tessela repo and is the best place to look for how something is done.
+- A mod with the id of one that comes with the app **replaces** it (put your own `outline/` to change the outline). The ones that come with the app are `agenda`, `attach`, `changes`, `favorites`, `fold`, `folders`, `gfm-extras`, `live-lists`, `new-page`, `outline`, `pages`, `peek`, `properties`, `related`, `search` and `unlinked`; their source is `editor/src/mods/<id>/` in the Tessela repo and is the best place to look for how something is done.
 - Mods are loaded once, before the first page opens. After editing one, restart the editor.
 - **The Mods panel** ("Show the mods" in the palette) lists every mod with where it comes from (`app` or `yours`), whether it loaded, failed or is off, and the errors it reported, and has a switch for each. A switch is kept in the config folder's `settings.json` as `{"mods": {"off": ["id", ...]}}` (an agent can edit that file too: it is the person's, so keep every other key) and takes effect when the window loads again, which "Apply and reload" does.
 - Start the editor with `--no-mods` to run without any (when a mod breaks the window). `--bundle DIR` picks the notes folder; `TESSELA_CONFIG=/some/folder` picks the config folder, which is how you try a mod without touching the real one.
@@ -62,7 +62,7 @@ Everything a mod can do is on `ctx`. A hook added by a mod is taken back if the 
 
 ### Events and settings
 
-- `ctx.events.on(name, listener)` listens and returns the way to stop. The names: `"page-opened"` (`{ path }`, a page was loaded into the window), `"page-saved"` (`{ path }`, its text reached the disk), `"title-edited"` (`{ path, from, to }`, the title changed in a save), `"changed"` (`{ paths }`, pages changed on disk: an agent, git or the CLI) and `"bundle-opened"` (a notes folder was opened or another chosen: drop whatever you held of the old one).
+- `ctx.events.on(name, listener)` listens and returns the way to stop. The names: `"page-opened"` (`{ path }`, a page was loaded into the window), `"page-saved"` (`{ path }`, its text reached the disk), `"title-edited"` (`{ path, from, to }`, the title changed in a save), `"changed"` (`{ paths }`, pages changed on disk: an agent, git or the CLI), `"page-moved"` (`{ from, to }`, a page was renamed, moved or deleted through the editor, `to` is `null` when it is gone: keep what you hold by page path in step) and `"bundle-opened"` (a notes folder was opened or another chosen: drop whatever you held of the old one).
 - `ctx.settings.get(name)` and `ctx.settings.set(name, value)` keep a JSON value for this mod in the window's own storage. It survives restarts, belongs to this window (not to the notes or the config folder) and is a convenience: the mod must work without it.
 
 ### Pages

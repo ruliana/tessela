@@ -38,6 +38,7 @@ import "./acceptance/outline.mjs";
 import "./acceptance/propertiesmod.mjs";
 import "./acceptance/newpage.mjs";
 import "./acceptance/gfm.mjs";
+import "./acceptance/favorites.mjs";
 import "./acceptance/drawers.mjs";
 
 await runAll();

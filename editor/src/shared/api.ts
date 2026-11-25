@@ -96,6 +96,12 @@ export interface ModEntry {
   off: boolean;
 }
 
+/** How the sidebar's Recent list is drawn: how many pages it shows, and whether journal days are among them. */
+export interface RecentSettings {
+  shown: number;
+  dates: boolean;
+}
+
 /** The mods installed in the app and in the config folder (mods/<id>/main.js). */
 export interface ModsInfo {
   /** The config folder: mods live in its `mods/` folder. */
@@ -106,6 +112,8 @@ export interface ModsInfo {
   ids: string[];
   /** Every mod there is, by id, with the ones switched off. */
   mods: ModEntry[];
+  /** The Recent list's settings, from the config folder's settings.json (`{"recent": {"shown": 6, "dates": false}}`). */
+  recent: RecentSettings;
 }
 
 export interface Api {

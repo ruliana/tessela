@@ -197,6 +197,9 @@ code (your own or audited) and load before the first page opens.
 - `--no-mods` starts without them, and a mod that throws is skipped and listed in the Mods panel.
 - The Mods panel ("Show the mods" in the palette, Ctrl+K) can also switch each mod off or on; that is
   kept in the config folder's `settings.json`.
+- The same file sets the sidebar's Recent list: `{"recent": {"shown": 6, "dates": false}}` is how many
+  pages it shows (1 to 30, default 6) and whether journal days are among them (default: left out, the
+  calendar has them). A new setting takes effect when the window loads again.
 - The whole API is in the [mod-writing skill](skills/tessela-mods/SKILL.md).
 
 ```js
@@ -253,6 +256,7 @@ change only through `tessela save` and its relatives.
 | `peek`       | Shows what a link, a `#tag` or a date points to in the right column, without leaving the page.     |
 | `attach`     | Stores a file pasted or dropped into a page with `tessela attach` and links it at the cursor.      |
 | `folders`    | The "Folders" row: one folder at a time, with its `home.md`, sub-folders, pages and journal days.  |
+| `favorites`  | Pages marked as favorites, listed in the sidebar above Recent; kept in its settings, never in the notes. |
 
 ##### `pages`
 
@@ -325,6 +329,15 @@ element to show):
   value already had. It is saved through `tessela save --expect`, so a page that changed meanwhile is
   never overwritten.
 - A key written across several lines, or with a comment, is left to "Edit properties".
+
+##### `favorites`
+
+Marks pages as favorites: "Toggle favorite" in the palette (Ctrl/Cmd+Alt+F) and in the page's ⋯ menu,
+and the star beside a favorite takes it off. Favorites are listed in the sidebar above Recent, in the
+order they were marked, and do not count against the number of recent pages shown. The marks are the
+window's, kept in the mod's settings by notes folder, so nothing is written to the notes. A favorite
+follows its page when the editor renames or moves it (the `page-moved` event) and goes when the editor
+deletes it; a page removed some other way (an agent, git) is hidden until it is back.
 
 ##### `changes`
 

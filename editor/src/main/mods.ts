@@ -4,7 +4,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { ModEntry, ModsInfo } from "../shared/api";
+import type { ModEntry, ModsInfo, RecentSettings } from "../shared/api";
+import { recentCount } from "../shared/nav";
 
 /** The config folder: `$TESSELA_CONFIG`, else the app's own data folder. */
 export function configFolder(userData: string, env: string | undefined): string {
@@ -38,6 +39,18 @@ function offIn(folder: string): string[] {
   }
 }
 
+/** The Recent list's settings in the config folder's settings.json: `shown` from 1 to 30 (else 6) and `dates` (journal days included; else left out). */
+export function recentIn(folder: string): RecentSettings {
+  let saved: { shown?: unknown; dates?: unknown } = {};
+  try {
+    const recent = (JSON.parse(readFileSync(path.join(folder, "settings.json"), "utf8")) as { recent?: unknown }).recent;
+    if (typeof recent === "object" && recent !== null) saved = recent;
+  } catch {
+    // Missing or unreadable: the defaults.
+  }
+  return { shown: recentCount(saved.shown), dates: saved.dates === true };
+}
+
 /**
  * The mods: the app's own (`bundled`, a folder of mod folders) and every folder in the config
  * folder's mods/ that has a main.js, by name. A mod of the config folder replaces the app's with the
@@ -45,13 +58,14 @@ function offIn(folder: string): string[] {
  * mods are off altogether.
  */
 export function listMods(folder: string, disabled: boolean, bundled?: string): ModsInfo {
-  if (disabled) return { folder, disabled, ids: [], mods: [] };
+  const recent = recentIn(folder);
+  if (disabled) return { folder, disabled, ids: [], mods: [], recent };
   const own = new Set(modsIn(path.join(folder, "mods")));
   const off = new Set(offIn(folder));
   const mods: ModEntry[] = [...new Set([...(bundled ? modsIn(bundled) : []), ...own])]
     .sort()
     .map((id) => ({ id, source: own.has(id) ? "config" : "app", off: off.has(id) }));
-  return { folder, disabled, ids: mods.filter((m) => !m.off).map((m) => m.id), mods };
+  return { folder, disabled, ids: mods.filter((m) => !m.off).map((m) => m.id), mods, recent };
 }
 
 /**

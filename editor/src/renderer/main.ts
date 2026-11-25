@@ -16,6 +16,7 @@ import {
   canGoForward,
   emptyHistory,
   recentCount,
+  recentShown,
   relocate,
   relocateRecent,
   step,
@@ -33,7 +34,7 @@ import { renderInlineText } from "./inline";
 import { logo } from "./logo";
 import { openModsPanel } from "./modsPanel";
 import { foldable } from "./drawer";
-import { host, modExtensions, loadMods, registry, sideBottom, sideTop, sidebarSlot, type ModHost } from "./mods";
+import { host, modExtensions, loadMods, modsInfo, registry, sideBottom, sideTop, sidebarSlot, type ModHost } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
 const api = window.tessela;
@@ -143,24 +144,13 @@ function toggleFocus(): void {
   active?.focus();
 }
 
-const RECENT_COUNT_KEY = "tessela.recentCount";
 const RECENT_KEY = "tessela.recent";
 /** The notes folder, which the Recent list belongs to. */
 let root = "";
 /** Pages used lately, most recent first. */
 let recent: string[] = [];
-/** How many of them the sidebar shows. */
-let recentShown = readRecentCount();
 /** The places shown so far, for Go back and Go forward. */
 let places: History = emptyHistory();
-
-function readRecentCount(): number {
-  try {
-    return recentCount(localStorage.getItem(RECENT_COUNT_KEY));
-  } catch {
-    return recentCount(undefined);
-  }
-}
 
 function readRecent(): string[] {
   try {
@@ -182,17 +172,6 @@ function saveRecent(): void {
   } catch {
     // The list just is not remembered between runs.
   }
-}
-
-function setRecentShown(value: string): void {
-  recentShown = recentCount(value);
-  recentSize.value = String(recentShown);
-  try {
-    localStorage.setItem(RECENT_COUNT_KEY, String(recentShown));
-  } catch {
-    // The choice just is not remembered.
-  }
-  renderLists();
 }
 
 /** What the middle of the window shows: one page, or the latest journal days stacked. */
@@ -282,7 +261,6 @@ let backlinksBody: HTMLElement;
 let previewButton: HTMLElement | undefined;
 let recentEl: HTMLElement;
 let recentList: HTMLElement;
-let recentSize: HTMLInputElement;
 let backButton: HTMLButtonElement;
 let forwardButton: HTMLButtonElement;
 let noticeEl: HTMLElement;
@@ -391,17 +369,8 @@ function buildShell(bundle: string): void {
   backButton = el("button", { class: "nav", id: "go-back", title: `Go back (${mod}+[)`, ariaLabel: "Go back", onclick: () => void go(-1) }, "‹");
   forwardButton = el("button", { class: "nav", id: "go-forward", title: `Go forward (${mod}+])`, ariaLabel: "Go forward", onclick: () => void go(1) }, "›");
   recentList = el("ul", { class: "list", id: "recent-list" });
-  recentSize = el("input", {
-    id: "recent-size",
-    type: "number",
-    min: "1",
-    max: "30",
-    value: String(recentShown),
-    title: "How many recent pages to show",
-    onchange: () => setRecentShown(recentSize.value),
-  });
   const recentTitle = el("h2", {}, "Recent");
-  const recentHead = el("div", { class: "recent-head" }, recentTitle, recentSize);
+  const recentHead = el("div", { class: "group-head" }, recentTitle);
   recentEl = el("div", { class: "recent", id: "recent" }, recentHead, recentList);
   foldable(recentEl, recentHead, recentTitle, "recent");
   const row = (id: string, glyph: string, text: string, title: string, run: () => void, hint?: string) =>
@@ -522,10 +491,9 @@ function renderLists(): void {
     .slice(0, q ? 50 : JOURNAL_LIST);
   journalsEl.replaceChildren(...journals.map((p) => item(p.id.replace("journals/", ""), p.path)));
 
-  recentEl.hidden = recent.length === 0;
-  recentList.replaceChildren(
-    ...recent.slice(0, recentShown).map((path) => item(pageId(path).replace(/^journals\//, ""), path)),
-  );
+  const recentRows = recentShown(recent, recentCount(modsInfo?.recent.shown), modsInfo?.recent.dates === true);
+  recentEl.hidden = recentRows.length === 0;
+  recentList.replaceChildren(...recentRows.map((path) => item(pageId(path).replace(/^journals\//, ""), path)));
 
   for (const v of registry.views()) {
     const row = document.getElementById(`view-${v.id}`);
@@ -1083,6 +1051,7 @@ function currentPath(): string | null {
 async function pageMoved(from: string, to: string | null): Promise<void> {
   recent = relocateRecent(recent, from, to);
   saveRecent();
+  registry.emit("page-moved", { from, to });
   places = relocate(places, from, to);
   const shown = view?.kind === "page" && view.path === from;
   await refreshIndex();

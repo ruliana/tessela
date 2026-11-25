@@ -228,9 +228,6 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .nav:hover:not(:disabled) { border-color: var(--accent); }
 .nav:disabled { opacity: 0.35; cursor: default; }
 
-.recent-head { display: flex; align-items: center; justify-content: space-between; }
-.recent-head h2 { margin: 0 0 4px; }
-.recent-head input { width: 3.4em; padding: 1px 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--muted); font: 12px var(--sans); }
 
 
 /* Properties: the front matter drawn as a title and one line, until it is edited. */
@@ -489,6 +486,12 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 #month-strip .day.file::after { background: var(--accent); }
 #month-strip .day.mention::after { border: 1px solid var(--date); }
 #month-strip .day.is-today { outline: 1px solid var(--accent); }
+
+/* The favorites mod: the marked pages in the sidebar, each with a star that takes it off the list. */
+#favorites li { display: flex; align-items: center; }
+#favorites .fav-open { flex: 1; min-width: 0; }
+#favorites .fav-off { width: auto; flex: none; padding: 4px 6px; color: var(--accent); }
+#favorites .fav-off:hover { color: var(--muted); }
 
 /* The outline mod: the page's headings in the right column, and the picker behind "Go to heading". */
 .bl-group.outline { gap: 0; }
