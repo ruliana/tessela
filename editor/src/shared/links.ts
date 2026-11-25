@@ -14,7 +14,7 @@ function hasScheme(dest: string): boolean {
 }
 
 export function normalizeConcept(name: string): string {
-  return name.trim().replace(/^#/, "").toLowerCase().split(/\s+/).filter(Boolean).join("-");
+  return name.trim().replace(/^#+/, "").toLowerCase().split(/\s+/).filter(Boolean).join("-");
 }
 
 /** Resolves a link target to a concept ID, or null for URLs and non-Markdown files. */

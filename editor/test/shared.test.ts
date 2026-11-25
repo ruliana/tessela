@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Diagnostic, Hit, VocabEntry } from "../src/shared/api";
 import { isHomePath, orderBacklinks } from "../src/shared/backlinks";
 import { slugFirst, suggest } from "../src/shared/complete";
-import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget, refsInLine } from "../src/shared/links";
+import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget, normalizeConcept, refsInLine } from "../src/shared/links";
 import { summary, visibleProblems } from "../src/shared/problems";
 import { excerpt, searchable } from "../src/shared/search";
 import { canGoBack, canGoForward, emptyHistory, RECENT_DEFAULT, RECENT_MAX, recentCount, step, touch, visit, type Place } from "../src/shared/nav";
@@ -30,6 +30,13 @@ describe("smartLink", () => {
 
   it("with nothing selected makes an empty link with the cursor in the target, to search for a page", () => {
     expect(smartLink("")).toEqual({ text: "[]()", cursor: 3, inTarget: true });
+  });
+});
+
+describe("normalizeConcept", () => {
+  it("takes off every leading #, like the Rust tools", () => {
+    expect(normalizeConcept("##Machine  Learning")).toBe("machine-learning");
+    expect(normalizeConcept("##")).toBe("");
   });
 });
 

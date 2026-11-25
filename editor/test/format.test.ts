@@ -117,6 +117,10 @@ describe("days to follow", () => {
 
   it("leaves out dates that are part of a web address, and numbers that are not dates", () => {
     expect(daysInLine("see https://example.com/2026-10-27/notes and (https://a.b/2026-10-28)")).toEqual([]);
+    // The address of a Markdown link or image, and one glued to other characters, is an address too.
+    expect(daysInLine("[post](https://blog.example/2026-10-27/x) and ![i](https://b.example/2026-10-28.png)")).toEqual([]);
+    expect(daysInLine("from=https://a.b/2026-10-27")).toEqual([]);
+    expect(daysInLine("[a note](/notes/2026-10-27.md)").map((d) => d.day)).toEqual(["2026-10-27"]);
     expect(daysInLine("2026-13-01 and 12026-10-27")).toEqual([]);
     expect(daysInLine("go (2026-10-27)").map((d) => d.day)).toEqual(["2026-10-27"]);
   });
