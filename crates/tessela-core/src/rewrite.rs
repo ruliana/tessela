@@ -10,7 +10,7 @@ use std::ops::Range;
 use pulldown_cmark::{Event, LinkType, Parser, Tag, TagEnd};
 
 use crate::page::{Split, split_frontmatter};
-use crate::refs::{has_scheme, normalize_concept, tag_spans};
+use crate::refs::{has_scheme, markdown_options, normalize_concept, tag_spans};
 
 /// A change to a byte range of a text.
 type Edit = (Range<usize>, String);
@@ -119,20 +119,23 @@ impl Rewrite {
         let mut edits = Vec::new();
         let mut run: Option<Range<usize>> = None;
         let mut in_code_block = false;
-        let mut parser = Parser::new(md).into_offset_iter();
+        let mut parser = Parser::new_ext(md, markdown_options()).into_offset_iter();
         for (event, range) in parser.by_ref() {
             if let Event::Text(t) = &event
                 && !in_code_block
             {
                 // Only text that is in the source as it is can be edited by position.
                 if md[range.clone()] == **t {
+                    // The parser drops the backslash of `\#x`; keep it in the run, so the `#`
+                    // is seen as escaped, as `refs` sees it.
+                    let from = range.start - usize::from(md[..range.start].ends_with('\\'));
                     run = match run {
                         Some(r) if r.end == range.start => Some(r.start..range.end),
                         Some(r) => {
                             self.tag_edits(md, r, counts, &mut edits);
-                            Some(range)
+                            Some(from..range.end)
                         }
-                        None => Some(range),
+                        None => Some(from..range.end),
                     };
                 } else if let Some(r) = run.take() {
                     self.tag_edits(md, r, counts, &mut edits);
@@ -426,6 +429,19 @@ mod tests {
             "---\ntype: note\n---\n\nSee #ai/models and #ai/llm-x and [LLMs](/ai/models.md#top) and [x](/ai/other.md).\n\n`#ai/llm` and `[c](/ai/llm.md)`\n\n```\n#ai/llm\n```\n"
         );
         assert_eq!((out.links, out.tags), (1, 1));
+    }
+
+    #[test]
+    fn leaves_what_is_not_a_tag_alone() {
+        let r = moved("x", "q/new.md");
+        // Escaped and entity hashes are text; indented code is code.
+        let text = "\\#x and &#35;x\n\n    #x and [t](/x.md)\n\nreal #x\n";
+        let out = r.page(text, &elsewhere(""));
+        assert_eq!(
+            out.text,
+            "\\#x and &#35;x\n\n    #x and [t](/x.md)\n\nreal #q/new\n"
+        );
+        assert!(out.skipped_lines.is_empty());
     }
 
     #[test]

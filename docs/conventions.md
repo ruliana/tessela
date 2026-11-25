@@ -149,7 +149,8 @@ Tags and links share one concept namespace. `#machine-learning` and
   `#project/tessela`. A `/` maps to a folder: `#project/tessela` is the concept at
   `project/tessela.md`.
 - A tag ends at whitespace or punctuation. `#` at line start followed by a space is
-  a heading, not a tag. Tags inside code spans and code fences are ignored. A tag
+  a heading, not a tag. Tags inside code spans, code fences and indented code blocks are ignored, and so is a
+  `#` that is escaped (`\#x`) or written as an entity (`&#35;x`). A tag
   must contain a letter, so `#12` is not a tag, and `#` inside a word or URL
   (`a#b`, `https://x.org/#top`) does not start one.
 - Matching is case-insensitive. Tools write tags in lowercase.

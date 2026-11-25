@@ -4,10 +4,10 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde::Serialize;
 
-use crate::refs::extract_refs;
+use crate::refs::{markdown_options, ref_spans};
 
 /// Whether a list item is a checkbox, and ticked: `- [ ]` is open, `- [x]` is done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -65,9 +65,10 @@ struct OpenItem {
 
 struct Parse<'a> {
     body: &'a str,
+    /// Every reference of the body and where it is written, from one parse of the whole body.
+    spans: Vec<(usize, String)>,
     base_line: usize,
     page_id: &'a str,
-    page_dir: &'a str,
     out: ParsedBody,
     heading_stack: Vec<usize>,
     items: Vec<OpenItem>,
@@ -82,9 +83,9 @@ pub fn parse_body(body: &str, base_line: usize, page_id: &str) -> ParsedBody {
     let page_dir = page_id.rsplit_once('/').map_or("", |(dir, _)| dir);
     let mut p = Parse {
         body,
+        spans: ref_spans(body, page_dir),
         base_line,
         page_id,
-        page_dir,
         out: ParsedBody::default(),
         heading_stack: Vec::new(),
         items: Vec::new(),
@@ -98,11 +99,9 @@ pub fn parse_body(body: &str, base_line: usize, page_id: &str) -> ParsedBody {
 
 impl Parse<'_> {
     fn run(&mut self) {
-        let opts =
-            Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
         // Depth inside an opaque element (heading, quote, table, ...) whose events we skip.
         let mut skip = 0usize;
-        for (event, range) in Parser::new_ext(self.body, opts).into_offset_iter() {
+        for (event, range) in Parser::new_ext(self.body, markdown_options()).into_offset_iter() {
             if skip > 0 {
                 match event {
                     Event::Start(_) => skip += 1,
@@ -152,6 +151,19 @@ impl Parse<'_> {
         }
     }
 
+    /// The concepts referenced in a byte range of the body, each once, in order. The whole body
+    /// was read at once, so a code span, an indented code block or a table is what the page says
+    /// it is, not what its own text would be on its own.
+    fn refs_in(&self, range: Range<usize>) -> Vec<String> {
+        let mut refs = Vec::new();
+        for (at, id) in &self.spans {
+            if range.contains(at) {
+                extend_unique(&mut refs, std::slice::from_ref(id));
+            }
+        }
+        refs
+    }
+
     fn line_of(&self, offset: usize) -> usize {
         self.base_line + self.body[..offset].matches('\n').count()
     }
@@ -179,7 +191,7 @@ impl Parse<'_> {
             .trim_end_matches('#')
             .trim()
             .to_string();
-        let refs = extract_refs(&text, self.page_dir);
+        let refs = self.refs_in(range.clone());
         while let Some(&top) = self.heading_stack.last() {
             if self.out.headings[top].level >= level {
                 self.heading_stack.pop();
@@ -224,7 +236,7 @@ impl Parse<'_> {
 
     fn trailing_block(&mut self, parent: usize, range: Range<usize>) {
         let text = self.body[range.clone()].trim().to_string();
-        let refs = extract_refs(&text, self.page_dir);
+        let refs = self.refs_in(range.clone());
         let mut path_refs = self.out.blocks[parent].path_refs.clone();
         extend_unique(&mut path_refs, &refs);
         self.push_block(Some(parent), text, self.line_of(range.start), refs);
@@ -233,7 +245,7 @@ impl Parse<'_> {
 
     fn top_level_block(&mut self, range: Range<usize>) {
         let text = self.body[range.clone()].trim().to_string();
-        let refs = extract_refs(&text, self.page_dir);
+        let refs = self.refs_in(range.clone());
         self.push_block(None, text, self.line_of(range.start), refs);
     }
 
@@ -270,7 +282,7 @@ impl Parse<'_> {
         let raw = &self.body[start..end.max(start)];
         let task = task_state(raw);
         let text = item_text(raw);
-        let refs = extract_refs(&text, self.page_dir);
+        let refs = self.refs_in(start..end.max(start));
         let parent = self.out.blocks[idx].parent;
         let mut path_refs = parent.map_or_else(Vec::new, |p| self.out.blocks[p].path_refs.clone());
         extend_unique(&mut path_refs, &self.heading_refs());

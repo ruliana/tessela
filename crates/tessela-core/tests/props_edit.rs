@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use proptest::prelude::*;
-use support::{bundle_files, config, page_path, refs_of, tame_markdown};
+use support::{bundle_files, config, markdown, page_path, refs_of};
 use tessela_core::edit::{
     EditError, ErrorCode, Expect, FsStore, PageStore, add_page, check_page_path, content_hash,
     move_page, move_target, patch_page, path_from_name, read_page, remove_page, rename_target,
@@ -136,8 +136,8 @@ proptest! {
 
     #[test]
     fn a_diff_applies_to_exactly_the_text_it_was_made_for(
-        old in tame_markdown(),
-        new in tame_markdown(),
+        old in markdown(),
+        new in markdown(),
         end_old in prop::bool::ANY,
         end_new in prop::bool::ANY,
     ) {
@@ -152,7 +152,7 @@ proptest! {
     }
 
     #[test]
-    fn a_bad_patch_changes_nothing(old in tame_markdown(), patch in "[ -~\n@+-]{0,200}") {
+    fn a_bad_patch_changes_nothing(old in markdown(), patch in "[ -~\n@+-]{0,200}") {
         let sandbox = Sandbox::with(&[("p.md".into(), old.clone())]);
         let result = patch_page(&sandbox.store(), "p.md", &patch, &Expect::Hash(content_hash(&old)));
         if result.is_err() {

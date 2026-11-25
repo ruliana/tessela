@@ -108,56 +108,18 @@ const PIECES: &[&str] = &[
     "&",
 ];
 
-fn piece(tame: bool) -> BoxedStrategy<String> {
+fn piece() -> BoxedStrategy<String> {
     let known = proptest::sample::select(PIECES).prop_map(String::from);
-    if tame {
-        // Pieces that make a page mean different things to the block reader and to the whole
-        // page parse (see the known gaps in `props_parse.rs`) are left out.
-        known
-            .prop_filter("tame", |p| {
-                !(p == "`" || p == "\t" || p == "&" || p.contains("&#") || p.starts_with("\\"))
-            })
-            .boxed()
-    } else {
-        prop_oneof![8 => known, 1 => any::<String>(), 1 => "[ -~\n]{0,12}"].boxed()
-    }
+    prop_oneof![8 => known, 1 => any::<String>(), 1 => "[ -~\n]{0,12}"].boxed()
 }
 
-/// Markdown made of the pieces above, any text mixed in.
+/// Markdown made of the pieces above, with any text mixed in.
 pub fn markdown() -> impl Strategy<Value = String> {
-    proptest::collection::vec(piece(false), 0..24).prop_map(|p| p.join(""))
-}
-
-/// Markdown made of the pieces above only, without the ones with known gaps.
-pub fn tame_markdown() -> impl Strategy<Value = String> {
-    proptest::collection::vec(piece(true), 0..24).prop_map(|p| no_indented_code(&p.join("")))
-}
-
-/// Indents of 4 spaces start a code block, which the block reader treats differently.
-fn no_indented_code(text: &str) -> String {
-    text.split_inclusive('\n')
-        .map(|line| {
-            let rest = line.trim_start_matches(' ');
-            if line.len() - rest.len() >= 4 {
-                format!(" {rest}")
-            } else {
-                line.to_string()
-            }
-        })
-        .collect()
+    proptest::collection::vec(piece(), 0..24).prop_map(|p| p.join(""))
 }
 
 /// A page: sometimes with frontmatter, mostly well formed, always ending in a newline.
 pub fn page_text() -> impl Strategy<Value = String> {
-    page_with(markdown())
-}
-
-/// Like [`page_text`], from the tame Markdown.
-pub fn tame_page_text() -> impl Strategy<Value = String> {
-    page_with(tame_markdown())
-}
-
-fn page_with(body: impl Strategy<Value = String>) -> impl Strategy<Value = String> {
     let front = prop_oneof![
         3 => Just(String::new()),
         3 => Just("---\ntype: concept\n---\n".to_string()),
@@ -165,7 +127,7 @@ fn page_with(body: impl Strategy<Value = String>) -> impl Strategy<Value = Strin
         1 => Just("---\ntype: concept\ntags:\n  - x\n  - \"A/X\"\n---\n".to_string()),
         1 => Just("---\ntype: concept\n".to_string()),
     ];
-    (front, body).prop_map(|(f, b)| format!("{f}{b}\n"))
+    (front, markdown()).prop_map(|(f, b)| format!("{f}{b}\n"))
 }
 
 /// Page paths from a small alphabet, so pages often share a folder or a name.
@@ -179,7 +141,7 @@ pub fn page_path() -> impl Strategy<Value = String> {
 
 /// A few pages with distinct paths.
 pub fn bundle_files() -> impl Strategy<Value = Vec<(String, String)>> {
-    proptest::collection::btree_map(page_path(), tame_page_text(), 1..6)
+    proptest::collection::btree_map(page_path(), page_text(), 1..6)
         .prop_map(|m| m.into_iter().collect())
 }
 
