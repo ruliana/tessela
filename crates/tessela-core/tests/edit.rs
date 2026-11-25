@@ -292,3 +292,30 @@ fn a_dry_run_changes_nothing_and_a_clash_is_refused() {
     );
     assert!(dir.join("ai/llm.md").exists());
 }
+
+#[test]
+fn a_move_that_stopped_before_it_removed_the_old_page_can_be_run_again() {
+    let (dir, store) = bundle("again", &project());
+    // What a run leaves when it dies after writing the new page and before removing the old.
+    let clean = bundle("again-clean", &project());
+    move_page(&clean.1, "ai/llm.md", "archive/llm.md", None, false).unwrap();
+    let copy = text(&clean.0, "archive/llm.md");
+    std::fs::create_dir_all(dir.join("archive")).unwrap();
+    std::fs::write(dir.join("archive/llm.md"), &copy).unwrap();
+    assert!(dir.join("ai/llm.md").exists());
+
+    move_page(&store, "ai/llm.md", "archive/llm.md", None, false).unwrap();
+    assert!(!dir.join("ai/llm.md").exists());
+    assert_eq!(text(&dir, "archive/llm.md"), copy);
+    assert_eq!(text(&dir, "ai/other.md"), text(&clean.0, "ai/other.md"));
+    assert!(problems(&dir).is_empty(), "{:?}", problems(&dir));
+
+    // A page that is there for another reason is still not overwritten.
+    let (other, store) = bundle("again-other", &project());
+    std::fs::create_dir_all(other.join("archive")).unwrap();
+    std::fs::write(other.join("archive/llm.md"), "mine\n").unwrap();
+    let err = move_page(&store, "ai/llm.md", "archive/llm.md", None, false).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Exists);
+    assert_eq!(text(&other, "archive/llm.md"), "mine\n");
+    assert!(other.join("ai/llm.md").exists());
+}

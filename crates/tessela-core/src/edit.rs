@@ -863,8 +863,9 @@ pub fn move_target(from: &str, dest: &str) -> Result<String> {
 }
 
 /// Moves a page to a new path and makes every tag and link that names it follow, in all
-/// pages. The other pages are changed first and the old file is removed last, so a run that
-/// is interrupted or refused can be repeated.
+/// pages. The other pages are changed first, then the page is written at its new path and the
+/// old file is removed last, so a run that is interrupted or refused can be repeated: when
+/// the new page is already there, saying what this run would write, the run finishes the job.
 pub fn move_page(
     store: &dyn PageStore,
     from: &str,
@@ -891,7 +892,9 @@ pub fn move_page(
     }
     let taken = normalize_concept(to.strip_suffix(".md").unwrap_or(to));
     for other in store.list()? {
-        if other != from && normalize_concept(other.strip_suffix(".md").unwrap_or(&other)) == taken
+        if other != from
+            && other != to
+            && normalize_concept(other.strip_suffix(".md").unwrap_or(&other)) == taken
         {
             return Err(EditError::new(
                 ErrorCode::Exists,
@@ -899,12 +902,9 @@ pub fn move_page(
             ));
         }
     }
-    if store.read(to)?.is_some() {
-        return Err(EditError::new(
-            ErrorCode::Exists,
-            format!("{to} already exists"),
-        ));
-    }
+    // A page already at `to` is fine when it is the copy an interrupted run of this very move
+    // left behind (checked below, once we know what the copy should say).
+    let leftover = store.read(to)?;
 
     let from_id = from.strip_suffix(".md").unwrap_or(from);
     let rewrite = Rewrite::new(from_id, to);
@@ -917,6 +917,9 @@ pub fn move_page(
     let mut others: Vec<(String, String, String)> = Vec::new();
     let mut moved_text = moving.clone();
     for path in store.list()? {
+        if leftover.is_some() && path == to {
+            continue;
+        }
         let is_moved = path == from;
         let text = if is_moved {
             moving.clone()
@@ -972,6 +975,12 @@ pub fn move_page(
         }
     }
     let moved_hash = content_hash(&moved_text);
+    if leftover.as_ref().is_some_and(|text| *text != moved_text) {
+        return Err(EditError::new(
+            ErrorCode::Exists,
+            format!("{to} already exists"),
+        ));
+    }
     if !dry_run {
         for (path, hash, text) in &others {
             store
@@ -985,16 +994,21 @@ pub fn move_page(
                     e
                 })?;
         }
-        store.write(to, &moved_text, &Expect::Absent).map_err(|e| {
-            if e.code == ErrorCode::Conflict {
-                EditError::new(ErrorCode::Exists, format!("{to} already exists"))
-            } else {
-                e
-            }
-        })?;
+        if leftover.is_none() {
+            store.write(to, &moved_text, &Expect::Absent).map_err(|e| {
+                if e.code == ErrorCode::Conflict {
+                    EditError::new(ErrorCode::Exists, format!("{to} already exists"))
+                } else {
+                    e
+                }
+            })?;
+        }
         if let Err(e) = store.delete(from, &moving_hash) {
-            // The page changed while we worked: keep the old one and undo the new one.
-            let _ = store.delete(to, &moved_hash);
+            // The page changed while we worked: keep the old one and undo the new one (but
+            // not a copy that an earlier run made; the person may want to look at it).
+            if leftover.is_none() {
+                let _ = store.delete(to, &moved_hash);
+            }
             return Err(e);
         }
     }
