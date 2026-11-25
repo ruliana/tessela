@@ -400,3 +400,6 @@ replay a failure, set the number of cases and the seed:
 ```
 TESSELA_FUZZ_CASES=5000 TESSELA_FUZZ_SEED=42 cargo test --workspace
 ```
+
+The editor has the same kind of tests (`fast-check`, in `editor/test/props.*.test.ts`) and
+reads the same two variables: `TESSELA_FUZZ_CASES=5000 TESSELA_FUZZ_SEED=42 npm test`.
