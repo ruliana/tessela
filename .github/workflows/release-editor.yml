@@ -7,6 +7,10 @@ name: Release editor
 # silicon and Intel). Run it by hand to get the installers as workflow artifacts, or
 # push a tag like `v0.1.0` to attach them to a GitHub release. The tag must match the
 # version in editor/package.json.
+#
+# latest-linux.yml goes to the release too: an installed app reads it to see whether a newer
+# version exists (electron-updater), and the AppImage carries its own block map for
+# downloading only what changed. macOS has no update file yet, since its builds are unsigned.
 
 # tag-release.yml calls this workflow for the tag it creates, because a tag pushed with
 # GITHUB_TOKEN triggers no other workflow.
@@ -65,6 +69,7 @@ jobs:
             editor/release/*.AppImage
             editor/release/*.deb
             editor/release/*.dmg
+            editor/release/latest-linux.yml
           if-no-files-found: error
 
   publish:

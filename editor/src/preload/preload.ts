@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import type { Api } from "../shared/api";
+import type { UpdateState } from "../shared/updates";
 
 const api: Api = {
   bundle: () => ipcRenderer.invoke("bundle"),
@@ -20,6 +21,14 @@ const api: Api = {
   reload: () => ipcRenderer.invoke("reload"),
   setModOff: (id, off) => ipcRenderer.invoke("setModOff", id, off),
   cli: (argv, input) => ipcRenderer.invoke("cli", argv, input),
+  updateState: () => ipcRenderer.invoke("updateState"),
+  downloadUpdate: () => ipcRenderer.invoke("downloadUpdate"),
+  installUpdate: () => ipcRenderer.invoke("installUpdate"),
+  onUpdate(listener) {
+    const handler = (_event: unknown, state: UpdateState) => listener(state);
+    ipcRenderer.on("update", handler);
+    return () => ipcRenderer.removeListener("update", handler);
+  },
   onChanged(listener) {
     const handler = (_event: unknown, paths: string[]) => listener(paths);
     ipcRenderer.on("changed", handler);
