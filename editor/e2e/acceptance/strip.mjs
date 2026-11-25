@@ -13,9 +13,9 @@ function bundle() {
 }
 
 suite("Sidebar and status strip", bundle, (test) => {
-  test("the sidebar has Recent, Journals and Concepts as labelled sections", async (s) => {
+  test("the sidebar has Calendar, Recent, Journals and Concepts as labelled sections", async (s) => {
     await s.open("alpha");
-    assert.deepEqual(await s.texts(".sidebar h2"), ["Recent", "Journals", "Concepts"]);
+    assert.deepEqual(await s.texts(".sidebar h2"), ["Calendar", "Recent", "Journals", "Concepts"]);
   });
 
   test("Today comes first, and the notes folder is one quiet line with the number of pages", async (s) => {

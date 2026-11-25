@@ -32,6 +32,7 @@ import { el } from "./dom";
 import { renderInlineText } from "./inline";
 import { logo } from "./logo";
 import { openModsPanel } from "./modsPanel";
+import { foldable } from "./drawer";
 import { host, modExtensions, loadMods, registry, sideBottom, sideTop, sidebarSlot, type ModHost } from "./mods";
 import { type Command, paletteOpen, togglePalette } from "./palette";
 
@@ -399,12 +400,10 @@ function buildShell(bundle: string): void {
     title: "How many recent pages to show",
     onchange: () => setRecentShown(recentSize.value),
   });
-  recentEl = el(
-    "div",
-    { class: "recent", id: "recent" },
-    el("div", { class: "recent-head" }, el("h2", {}, "Recent"), recentSize),
-    recentList,
-  );
+  const recentTitle = el("h2", {}, "Recent");
+  const recentHead = el("div", { class: "recent-head" }, recentTitle, recentSize);
+  recentEl = el("div", { class: "recent", id: "recent" }, recentHead, recentList);
+  foldable(recentEl, recentHead, recentTitle, "recent");
   const row = (id: string, glyph: string, text: string, title: string, run: () => void, hint?: string) =>
     el(
       "button",
@@ -416,23 +415,19 @@ function buildShell(bundle: string): void {
   const now = new Date();
   const todayDay = `${now.toLocaleDateString("en-US", { weekday: "short" })} ${now.getDate()}`;
   rootCount = el("span", { class: "root-count" });
-  journalsSection = el(
-    "section",
-    { class: "group", id: "journals-section" },
-    el(
-      "div",
-      { class: "group-head" },
-      el("h2", {}, "Journals"),
-      el("button", { class: "link", id: "journals-all", title: "Show the days stacked", onclick: () => void showJournals() }, "All ›"),
-    ),
-    journalsEl,
+  const journalsTitle = el("h2", {}, "Journals");
+  const journalsHead = el(
+    "div",
+    { class: "group-head" },
+    journalsTitle,
+    el("button", { class: "link", id: "journals-all", title: "Show the days stacked", onclick: () => void showJournals() }, "All ›"),
   );
-  conceptsSection = el(
-    "section",
-    { class: "group", id: "concepts-section" },
-    el("div", { class: "group-head" }, el("h2", {}, "Concepts"), el("span", { class: "hint" }, "by mentions")),
-    listEl,
-  );
+  journalsSection = el("section", { class: "group", id: "journals-section" }, journalsHead, journalsEl);
+  foldable(journalsSection, journalsHead, journalsTitle, "journals");
+  const conceptsTitle = el("h2", {}, "Concepts");
+  const conceptsHead = el("div", { class: "group-head" }, conceptsTitle, el("span", { class: "hint" }, "by mentions"));
+  conceptsSection = el("section", { class: "group", id: "concepts-section" }, conceptsHead, listEl);
+  foldable(conceptsSection, conceptsHead, conceptsTitle, "concepts");
   const sidebar = el(
     "aside",
     { class: "sidebar" },
