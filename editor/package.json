@@ -1,6 +1,6 @@
 {
   "name": "tessela-editor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Electron editor for Tessela bundles. It uses the tessela command line tools behind the scenes.",
   "license": "MIT",
