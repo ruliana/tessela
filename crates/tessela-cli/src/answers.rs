@@ -65,3 +65,16 @@ pub enum WatchEvent {
     /// The way of watching changed, and why.
     Mode { mode: Mode, reason: String },
 }
+
+/// `tessela update`.
+#[derive(Serialize, JsonSchema)]
+pub struct Update {
+    /// The version of this tool before the command.
+    pub current: String,
+    /// The newest release on GitHub.
+    pub latest: String,
+    /// The newest release is newer than this tool.
+    pub update_available: bool,
+    /// This tool was replaced by the newest release. Always false with `--check`.
+    pub updated: bool,
+}

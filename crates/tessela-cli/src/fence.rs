@@ -255,5 +255,6 @@ fn first_stage(bundle: &Bundle, words: &[String]) -> Result<Vec<Source>, EditErr
         Command::Pages { .. } => Err(not_a_fence_command("pages")),
         Command::Watch { .. } => Err(not_a_fence_command("watch")),
         Command::Schema => Err(not_a_fence_command("schema")),
+        Command::Update { .. } => Err(not_a_fence_command("update")),
     }
 }
