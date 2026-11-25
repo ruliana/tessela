@@ -41,6 +41,10 @@ describe("normalizeConcept", () => {
 });
 
 describe("references", () => {
+  it("does not take an escaped # for a tag", () => {
+    expect(refsInLine("\\#x and #y", "").map((r) => r.id)).toEqual(["y"]);
+  });
+
   it("finds tags and concept links, not URLs, code-ish or word-internal hashes", () => {
     const refs = refsInLine("Met #project/Tessela and [x](/people/ana.md), see [w](https://a.b/c.md) a#b #123", "");
     expect(refs.map((r) => [r.kind, r.id])).toEqual([

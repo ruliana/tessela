@@ -1,10 +1,16 @@
 // Property tests for the block structure: whatever a page holds, `parseBlocks` describes it
 // consistently, and the edits that act on blocks neither lose nor invent text.
+//
+// Moving a block and moving it back, or nesting an item and taking it out, are checked on
+// well-formed outlines only. On a page whose indentation is not an outline (a list item indented
+// four spaces after a blank line, an empty item next to indented text) Markdown itself reads the
+// same lines differently in different places: such lines are code in one spot and a nested item
+// in another, so an exact undo is not a thing an edit can promise.
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { type Block, extendBlocks, indent, mapPos, move, outdent, parseBlocks, selectBlock } from "../src/shared/blocks";
+import { type Block, extendBlocks, frontmatterEnd, indent, mapPos, move, outdent, parseBlocks, selectBlock } from "../src/shared/blocks";
 import { foldAround, foldables, zoomAt } from "../src/shared/folds";
 import { outlineAndCursor, pageAndSelection, lines, runs } from "./support/props";
 
@@ -81,6 +87,8 @@ describe("edits on blocks", () => {
         fc.property(pageAndSelection, ({ doc, sel }) => {
           const result = edit(doc, sel);
           if (!result) return;
+          // An edit never makes front matter out of lines that were not, or the other way round.
+          expect(frontmatterEnd(result.rows.map((r) => r.text))).toBe(frontmatterEnd(doc));
           const from = result.rows.filter((r) => r.from >= 0).map((r) => r.from);
           expect(new Set(from).size).toBe(from.length);
           for (const row of result.rows) {
@@ -112,6 +120,16 @@ describe("edits on blocks", () => {
         runs(300),
       );
     }
+  });
+
+  it("never makes front matter out of a page, or breaks it, when it moves a block", () => {
+    fc.assert(
+      fc.property(outlineAndCursor, fc.constantFrom("up", "down"), ({ doc, sel }, dir) => {
+        const result = move(doc, sel, dir);
+        if (result) expect(frontmatterEnd(result.rows.map((r) => r.text))).toBe(frontmatterEnd(doc));
+      }),
+      runs(300),
+    );
   });
 
   it("moves a block of an outline down and back up to where it started", () => {

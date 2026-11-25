@@ -84,6 +84,13 @@ describe("parseBlocks", () => {
   });
 });
 
+describe("moving past a rule", () => {
+  it("does not turn the lines between two rules into front matter", () => {
+    // Moving the paragraph down would put a rule on the first line, and the next rule closes it.
+    expect(down("Pa|ra\n\n---\n\n---")).toBe("Pa|ra\n\n---\n\n---");
+  });
+});
+
 describe("Tab", () => {
   it("turns a paragraph into a list item", () => {
     expect(tab("Hello wor|ld")).toBe("- Hello wor|ld");

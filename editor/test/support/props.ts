@@ -70,6 +70,10 @@ export const outline: fc.Arbitrary<string[]> = fc
     fc.oneof(
       { weight: 2, arbitrary: WORDS.map((w) => [w]) },
       { weight: 1, arbitrary: WORDS.map((w) => [`# ${w}`]) },
+      { weight: 1, arbitrary: WORDS.map((w) => ["```", w, "```"]) },
+      { weight: 1, arbitrary: WORDS.map((w) => [`> ${w}`]) },
+      { weight: 1, arbitrary: WORDS.map((w) => ["| a | b |", "|---|---|", `| ${w} | y |`]) },
+      { weight: 1, arbitrary: fc.constant(["---"]) },
       {
         weight: 3,
         arbitrary: fc.tuple(WORDS, fc.array(fc.tuple(fc.constantFrom(0, 1, 2), WORDS), { maxLength: 4 })).map(([head, items]) => {
