@@ -13,8 +13,9 @@ import { followed, present, readList, toggled } from "./plan";
 export default function (ctx: ModContext): void {
   const cli = cliOf(ctx);
   const slot = ctx.slots.mount("sidebar");
-  const section = el("section", { class: "group", id: "favorites" });
-  slot.root.append(section);
+  // A drawer like the others (it folds); it is in the sidebar only while there is a favorite to show.
+  const drawer = ctx.ui.drawer({ id: "favorites", title: "Favorites" });
+  drawer.root.id = "favorites";
   let run = 0;
 
   /** The folder's list lives under its own name, so two notes folders do not share marks. */
@@ -56,8 +57,9 @@ export default function (ctx: ModContext): void {
       const off = el("button", { class: "fav-off", title: "Remove from favorites", ariaLabel: `Remove ${pageId(path)} from favorites`, onclick: () => void change((l) => toggled(l, path)) }, "★");
       return el("li", {}, open, off);
     });
-    section.hidden = rows.length === 0;
-    section.replaceChildren(...(rows.length === 0 ? [] : [el("div", { class: "group-head" }, el("h2", {}, "Favorites")), el("ul", { class: "list" }, ...rows)]));
+    drawer.body.replaceChildren(el("ul", { class: "list" }, ...rows));
+    if (rows.length === 0) drawer.root.remove();
+    else if (!drawer.root.isConnected) slot.root.append(drawer.root);
   }
 
   async function toggle(): Promise<void> {

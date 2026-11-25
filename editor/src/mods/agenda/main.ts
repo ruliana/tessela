@@ -86,8 +86,11 @@ export default function (ctx: ModContext): void {
   // ---- the month strip ------------------------------------------------------
 
   const slot = ctx.slots.mount("sidebar");
-  const strip = el("section", { class: "group", id: "month-strip" });
-  slot.root.append(strip);
+  const drawer = ctx.ui.drawer({ id: "month", title: "Calendar" });
+  drawer.root.id = "month-strip-drawer";
+  const strip = drawer.body;
+  strip.id = "month-strip";
+  slot.root.append(drawer.root);
   const now = new Date();
   let month: [number, number] = [now.getFullYear(), now.getMonth() + 1];
   let run = 0;

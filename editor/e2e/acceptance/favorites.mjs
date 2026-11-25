@@ -31,11 +31,11 @@ async function listed(s, expected) {
 suite("Favorites mod: marked pages above Recent", files, (test) => {
   test("nothing is drawn until a page is marked; Toggle favorite marks the open page and unmarks it", async (s) => {
     await s.open("fav-one");
-    assert.equal(await s.win.isHidden("#favorites"), true);
+    assert.equal(await s.win.locator("#favorites").count(), 0);
     await runCommand(s, "Toggle favorite");
     await listed(s, ["fav-one"]);
     await runCommand(s, "Toggle favorite");
-    await s.win.waitForSelector("#favorites", { state: "hidden" });
+    await s.win.waitForSelector("#favorites", { state: "detached" });
   });
 
   test("favorites are listed above Recent, in the order they were marked, and open their page", async (s) => {
@@ -90,7 +90,7 @@ suite("Favorites mod: marked pages above Recent", files, (test) => {
     // Removed by an agent or by git: the entry is hidden, the notes are not touched.
     const { rmSync } = await import("node:fs");
     rmSync(join(s.bundle, "fav-one.md"));
-    await s.win.waitForSelector("#favorites", { state: "hidden" });
+    await s.win.waitForSelector("#favorites", { state: "detached" });
     assert.ok(!existsSync(join(s.bundle, "fav-one.md")));
     write(s.bundle, "fav-one.md", `${front()}# One again\n`);
     await listed(s, ["fav-one"]);
