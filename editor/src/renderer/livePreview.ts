@@ -13,6 +13,7 @@ import { allowedHtml } from "../shared/html";
 import { journalDest } from "../shared/pages";
 import type { PropertiesArg, PropertiesOverride } from "../shared/mods";
 import { type Properties, bodyRepeatsTitle, bodyStart, parseProperties, showWhen } from "../shared/properties";
+import { selectMode } from "./selectMode";
 
 class Glyph extends WidgetType {
   constructor(
@@ -113,14 +114,19 @@ function editedLines(state: EditorState): Set<number> {
   return lines;
 }
 
+/** The lines shown as typed: those of the block being edited. In select mode there are none. */
+function rawLines(state: EditorState): Set<number> {
+  return state.field(selectMode, false) ? new Set() : editedLines(state);
+}
+
 /** Whether the line is shown rendered: the editor has no focus, or the cursor is in another block. */
 export function renderedLine(view: EditorView, line: number): boolean {
-  return !view.hasFocus || !editedLines(view.state).has(line);
+  return !view.hasFocus || !rawLines(view.state).has(line);
 }
 
 function build(view: EditorView, opts: PreviewOptions): DecorationSet {
   const { state } = view;
-  const raw = view.hasFocus ? editedLines(state) : new Set<number>();
+  const raw = view.hasFocus ? rawLines(state) : new Set<number>();
   const ranges: Range<Decoration>[] = [];
   const lineOf = (pos: number) => state.doc.lineAt(pos).number;
   /** Hides `from` to `to`, and the space after it when `space` is set. */
@@ -265,11 +271,12 @@ class TableWidget extends WidgetType {
     private readonly table: ParsedTable,
     private readonly source: string,
     private readonly openLink: (dest: string) => void,
+    private readonly picked: boolean,
   ) {
     super();
   }
   override eq(other: TableWidget): boolean {
-    return other.source === this.source;
+    return other.source === this.source && other.picked === this.picked;
   }
   override ignoreEvent(): boolean {
     return true;
@@ -277,7 +284,7 @@ class TableWidget extends WidgetType {
   override toDOM(view: EditorView): HTMLElement {
     const { head, aligns, rows } = this.table;
     const wrap = document.createElement("div");
-    wrap.className = "cm-lp-tablewrap";
+    wrap.className = this.picked ? "cm-lp-tablewrap cm-lp-selected" : "cm-lp-tablewrap";
     const table = document.createElement("table");
     table.className = "cm-lp-table";
     const row = (cells: string[], tag: "th" | "td", index: number) => {
@@ -430,7 +437,9 @@ const hasFocus = StateField.define<boolean>({
 function tables(opts: PreviewOptions): Extension {
   const { openLink } = opts;
   const build = (state: EditorState): DecorationSet => {
-    const focused = state.field(hasFocus);
+    // Where the cursor is, the front matter and a table show as text; selected blocks are drawn.
+    const selecting = state.field(selectMode, false) ?? false;
+    const focused = state.field(hasFocus) && !selecting;
     const ranges: Range<Decoration>[] = [];
     const head = Array.from({ length: Math.min(state.doc.lines, 200) }, (_, i) => state.doc.line(i + 1).text);
     const fmEnd = frontmatterEnd(head);
@@ -476,7 +485,8 @@ function tables(opts: PreviewOptions): Extension {
         const table = parseTable(lines);
         if (table) {
           const source = lines.join("\n");
-          ranges.push(Decoration.replace({ widget: new TableWidget(table, source, openLink), block: true }).range(first.from, last.to));
+          const picked = selecting && state.selection.ranges.some((r) => r.from <= last.to && r.to >= first.from);
+          ranges.push(Decoration.replace({ widget: new TableWidget(table, source, openLink, picked), block: true }).range(first.from, last.to));
         }
         return false;
       },

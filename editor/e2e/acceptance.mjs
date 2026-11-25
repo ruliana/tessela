@@ -7,6 +7,7 @@ import "./acceptance/journals.mjs";
 import "./acceptance/navigation.mjs";
 import "./acceptance/search.mjs";
 import "./acceptance/blocks.mjs";
+import "./acceptance/selectmode.mjs";
 import "./acceptance/format.mjs";
 import "./acceptance/menus.mjs";
 import "./acceptance/syntax.mjs";
