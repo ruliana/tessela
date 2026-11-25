@@ -390,6 +390,11 @@ for Apple silicon and Intel): run it from the Actions tab, or push a tag such as
 macOS app is not signed with an Apple certificate, so the first time, open it with
 right-click, Open, or run `xattr -dr com.apple.quarantine /Applications/Tessela.app`.
 
+On Linux the app looks for a newer release when it starts. An AppImage shows "Update" in
+the sidebar: one click downloads it, and it takes over when the app restarts. A deb is only
+told that a newer version exists, with a link to it. macOS builds do not check yet (they are
+unsigned). Start with `--no-update` to skip the check.
+
 ## Releases
 
 Pushing a tag like `v0.1.0` builds the `tessela` command line tool for Linux

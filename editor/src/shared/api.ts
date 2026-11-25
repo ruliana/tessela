@@ -1,6 +1,8 @@
 // The contract between the Electron main process and the window. Everything the
 // window knows about the notes comes through these calls; it never reads files itself.
 
+import type { UpdateState } from "./updates";
+
 export type HitKind = "block" | "heading" | "page";
 
 /** One result of `tessela query --json`. */
@@ -151,6 +153,14 @@ export interface Api {
    * `input` goes to the command's standard input: text, or the bytes of a file (for `attach`).
    */
   cli(argv: string[], input?: string | Uint8Array): Promise<unknown>;
+  /** Whether a newer version of the app exists, now. */
+  updateState(): Promise<UpdateState>;
+  /** Downloads the newer version (an AppImage); it is installed when the app restarts. */
+  downloadUpdate(): Promise<void>;
+  /** Restarts into the downloaded version. */
+  installUpdate(): Promise<void>;
+  /** Called when the update state changes. Returns an unsubscribe. */
+  onUpdate(listener: (state: UpdateState) => void): () => void;
   /** Called with the paths (relative) of pages that changed on disk. Returns an unsubscribe. */
   onChanged(listener: (paths: string[]) => void): () => void;
 }

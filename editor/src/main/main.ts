@@ -2,12 +2,14 @@ import { existsSync, promises as fs, readFileSync, writeFileSync } from "node:fs
 import path from "node:path";
 
 import { BrowserWindow, app, dialog, ipcMain, net, protocol, shell } from "electron";
+import { autoUpdater } from "electron-updater";
 import { pathToFileURL } from "node:url";
 
 import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
 import { relativeInside, resolveImage, resolveInside } from "./files";
 import { addPageVia, cliInput, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
+import { createUpdates, type Updates } from "./updates";
 import { agentsText, cliArgv, configFolder, installAgents, isModId, listMods, resolveModFile, setModOff } from "./mods";
 
 // Name the app Tessela (the switcher, the menu bar and the Dock would otherwise say "Electron").
@@ -72,6 +74,36 @@ const modsDisabled = process.argv.includes("--no-mods");
 
 /** The mods that come with the app (built to dist/mods, next to this file). */
 const bundledMods = path.join(__dirname, "mods");
+
+/**
+ * Looks for a newer version on the GitHub releases at start (installed Linux apps only; macOS
+ * builds are not signed yet). `--no-update` skips it, `TESSELA_UPDATE_FEED` points it at another
+ * address that serves `latest-linux.yml`.
+ */
+let updates: Updates | undefined;
+
+function startUpdates(): void {
+  const feed = process.env.TESSELA_UPDATE_FEED;
+  if (process.argv.includes("--no-update") || process.platform !== "linux" || !(app.isPackaged || feed)) return;
+  try {
+    if (feed) {
+      // What the packaged app has in app-update.yml, pointed at another address.
+      const file = path.join(app.getPath("userData"), "update-feed.yml");
+      writeFileSync(file, `provider: generic\nurl: ${JSON.stringify(feed)}\nupdaterCacheDirName: tessela-updater\n`);
+      autoUpdater.updateConfigPath = file;
+      autoUpdater.forceDevUpdateConfig = true;
+    }
+    updates = createUpdates({
+      updater: autoUpdater,
+      canInstall: Boolean(process.env.APPIMAGE),
+      releaseUrl: (version) => `https://github.com/ruliana/tessela/releases/tag/v${version}`,
+      onState: (state) => win?.webContents.send("update", state),
+    });
+    void updates.check();
+  } catch {
+    // Updating is a convenience: whatever goes wrong, the editor still starts.
+  }
+}
 
 function config(): string {
   return configFolder(app.getPath("userData"), process.env.TESSELA_CONFIG);
@@ -142,6 +174,9 @@ function registerIpc(): void {
   });
   ipcMain.handle("todayPath", () => journalPath(localDay(new Date())));
   ipcMain.handle("mods", () => listMods(config(), modsDisabled, bundledMods));
+  ipcMain.handle("updateState", () => updates?.state() ?? { kind: "idle" });
+  ipcMain.handle("downloadUpdate", () => updates?.download());
+  ipcMain.handle("installUpdate", () => updates?.install());
   ipcMain.handle("reload", () => win?.webContents.reload());
   ipcMain.handle("setModOff", (_e, id: unknown, off: unknown) => {
     if (typeof id !== "string" || !isModId(id) || typeof off !== "boolean") throw new Error("setModOff: a mod id and true or false");
@@ -219,6 +254,7 @@ void app.whenReady().then(() => {
   // have build/icon.icns there, so this is for running unpackaged.
   if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, "renderer", "icon.png"));
   createWindow();
+  startUpdates();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

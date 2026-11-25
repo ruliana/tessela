@@ -9,6 +9,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "./style.css";
 
 import type { Diagnostic, Hit, PageEntry, VocabEntry } from "../shared/api";
+import type { UpdateState } from "../shared/updates";
 import { isHomeHit, orderBacklinks } from "../shared/backlinks";
 import { linkPages } from "../shared/linkFlows";
 import {
@@ -210,8 +211,31 @@ async function start(): Promise<void> {
   recent = readRecent();
   buildShell(bundle);
   stopListening = api.onChanged((paths) => void onChanged(paths));
+  void api.updateState().then(showUpdate);
   await refreshIndex();
   await showJournals();
+}
+
+/** A newer version of the app: on an AppImage one click fetches it and it takes over at the next start; a deb only gets told. */
+function showUpdate(state: UpdateState): void {
+  if (!updateEl) return;
+  updateEl.hidden = state.kind === "idle";
+  const say = (text: string, ...buttons: HTMLElement[]): void => updateEl.replaceChildren(el("p", {}, text), ...buttons);
+  const button = (id: string, label: string, run: () => void): HTMLElement => el("button", { class: "secondary", id, onclick: run }, label);
+  switch (state.kind) {
+    case "idle":
+      return updateEl.replaceChildren();
+    case "available":
+      return state.install
+        ? say(`Tessela ${state.version} is available.`, button("update-download", "Update", () => void api.downloadUpdate()))
+        : say(`Tessela ${state.version} is available.`, button("update-open", "Download", () => void api.openExternal(state.url)));
+    case "downloading":
+      return say(`Downloading Tessela ${state.version}… ${state.percent}%`);
+    case "ready":
+      return say(`Tessela ${state.version} is ready.`, button("update-restart", "Restart to update", () => void api.installUpdate()));
+    case "failed":
+      return say(`The update to ${state.version} failed: ${state.message}`, button("update-download", "Try again", () => void api.downloadUpdate()));
+  }
 }
 
 function welcome(message?: string): void {
@@ -264,6 +288,7 @@ let recentList: HTMLElement;
 let backButton: HTMLButtonElement;
 let forwardButton: HTMLButtonElement;
 let noticeEl: HTMLElement;
+let updateEl: HTMLElement;
 let newPageEl: HTMLElement;
 let newPageInput: HTMLInputElement;
 let newPageError: HTMLElement;
@@ -318,6 +343,7 @@ function buildShell(bundle: string): void {
     newPageError,
   );
   noticeEl = el("div", { class: "notice", id: "notice", hidden: true });
+  updateEl = el("div", { class: "notice update", id: "update", hidden: true });
   const search = el("input", {
     class: "search",
     id: "search",
@@ -440,6 +466,7 @@ function buildShell(bundle: string): void {
     ),
     newPageEl,
     noticeEl,
+    updateEl,
     el("div", { class: "lists" }, journalsSection, conceptsSection),
   );
 
@@ -1102,6 +1129,8 @@ Object.assign(host, {
 registry.onFailure = (f) => {
   if (document.getElementById("notice")) showNotice(`The mod ${f.mod} failed: ${f.message}`);
 };
+
+api.onUpdate(showUpdate);
 
 loadMods()
   .then(start)

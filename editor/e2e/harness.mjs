@@ -44,7 +44,7 @@ export function bodyOf(bundle, path) {
 }
 
 /** Starts the built app on `bundle`. E2E_PACKAGED runs the packaged app instead (see smoke.mjs). */
-export async function launch(bundle, { rendered = false, mods = {}, args = [], settings } = {}) {
+export async function launch(bundle, { rendered = false, mods = {}, args = [], settings, env = {} } = {}) {
   const packaged = process.env.E2E_PACKAGED;
   // A fresh profile, so nothing a window remembers (the look, the rendering) leaks between suites.
   const profile = mkdtempSync(join(tmpdir(), "tessela-profile-"));
@@ -55,8 +55,8 @@ export async function launch(bundle, { rendered = false, mods = {}, args = [], s
   else delete process.env.TESSELA_BIN;
   const app = await electron.launch(
     packaged
-      ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`, ...args], env: { ...process.env } }
-      : { args: [join(root, "dist/main.cjs"), "--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`, ...args], env: { ...process.env } },
+      ? { executablePath: resolve(root, packaged), args: ["--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`, ...args], env: { ...process.env, ...env } }
+      : { args: [root, "--no-sandbox", `--user-data-dir=${profile}`, `--bundle=${bundle}`, ...args], env: { ...process.env, ...env } },
   );
   const win = await app.firstWindow();
   await win.waitForSelector(".cm-content");
