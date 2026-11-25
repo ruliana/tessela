@@ -14,6 +14,7 @@ import type { ModsInfo } from "../shared/api";
 import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModOverrides, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
 import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
+import { drawer } from "./drawer";
 import { el } from "./dom";
 import { fenceExtension, refreshFences } from "./fences";
 
@@ -118,6 +119,12 @@ export interface ModContext {
   ui: {
     dialog(options: DialogOptions): Dialog;
     toast(text: string, action?: { label: string; run: () => void }): void;
+    /**
+     * A drawer for the sidebar (put `root` in `slots.mount("sidebar")`): a head that folds it away
+     * with a click or the keyboard, and a `body` to fill. Whether it is folded is remembered by the
+     * window under the mod's id and `id`, so the mod does nothing about it.
+     */
+    drawer(options: { id: string; title: string; aside?: Node }): { root: HTMLElement; body: HTMLElement };
   };
   /** What happens in the window; `on` returns the way to stop listening. */
   events: { on<N extends ModEventName>(name: N, listener: (payload: ModEvents[N]) => unknown): () => void };
@@ -175,7 +182,11 @@ function contextFor(mod: string): ModContext {
     slash: { add: (item) => registry.addSlash(mod, item) },
     editor: { extend: (extension) => registry.addExtension(mod, extension) },
     settings: settingsOf(mod),
-    ui: { dialog: (options) => openDialog(options), toast: (text, action) => host.toast(text, action) },
+    ui: {
+      dialog: (options) => openDialog(options),
+      toast: (text, action) => host.toast(text, action),
+      drawer: ({ id, title, aside }) => drawer(`${mod}:${id}`, title, aside),
+    },
     events: { on: (name, listener) => registry.on(mod, name, listener) },
     fences: { add: (info, render) => registry.addFence(mod, info, render) },
     slots: {

@@ -285,6 +285,12 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .group-head { display: flex; align-items: baseline; justify-content: space-between; padding-inline: 6px; }
 .group-head h2 { margin: 0; }
 .group-head .hint { font-size: 11px; color: var(--muted); }
+.drawer-toggle { display: inline-flex; align-items: baseline; gap: 5px; padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.drawer-toggle::before { content: "▾"; display: inline-block; width: 1em; font-size: 10px; transition: transform 0.12s; }
+.drawer-toggle:hover { color: var(--accent); }
+.drawer[data-folded="1"] .drawer-toggle::before { transform: rotate(-90deg); }
+.drawer[data-folded="1"] > :not(.drawer-head), .drawer[data-folded="1"] .drawer-head input { display: none; }
+.drawer-body { display: flex; flex-direction: column; gap: 4px; }
 .link { background: none; border: 0; padding: 0; color: var(--muted); font-size: 12px; cursor: pointer; }
 .link:hover { color: var(--accent); }
 .sidebar .lists { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
