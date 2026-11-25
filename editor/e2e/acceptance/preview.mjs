@@ -179,6 +179,13 @@ const withTable = [
   "After the table.",
 ].join("\n");
 
+const withHtml = [
+  "| Item | Notes |",
+  "| --- | --- |",
+  "| a&nbsp;b | one<br>two<br/>three<br />four |",
+  "| `<br>` | <b onclick=x>bold</b><script>1</script> |",
+].join("\n");
+
 const withLinks = [
   "Web [site](https://example.com/page) here.",
   "",
@@ -252,6 +259,22 @@ suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype
     await s.win.click("#preview-toggle");
     await s.win.waitForFunction(() => !document.querySelector(".cm-lp-table"));
     assert.ok((await s.doc()).includes("| :--- | ---: | :---: |"));
+  });
+
+  test("a table cell draws &nbsp; and <br>, and shows any other HTML as typed", async (s) => {
+    await s.openWith("html", withHtml);
+    await s.win.click("#preview-toggle");
+    await s.win.waitForSelector(".cm-lp-table");
+    const cell = s.win.locator(".cm-lp-table tbody tr:nth-child(1) td");
+    assert.equal(await cell.nth(0).textContent(), "a\u00a0b");
+    assert.equal(await cell.nth(1).locator("br").count(), 3);
+    assert.equal(await cell.nth(1).textContent(), "onetwothreefour");
+    const other = s.win.locator(".cm-lp-table tbody tr:nth-child(2) td");
+    assert.equal(await other.nth(0).textContent(), "<br>", "code stays as typed");
+    assert.equal(await other.nth(1).textContent(), "<b onclick=x>bold</b><script>1</script>");
+    assert.equal(await other.nth(1).locator("*").count(), 0, "no element came from the text");
+    assert.ok((await s.savedBody("html")).includes("| a&nbsp;b | one<br>two<br/>three<br />four |"), "the Markdown is untouched");
+    await s.win.click("#preview-toggle");
   });
 
   test("a link drawn as text opens with a plain click", async (s) => {

@@ -501,6 +501,12 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
   the text is typed, a plain click where it is drawn (rendered text, table cells, the
   date in a page's properties, the backlink tiles). A day without a file opens empty
   and gets its file on the first edit. Dates in code or in web addresses are left alone.
+- HTML is never drawn, except an allowlist (`ALLOWED_HTML` in `editor/src/shared/html.ts`,
+  one line each, so it grows by adding a line here and there). Today it holds `&nbsp;`
+  (a no-break space) and `<br>`, `<br/>`, `<br />` (a line break, with no attributes), so a table cell can
+  hold several lines. A table's cells are drawn from their text, so anything not on the
+  list is shown as typed there (`<b onclick=x>` is those characters, never an element).
+  In code spans and outside tables the text is not drawn from HTML at all and shows as typed.
 
 ### Editing keys
 
