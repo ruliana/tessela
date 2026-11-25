@@ -11,7 +11,7 @@ export type Part =
   | { kind: "code" | "bold" | "italic" | "strike"; text: string };
 
 const INLINE =
-  /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\*[^*]+\*)|(!?)\[([^\]]*)\]\(([^)\s]*)\)|(?<![\p{L}\p{N}_&/#])#([\p{L}\p{N}_/-]+)/gu;
+  /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\*[^*]+\*)|(!?)\[([^\]]*)\]\(([^)\s]*)\)|(?<![\p{L}\p{N}_&/#\\])#([\p{L}\p{N}_/-]+)/gu;
 
 export function inlineParts(text: string): Part[] {
   const parts: Part[] = [];

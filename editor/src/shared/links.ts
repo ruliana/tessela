@@ -32,7 +32,8 @@ export function linkTargetId(dest: string, pageDir: string): string | null {
   return parts.length === 0 ? null : normalizeConcept(parts.join("/"));
 }
 
-const TAG = /(^|[^\p{L}\p{N}_&/#)])#([\p{L}\p{N}_/-]+)/gu;
+// A `#` after a backslash is escaped: text, not a tag, as the Rust tools read it.
+const TAG = /(^|[^\p{L}\p{N}_&/#)\\])#([\p{L}\p{N}_/-]+)/gu;
 const LINK = /\[[^\]]*\]\(([^)\s]*)\)/g;
 
 /** Every tag and concept link in a line, in order. Links to URLs and files are left out. */

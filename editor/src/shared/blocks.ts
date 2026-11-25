@@ -440,14 +440,19 @@ export function move(lines: string[], sel: Sel, dir: "up" | "down"): Result | nu
   if (!group) return { rows: rows(lines) };
   const first = group[0]!;
   const last = group[group.length - 1]!;
+  let result: Result;
   if (dir === "up") {
     const before = previous(blocks, first);
     if (!before) return { rows: rows(lines) };
-    return swap(lines, before, mergeGroup(first, last));
+    result = swap(lines, before, mergeGroup(first, last));
+  } else {
+    const after = next(blocks, last);
+    if (!after) return { rows: rows(lines) };
+    result = swap(lines, mergeGroup(first, last), after);
   }
-  const after = next(blocks, last);
-  if (!after) return { rows: rows(lines) };
-  return swap(lines, mergeGroup(first, last), after);
+  // A rule that ends up on the first line, with another rule below it, would turn everything
+  // between them into front matter. Moving does not do that: the block stays where it is.
+  return frontmatterEnd(result.rows.map((r) => r.text)) === frontmatterEnd(lines) ? result : { rows: rows(lines) };
 }
 
 function mergeGroup(first: Block, last: Block): Block {
