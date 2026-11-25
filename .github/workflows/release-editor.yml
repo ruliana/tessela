@@ -8,10 +8,22 @@ name: Release editor
 # push a tag like `v0.1.0` to attach them to a GitHub release. The tag must match the
 # version in editor/package.json.
 
+# tag-release.yml calls this workflow for the tag it creates, because a tag pushed with
+# GITHUB_TOKEN triggers no other workflow.
+
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing tag to build and attach to
+        required: true
+        type: string
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
@@ -32,6 +44,8 @@ jobs:
         working-directory: editor
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
@@ -56,17 +70,19 @@ jobs:
   publish:
     name: attach to the release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: inputs.tag != '' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - name: The tag matches the app version
         run: |
           version="$(node -p "require('./editor/package.json').version")"
-          test "${GITHUB_REF_NAME}" = "v${version}" || {
-            echo "tag ${GITHUB_REF_NAME} does not match editor/package.json version ${version}" >&2
+          test "${TAG}" = "v${version}" || {
+            echo "tag ${TAG} does not match editor/package.json version ${version}" >&2
             exit 1
           }
       - uses: actions/download-artifact@v4
@@ -77,7 +93,6 @@ jobs:
       - name: Create the release if it does not exist, then upload the installers
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           gh release view "$TAG" >/dev/null 2>&1 \
             || gh release create "$TAG" --generate-notes \
