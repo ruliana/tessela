@@ -391,3 +391,12 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+`cargo test` includes property tests (`proptest`) and a fuzz test of the command line
+(`crates/tessela-core/tests/props_*.rs`, `crates/tessela-cli/tests/fuzz.rs`). They run a
+bounded pass with a fixed seed, so a failure is the same on every run. To look further, or to
+replay a failure, set the number of cases and the seed:
+
+```
+TESSELA_FUZZ_CASES=5000 TESSELA_FUZZ_SEED=42 cargo test --workspace
+```
