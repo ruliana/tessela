@@ -1,18 +1,10 @@
 //! Property tests for reading text: whatever a page holds, parsing must not panic and must
 //! describe the text consistently. Nothing here touches the disk.
-//!
-//! Known gaps these tests found, kept out of the "tame" generator until they are fixed:
-//! - a tag written as an HTML entity (`&#35;x`) names the concept, but the text on disk is not
-//!   the tag, so a move neither rewrites it nor reports it;
-//! - the block reader parses the text of each block on its own, so it can disagree with the
-//!   parse of the whole page: tags in an indented code block (a tab or 4 spaces) count as
-//!   references although `extract_refs` calls it code; a backtick that opens a code span
-//!   across a table or a setext heading changes what is a tag. After a move, these stay.
 
 mod support;
 
 use proptest::prelude::*;
-use support::{config, markdown, page_text, refs_of, tame_page_text};
+use support::{config, markdown, page_text, refs_of};
 use tessela_core::Page;
 use tessela_core::fence::{Pipeline, split_stages};
 use tessela_core::refs::{extract_refs, link_target_id, normalize_concept, tag_spans};
@@ -91,7 +83,7 @@ proptest! {
     }
 
     #[test]
-    fn a_rewritten_page_no_longer_names_the_old_concept(text in tame_page_text()) {
+    fn a_rewritten_page_no_longer_names_the_old_concept(text in page_text()) {
         let rewrite = Rewrite::new("x", "q/new.md");
         let at = Where { dir_before: "", dir_after: "", is_moved: false };
         let out = rewrite.page(&text, &at);
