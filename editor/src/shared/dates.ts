@@ -62,12 +62,10 @@ export interface DayAt extends DateAt {
  * web address (`https://example.com/2026-10-27/notes` is a path, not a day).
  */
 export function daysInLine(line: string): DayAt[] {
+  // A web address runs from its scheme to a space or the bracket that closes the link around it.
+  const addresses = [...line.matchAll(/[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s)>\]"']*/g)].map((m) => [m.index ?? 0, (m.index ?? 0) + m[0].length]);
   return datesInLine(line)
-    .filter((d) => {
-      const start = line.lastIndexOf(" ", d.from) + 1;
-      const space = line.indexOf(" ", d.to);
-      return !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(line.slice(start, space < 0 ? line.length : space).replace(/^[([<"']+/, ""));
-    })
+    .filter((d) => !addresses.some(([from, to]) => d.from >= from! && d.from < to!))
     .map((d) => ({ ...d, day: line.slice(d.from, d.from + 10) }));
 }
 
