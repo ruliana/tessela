@@ -1,5 +1,7 @@
 // Where the user has been: the back/forward history and the "Recent" list.
 
+import { isJournalPath } from "./pages";
+
 /** A place the middle of the window can show. */
 export type Place = { kind: "page"; path: string } | { kind: "journals" } | { kind: "view"; id: string; arg?: string };
 
@@ -47,6 +49,11 @@ const RECENT_KEPT = 50;
 export function recentCount(value: unknown): number {
   const n = Math.floor(Number(value));
   return Number.isFinite(n) && n >= 1 ? Math.min(n, RECENT_MAX) : RECENT_DEFAULT;
+}
+
+/** The pages the Recent list shows: the first `shown` of them, journal days only when `dates` says so. */
+export function recentShown(recent: string[], shown: number, dates: boolean): string[] {
+  return recent.filter((p) => dates || !isJournalPath(p)).slice(0, shown);
 }
 
 /** `path` becomes the most recently used page. */

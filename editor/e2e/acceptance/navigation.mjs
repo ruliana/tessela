@@ -2,6 +2,8 @@
 // Each suite shares one window and runs in order.
 
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { daysAgo, front, localDay, suite } from "../harness.mjs";
 
 const today = localDay();
@@ -24,7 +26,6 @@ const journals = (s) =>
   s.win.waitForFunction((day) => document.querySelector(".card-title")?.textContent === day, today);
 const forgetSettings = (s) =>
   s.win.evaluate(() => {
-    localStorage.removeItem("tessela.recentCount");
     for (const key of Object.keys(localStorage)) if (key.startsWith("tessela.recent:")) localStorage.removeItem(key);
   });
 
@@ -61,7 +62,7 @@ const names = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "the
 
 suite(
   "Recent pages",
-  () => Object.fromEntries(names.map((n) => [`${n}.md`, `${front()}The ${n} page.\n`])),
+  () => ({ ...Object.fromEntries(names.map((n) => [`${n}.md`, `${front()}The ${n} page.\n`])), "journals/2031-05-20.md": journal("2031-05-20") }),
   (test) => {
     test("the list is hidden until a page was visited", async (s) => {
       await forgetSettings(s);
@@ -89,32 +90,38 @@ suite(
       assert.deepEqual(await recent(s), ["alpha", "delta", "gamma", "beta"]);
     });
 
-    test("shows 6 by default, and the list can be changed", async (s) => {
+    test("shows 6 by default, with no box to change it", async (s) => {
       for (const n of names.slice(4)) await visit(s, n);
-      assert.equal(await s.win.inputValue("#recent-size"), "6");
+      assert.equal(await s.win.locator("#recent-size").count(), 0);
       assert.deepEqual(await recent(s), ["theta", "eta", "zeta", "epsilon", "alpha", "delta"]);
-      await s.win.fill("#recent-size", "3");
-      await s.win.press("#recent-size", "Tab");
-      assert.deepEqual(await recent(s), ["theta", "eta", "zeta"]);
-      await s.win.fill("#recent-size", "8");
-      await s.win.press("#recent-size", "Tab");
-      assert.equal((await recent(s)).length, 8);
     });
 
-    test("the setting and the list are still there after a reload", async (s) => {
-      await s.win.fill("#recent-size", "2");
-      await s.win.press("#recent-size", "Tab");
+    test("recent.shown in the config folder's settings.json says how many, from 1 to 30, else 6", async (s) => {
+      const shown = async (setting) => {
+        writeFileSync(join(s.profile, "settings.json"), JSON.stringify({ recent: { shown: setting } }));
+        await s.win.reload();
+        await s.win.waitForSelector(".cm-content");
+        return (await recent(s)).length;
+      };
+      assert.equal(await shown(3), 3);
+      assert.equal(await shown(8), 8);
+      assert.equal(await shown(0), 6);
+      assert.equal(await shown("many"), 6);
+    });
+
+    test("journal days are left out of the list, unless recent.dates in settings.json is true", async (s) => {
+      await s.win.fill("#search", "journals/2031-05-20");
+      await s.win.press("#search", "Enter");
+      await s.win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "2031-05-20");
+      await visit(s, "beta");
+      assert.equal((await recent(s)).includes("2031-05-20"), false);
+      writeFileSync(join(s.profile, "settings.json"), JSON.stringify({ recent: { dates: true } }));
       await s.win.reload();
       await s.win.waitForSelector(".cm-content");
-      assert.equal(await s.win.inputValue("#recent-size"), "2");
-      assert.deepEqual(await recent(s), ["theta", "eta"]);
-    });
-
-    test("a nonsense size falls back to the default", async (s) => {
-      await s.win.fill("#recent-size", "0");
-      await s.win.press("#recent-size", "Tab");
-      assert.equal(await s.win.inputValue("#recent-size"), "6");
-      assert.equal((await recent(s)).length, 6);
+      assert.equal((await recent(s)).includes("2031-05-20"), true);
+      writeFileSync(join(s.profile, "settings.json"), "{}");
+      await s.win.reload();
+      await s.win.waitForSelector(".cm-content");
     });
 
     test("clicking an entry opens that page and moves it to the top", async (s) => {

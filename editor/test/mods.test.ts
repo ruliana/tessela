@@ -44,7 +44,7 @@ describe("ModRegistry", () => {
 });
 
 describe("modRows", () => {
-  const info = (extra: object = {}) => ({ folder: "/cfg", disabled: false, ids: ["a", "b"], mods: [{ id: "a", source: "app" as const, off: false }, { id: "b", source: "config" as const, off: false }, { id: "c", source: "config" as const, off: true }], ...extra });
+  const info = (extra: object = {}) => ({ folder: "/cfg", recent: { shown: 6, dates: false }, disabled: false, ids: ["a", "b"], mods: [{ id: "a", source: "app" as const, off: false }, { id: "b", source: "config" as const, off: false }, { id: "c", source: "config" as const, off: true }], ...extra });
 
   it("says for each mod where it comes from and whether it loaded, failed or is off, with its errors", () => {
     const rows = modRows(info(), ["a"], [{ mod: "b", message: "nope" }, { mod: "a", message: "Sync: boom" }]);
@@ -78,6 +78,28 @@ describe("the mods that come with the app", () => {
     expect(resolveModFile(config, "pages", "main.js", bundled)).toBe(path.join(config, "mods/pages/main.js"));
     expect(resolveModFile(config, "other", "main.js", bundled)).toBe(path.join(bundled, "other/main.js"));
     expect(() => resolveModFile(config, "other", "../pages/main.js", bundled)).toThrow();
+  });
+});
+
+describe("the Recent list's settings", () => {
+  it("are 6 pages without dates unless settings.json says 1 to 30 and dates: true", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { recentIn } = await import("../src/main/mods");
+    const folder = mkdtempSync(path.join(tmpdir(), "tessela-recent-"));
+    expect(recentIn(folder)).toEqual({ shown: 6, dates: false });
+    const cases: [string, object][] = [
+      ['{"recent": {"shown": 3, "dates": true}}', { shown: 3, dates: true }],
+      ['{"recent": {"shown": 500, "dates": "yes"}}', { shown: 30, dates: false }],
+      ['{"recent": {"shown": "x"}}', { shown: 6, dates: false }],
+      ['{"recent": 4}', { shown: 6, dates: false }],
+      ["not json", { shown: 6, dates: false }],
+    ];
+    for (const [text, expected] of cases) {
+      writeFileSync(path.join(folder, "settings.json"), text);
+      expect(recentIn(folder)).toEqual(expected);
+    }
   });
 });
 
