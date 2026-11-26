@@ -27,6 +27,11 @@ async function gone(s) {
   await s.win.waitForFunction(() => !document.querySelector("#dialog"));
 }
 
+/** Waits for a file to be gone: the dialog can close a moment before the CLI has deleted it. */
+async function removed(path) {
+  for (let i = 0; i < 100 && existsSync(path); i++) await new Promise((r) => setTimeout(r, 50));
+}
+
 const title = (s) => s.win.textContent(".card-title");
 
 async function fillName(s, text) {
@@ -108,6 +113,7 @@ suite("Pages mod: rename, move and delete", files, (test) => {
     assert.ok(existsSync(join(s.bundle, "del-me.md")));
     await s.win.click('#dialog [data-action="ok"]');
     await gone(s);
+    await removed(join(s.bundle, "del-me.md"));
     assert.ok(!existsSync(join(s.bundle, "del-me.md")));
     assert.ok(existsSync(join(s.bundle, "del-ref.md")));
     // The window no longer shows the page that is gone.
