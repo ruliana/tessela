@@ -1,0 +1,48 @@
+name: Auto-merge
+
+# Merges a pull request into main as soon as its CI run succeeds, then deletes its branch.
+# It needs no repository settings (no branch protection, no "allow auto-merge"): CI is
+# the gate because this only runs after the CI workflow finished green.
+#
+# Skipped for: forks, drafts, and PRs labelled `no-auto-merge`. Uses the repository's
+# merge-commit style. `--match-head-commit` makes sure a newer push to the branch is never
+# merged on the strength of an older green run.
+#
+# A merge made with GITHUB_TOKEN does not trigger the push workflows, so tag-release is
+# started explicitly (workflow_dispatch is the one event GITHUB_TOKEN may start).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.pull_requests[0] != null
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge the pull request and delete its branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr="$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,baseRefName,labels)"
+          if [ "$(jq -r .state <<<"$pr")" != "OPEN" ]; then echo "#$PR is not open"; exit 0; fi
+          if [ "$(jq -r .isDraft <<<"$pr")" = "true" ]; then echo "#$PR is a draft"; exit 0; fi
+          if [ "$(jq -r .baseRefName <<<"$pr")" != "main" ]; then echo "#$PR does not target main"; exit 0; fi
+          if jq -e '.labels | map(.name) | index("no-auto-merge")' <<<"$pr" >/dev/null; then
+            echo "#$PR has the no-auto-merge label"; exit 0
+          fi
+          gh pr merge "$PR" --repo "$REPO" --merge --delete-branch --match-head-commit "$SHA"
+          gh workflow run tag-release.yml --repo "$REPO" --ref main
