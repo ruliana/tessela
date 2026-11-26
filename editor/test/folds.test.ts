@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { foldAround, foldables, zoomAt } from "../src/shared/folds";
+import { foldAround, foldables, foldsOnLoad, foldsToRemember, zoomAt } from "../src/shared/folds";
 
 const lines = (text: string) => text.split("\n");
 
@@ -39,6 +39,31 @@ describe("foldables", () => {
     expect(foldAround(f, 2)?.line).toBe(1);
     expect(foldAround(f, 2, 1)?.line).toBe(0);
     expect(foldAround(f, 3)).toBeNull();
+  });
+});
+
+describe("code fences", () => {
+  const page = lines("# A\n\n```js\nlet x;\n```\n\n```mermaid\ngraph TD\n```\n\n```tessela\nquery\n```\n\n```mermaid\nunclosed");
+
+  it("folds a fence from its first line to its last, and one that runs folds by itself once it is closed", () => {
+    expect(foldables(page).filter((f) => f.line > 0).map((f) => [f.line, f.last, f.auto])).toEqual([
+      [2, 4, false],
+      [6, 8, true],
+      [10, 12, true],
+      [14, 15, false],
+    ]);
+  });
+
+  it("starts a page with its running fences folded, and remembers only what was changed from that", () => {
+    const folds = foldables(page);
+    const auto = folds.filter((f) => f.auto);
+    expect(foldsOnLoad(folds, [])).toEqual(auto);
+    expect(foldsToRemember(folds, (f) => f.auto)).toEqual([]);
+    // The first one opened by hand, an ordinary fence folded by hand.
+    const plain = folds.find((f) => f.key === "fence:```js#0")!;
+    const kept = foldsToRemember(folds, (f) => f === plain || f === auto[1]);
+    expect(kept).toEqual(["fence:```js#0", "-fence:```mermaid#0"]);
+    expect(foldsOnLoad(folds, kept)).toEqual([plain, auto[1]]);
   });
 });
 

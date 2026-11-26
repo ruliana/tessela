@@ -8,7 +8,7 @@ import { codeFolding, foldEffect, foldedRanges, unfoldEffect } from "@codemirror
 import { EditorState, type Extension, Prec, type Range, StateEffect, StateField, type Text, Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType, keymap } from "@codemirror/view";
 
-import { type Crumb, type Fold, foldAround, foldables, zoomAt } from "../../shared/folds";
+import { type Crumb, type Fold, foldAround, foldables, foldsOnLoad, foldsToRemember, zoomAt } from "../../shared/folds";
 
 // ---- folds -------------------------------------------------------------------------
 
@@ -53,11 +53,9 @@ function isReplacement(tr: Transaction): boolean {
   return whole;
 }
 
-/** The keys of the blocks that are folded now, in page order. */
+/** What to remember of the page's folds: the blocks folded now, and the ones that fold by themselves and were opened. */
 function foldKeys(state: EditorState): string[] {
-  return foldsOf(state)
-    .filter((f) => isFolded(state, hidden(state, f)))
-    .map((f) => f.key);
+  return foldsToRemember(foldsOf(state), (f) => isFolded(state, hidden(state, f)));
 }
 
 /** Where the window keeps which blocks of a page are folded: keys made by `foldables`, by page. */
@@ -66,15 +64,11 @@ export interface FoldStore {
   write(path: string, keys: string[]): void;
 }
 
-/** A page that has just been loaded folds again what was folded: the blocks whose key is stored. */
+/** A page that has just been loaded folds again what was folded: the blocks whose key is stored, and the fences that run unless they were opened. */
 function restoring(path: string, store: FoldStore): Extension {
   return EditorState.transactionExtender.of((tr) => {
     if (!isReplacement(tr)) return null;
-    const want = new Set(store.read(path));
-    if (want.size === 0) return null;
-    const effects = foldables(tr.newDoc.toString().split("\n"))
-      .filter((f) => want.has(f.key))
-      .map((f) => foldEffect.of(hidden({ doc: tr.newDoc }, f)));
+    const effects = foldsOnLoad(foldables(tr.newDoc.toString().split("\n")), store.read(path)).map((f) => foldEffect.of(hidden({ doc: tr.newDoc }, f)));
     return effects.length > 0 ? { effects } : null;
   });
 }

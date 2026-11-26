@@ -1,4 +1,4 @@
-// Fold and zoom: which blocks of a page can be folded, which lines a zoom shows, and the
+// Fold and zoom: which blocks of a page can be folded (headings, list items, paragraphs with a list, code fences), which lines a zoom shows, and the
 // trail that leads back out. Everything works on lines, like blocks.ts, so it is tested
 // without an editor. Fold state is the window's, never the page's: a fold is remembered as a
 // key made from the block's first line, and a block whose first line has changed simply opens.
@@ -15,6 +15,21 @@ export interface Fold {
   depth: number;
   /** What a window remembers a folded block by: its kind, its first line and which one of its kind that is. */
   key: string;
+  /** Whether a page that is opened shows it folded until the window has been told otherwise: a code fence that something runs. */
+  auto: boolean;
+}
+
+/** The info strings of the code fences whose output the editor draws under them: their source folds when a page opens. */
+export const RUN_FENCES: readonly string[] = ["tessela", "mermaid"];
+
+const OPENING = /^ {0,3}(`{3,}|~{3,}) *([^\s`]*)/;
+
+/** Whether a fence block is closed and runs, so that what it draws is worth more than its source. */
+function isRunFence(lines: string[], b: Block): boolean {
+  const open = OPENING.exec(lines[b.start]!);
+  if (!open || b.end <= b.start || !RUN_FENCES.includes(open[2]!)) return false;
+  const close = /^ {0,3}(`{3,}|~{3,}) *$/.exec(lines[b.end]!);
+  return !!close && close[1]![0] === open[1]![0] && close[1]!.length >= open[1]!.length;
 }
 
 const HEADING_LEVEL = /^ {0,3}(#{1,6})(?: |$)/;
@@ -61,16 +76,21 @@ export function foldables(lines: string[], blocks: Block[] = parseBlocks(lines))
       while (headings.length > 0 && headings[headings.length - 1]! >= level(lines, b)) headings.pop();
       const key = keyOf(b);
       const last = sectionEnd(lines, roots.list, roots.at);
-      if (last > b.start) out.push({ line: b.start, last, depth: headings.length, key });
+      if (last > b.start) out.push({ line: b.start, last, depth: headings.length, key, auto: false });
       headings.push(level(lines, b));
+      return;
+    }
+    if (b.kind === "fence") {
+      const key = keyOf(b);
+      if (b.end > b.start) out.push({ line: b.start, last: b.end, depth, key, auto: isRunFence(lines, b) });
       return;
     }
     if (b.kind !== "item" && b.kind !== "para") return;
     const key = keyOf(b);
-    if (b.kind === "item" && b.end > b.start) out.push({ line: b.start, last: b.end, depth, key });
+    if (b.kind === "item" && b.end > b.start) out.push({ line: b.start, last: b.end, depth, key, auto: false });
     // A paragraph keeps its own text and folds the list it owns.
     else if (b.kind === "para" && b.children.length > 0) {
-      out.push({ line: b.children[0]!.start - 1, last: b.end, depth, key });
+      out.push({ line: b.children[0]!.start - 1, last: b.end, depth, key, auto: false });
     }
     for (const c of b.children) walk(c, depth + 1);
   };
@@ -82,6 +102,20 @@ export function foldables(lines: string[], blocks: Block[] = parseBlocks(lines))
 export function foldAround(folds: Fold[], line: number, skip = 0): Fold | null {
   const around = folds.filter((f) => f.line <= line && line <= f.last).sort((a, b) => b.line - a.line || a.last - b.last);
   return around[skip] ?? null;
+}
+
+/** What a window remembers of a page: the keys of its folded blocks, and for a fence that folds by itself the key of one that was opened (marked with a `-`). A page left as it opens remembers nothing. */
+const OPENED = "-";
+
+/** The folds a page that has just been loaded starts with, given what the window remembers of it. */
+export function foldsOnLoad(folds: Fold[], remembered: string[]): Fold[] {
+  const keys = new Set(remembered);
+  return folds.filter((f) => (f.auto ? !keys.has(OPENED + f.key) : keys.has(f.key)));
+}
+
+/** What to remember of a page whose folded blocks are those for which `folded` is true. */
+export function foldsToRemember(folds: Fold[], folded: (f: Fold) => boolean): string[] {
+  return folds.flatMap((f) => (f.auto === folded(f) ? [] : [f.auto ? OPENED + f.key : f.key]));
 }
 
 export interface Crumb {
