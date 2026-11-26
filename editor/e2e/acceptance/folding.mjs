@@ -83,6 +83,23 @@ suite("Fold and zoom", () => ({ "other.md": `${front()}Other.\n` }), (test) => {
     assert.deepEqual(await folded(s), [], "the block was rewritten while the page was away");
   });
 
+  test("a fence folds like any block, and a fence that runs starts folded, until it is opened", async (s) => {
+    const page = "```js\nlet x;\n```\n\n```mermaid\ngraph TD\n```\n\nafter";
+    await s.openWith("fold-fence", page);
+    assert.deepEqual(await folded(s), ["… 2 lines"], "only the mermaid fence is folded when the page opens");
+    assert.ok((await shown(s)).some((l) => l.includes("let x")) && !(await shown(s)).some((l) => l.includes("graph TD")));
+    await s.win.click(".cm-foldchip");
+    assert.deepEqual(await folded(s), []);
+    await goTo(s, 1, 8);
+    await s.key("Control+ArrowUp");
+    assert.deepEqual(await folded(s), ["… 2 lines"], "the code fence folds by hand");
+    await s.win.waitForTimeout(700);
+    await s.open("other");
+    await s.open("fold-fence");
+    assert.deepEqual(await folded(s), ["… 2 lines"], "the one that was folded stays folded and the one that was opened stays open");
+    assert.equal(read(s.bundle, "fold-fence.md"), front() + page, "folding never writes to the page");
+  });
+
   test("zoom shows one block with the way back, and zoom out restores the page", async (s) => {
     await s.openWith("zoom", "# Top\n\n- a\n  - b\n    - c\n- d");
     await goTo(s, 4, 6);

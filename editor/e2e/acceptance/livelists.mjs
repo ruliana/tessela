@@ -70,7 +70,8 @@ suite("Live lists", files, (test) => {
     await openWith(s, "bad", fence("rm -rf /"));
     await s.win.waitForSelector(".tessela-live .tessela-error");
     assert.match(await s.win.textContent(".tessela-live .tessela-error"), /cannot read the command/);
-    assert.match(await s.body(), /rm -rf \//);
+    // The fence starts folded, so the command is read from the file.
+    assert.match(read(s.bundle, "bad.md"), /rm -rf \//);
   });
 
   test("an empty answer says so", async (s) => {
@@ -81,7 +82,9 @@ suite("Live lists", files, (test) => {
   test("editing the command updates the rows", async (s) => {
     await openWith(s, "edit", fence("query --ref rust"));
     await rowsAre(s, 2);
-    // From the end of the page (an empty line): up over the closing fence, to the command.
+    // The fence starts folded: open it, then go from the end of the page (an empty line) up over the closing fence, to the command.
+    await s.win.click(".cm-foldchip");
+    await s.key("Control+End");
     await s.key("ArrowUp");
     await s.key("ArrowUp");
     await s.key("End");
