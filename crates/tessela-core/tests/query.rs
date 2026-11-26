@@ -579,3 +579,31 @@ fn an_alias_works_with_any_and_with_a_single_string() {
     assert_eq!(texts(&any), ["Uses #rust", "Uses #okf"]);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_text_search_puts_pages_and_headings_before_blocks() {
+    // `a` sorts first, but only `z` has the word in its title and `m` in a heading.
+    let (b, dir) = temp_bundle(
+        "ranking",
+        &[
+            ("a.md", "---\ntype: note\n---\nTalks about lovelace once.\n"),
+            ("m.md", "# On lovelace\n\nNothing else.\n"),
+            ("z.md", "---\ntitle: Lovelace\n---\nShort.\n"),
+        ],
+    );
+    let q = Query {
+        text: vec!["lovelace".into()],
+        meta: true,
+        ..Query::default()
+    };
+    let kinds: Vec<_> = q.run(&b).iter().map(|h| (h.kind, h.path.clone())).collect();
+    let _ = std::fs::remove_dir_all(dir);
+    assert_eq!(
+        kinds,
+        [
+            (HitKind::Page, "z.md".to_string()),
+            (HitKind::Heading, "m.md".to_string()),
+            (HitKind::Block, "a.md".to_string()),
+        ]
+    );
+}

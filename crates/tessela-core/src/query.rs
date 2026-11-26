@@ -183,6 +183,15 @@ impl Query {
         // most recently changed page's. Hits of one page share a time and the sort is
         // stable, so a page's hits stay together in document order, and pages changed at
         // the same time (or at an unknown time) keep their path order.
+        // Looking for words: the pages with them in a title come first, then headings, then
+        // blocks. The sort is stable, so each group keeps the order it had.
+        if wanted.is_empty() && unlinked.is_none() && !text.is_empty() {
+            hits.sort_by_key(|h| match h.kind {
+                HitKind::Page => 0,
+                HitKind::Heading => 1,
+                HitKind::Block => 2,
+            });
+        }
         if !wanted.is_empty() {
             hits.sort_by_key(|h| {
                 let rank = match h.home {

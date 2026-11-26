@@ -200,6 +200,11 @@ in milliseconds since the epoch); a page's own hits stay in document order. A li
 from a home page is how the notes say a page is important, so a client shows these
 first and marks them.
 
+A search for words (`--text` or `--words`, with `--meta` to include titles) puts
+page hits first, then heading hits, then blocks, so a page with the words in its
+title comes before a paragraph that only mentions them. Each group keeps the
+order it had.
+
 ## 6. Journals
 
 - One file per day at `journals/YYYY-MM-DD.md`.
