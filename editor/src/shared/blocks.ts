@@ -243,6 +243,16 @@ export function selectableAt(blocks: Block[], line: number): Block | null {
   return movable(b) ? b : null;
 }
 
+/**
+ * Shift+Up / Shift+Down take a whole list in one step, as a paragraph or a heading is taken, when the
+ * selection comes to it from outside. (From an item, the next block is the next item.)
+ */
+function neighbour(blocks: Block[], b: Block, dir: "up" | "down"): Block | null {
+  const list = siblings(blocks, b);
+  const n = list[list.indexOf(b) + (dir === "down" ? 1 : -1)] ?? null;
+  return n && n.kind === "list" ? n : movable(n) ? n : null;
+}
+
 function previous(blocks: Block[], b: Block): Block | null {
   const list = siblings(blocks, b);
   const i = list.indexOf(b);
@@ -474,15 +484,17 @@ function lineEnd(lines: string[], line: number): Pos {
 }
 
 /** Whether the selection covers whole blocks that are neighbours, and nothing else. */
-function aligned(lines: string[], blocks: Block[], sel: Sel): Block[] | null {
+function aligned(lines: string[], blocks: Block[], sel: Sel, lists = false): Block[] | null {
   const [a, b] = ordered(sel);
   if (a.col !== 0 || b.col !== lines[b.line]!.length || (a.line === b.line && a.col === b.col)) return null;
-  const first = selectableAt(blocks, a.line);
+  let first = selectableAt(blocks, a.line);
   if (!first || first.start !== a.line) return null;
+  // With `lists`, a selection that starts at a list and goes past it holds the list, not its items.
+  if (lists && first.parent?.kind === "list" && first.parent.start === first.start && first.parent.end < b.line) first = first.parent;
   const group = [first];
   let current = first;
   while (current.end < b.line) {
-    const n = next(blocks, current);
+    const n = lists ? neighbour(blocks, current, "down") : next(blocks, current);
     if (!n) return null;
     group.push(n);
     current = n;
@@ -552,15 +564,18 @@ export function selectBlock(lines: string[], sel: Sel): Sel | null {
 /** Shift+Up / Shift+Down on a block selection: takes in the next block in that direction. */
 export function extendBlocks(lines: string[], sel: Sel, dir: "up" | "down"): Sel | null {
   const blocks = parseBlocks(lines);
-  const group = aligned(lines, blocks, sel);
+  const group = aligned(lines, blocks, sel, true);
   if (!group) return null;
-  const first = group[0]!;
-  const last = group[group.length - 1]!;
+  let first = group[0]!;
+  let last = group[group.length - 1]!;
+  // All the items of a list are the list, so the selection can go on to what is beside it.
+  const owner = first.parent;
+  if (owner?.kind === "list" && owner.children[0] === first && owner.children[owner.children.length - 1] === last) first = last = owner;
   if (dir === "down") {
-    const n = next(blocks, last);
+    const n = neighbour(blocks, last, "down");
     return n ? cover(lines, first, n) : null;
   }
-  const p = previous(blocks, first);
+  const p = neighbour(blocks, first, "up");
   return p ? cover(lines, p, last) : null;
 }
 
