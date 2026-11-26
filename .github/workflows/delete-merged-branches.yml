@@ -1,0 +1,88 @@
+name: Delete merged branches
+
+# Cleans up branches that are already merged. Two entry points:
+#
+#   * workflow_dispatch (Actions tab > Delete merged branches > Run workflow): sweeps every
+#     remote branch. A branch is deleted when it has no open pull request and either
+#       - a merged pull request has exactly this branch tip as its head (covers merge,
+#         squash and rebase merges), or
+#       - the tip is already contained in main (and is not simply main's own tip, so a
+#         branch someone just created from main is left alone).
+#     `main` and protected branches are never touched. Tick "dry_run" to only list them.
+#
+#   * pull_request closed: deletes the head branch of a pull request that was merged by a
+#     person (merges made by GITHUB_TOKEN do not fire this, auto-merge.yml deletes its own).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List the branches that would be deleted without deleting them
+        type: boolean
+        default: false
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  sweep:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT: ${{ github.event.repository.default_branch }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -u
+          main_sha="$(gh api "repos/$REPO/git/ref/heads/$DEFAULT" --jq .object.sha)"
+          deleted=(); kept=(); failed=()
+          while IFS=$'\t' read -r name sha; do
+            [ "$name" = "$DEFAULT" ] && continue
+            if [ "$(gh pr list --repo "$REPO" --head "$name" --state open --json number --jq length)" != "0" ]; then
+              kept+=("$name (open PR)"); continue
+            fi
+            reason=""
+            if gh pr list --repo "$REPO" --head "$name" --state merged --json headRefOid --jq '.[].headRefOid' | grep -qx "$sha"; then
+              reason="merged PR"
+            elif [ "$sha" != "$main_sha" ] && [ "$(gh api "repos/$REPO/compare/$DEFAULT...$sha" --jq .ahead_by)" = "0" ]; then
+              reason="contained in $DEFAULT"
+            else
+              kept+=("$name (not merged)"); continue
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              deleted+=("$name ($reason, dry run)"); continue
+            fi
+            if gh api -X DELETE "repos/$REPO/git/refs/heads/$name" >/dev/null; then
+              deleted+=("$name ($reason)")
+            else
+              failed+=("$name")
+            fi
+          done < <(gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[] | select(.protected | not) | [.name, .commit.sha] | @tsv')
+
+          {
+            echo "## Deleted (${#deleted[@]})"; printf -- '- %s\n' "${deleted[@]}"
+            echo "## Kept (${#kept[@]})"; printf -- '- %s\n' "${kept[@]}"
+            echo "## Failed (${#failed[@]})"; printf -- '- %s\n' "${failed[@]}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "${#failed[@]}" = "0" ]
+
+  on-merged-pr:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the merged branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" || echo "branch $BRANCH already gone"
