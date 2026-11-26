@@ -331,6 +331,9 @@ proptest! {
         // The new name is one no page or tag uses: moving onto a concept that is already
         // mentioned merges the mentions, and moving back cannot tell them apart.
         let from = files[pick.index(files.len())].0.clone();
+        // Random text can still name it (`#Q` is the concept `q`), so check instead of trusting.
+        let new = normalize_concept(to.trim_end_matches(".md"));
+        prop_assume!(files.iter().all(|(p, t)| !refs_of(p, t).contains(&new)));
         let sandbox = Sandbox::with(&files);
         let store = sandbox.store();
         let first = move_page(&store, &from, to, None, false).unwrap();
@@ -395,10 +398,18 @@ proptest! {
     fn a_move_that_dies_half_way_loses_nothing_and_can_be_repeated(
         files in bundle_files(),
         pick in any::<prop::sample::Index>(),
-        to in page_path(),
+        free in any::<prop::sample::Index>(),
     ) {
         let from = files[pick.index(files.len())].0.clone();
-        prop_assume!(from != to && !texts(&files).contains_key(&to));
+        // A path no page has: picked from the free ones instead of rejecting the taken ones,
+        // which at many cases ran past proptest's limit on rejects.
+        let taken = texts(&files);
+        let unused: Vec<String> = ["", "a/", "b/", "a/c/"]
+            .iter()
+            .flat_map(|dir| ["x", "y", "z", "w"].map(|name| format!("{dir}{name}.md")))
+            .filter(|p| !taken.contains_key(p))
+            .collect();
+        let to = unused[free.index(unused.len())].clone();
 
         let clean = Sandbox::with(&files);
         move_page(&clean.store(), &from, &to, None, false).unwrap();
