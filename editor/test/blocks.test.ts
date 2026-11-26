@@ -242,6 +242,22 @@ describe("block selection", () => {
     expect(extendBlocks(lines, one, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 3 } });
   });
 
+  it("takes in a whole list below or above a paragraph, and goes on past it", () => {
+    const { lines } = setup("Para\n\n- a\n  - b\n- c\n\nEnd");
+    const para: Sel = { anchor: { line: 0, col: 0 }, head: { line: 0, col: 4 } };
+    const withList = extendBlocks(lines, para, "down")!;
+    expect(withList).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 4, col: 3 } });
+    expect(extendBlocks(lines, withList, "down")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 6, col: 3 } });
+    const end: Sel = { anchor: { line: 6, col: 0 }, head: { line: 6, col: 3 } };
+    const up = extendBlocks(lines, end, "up")!;
+    expect(up).toEqual({ anchor: { line: 2, col: 0 }, head: { line: 6, col: 3 } });
+    expect(extendBlocks(lines, up, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 6, col: 3 } });
+    // The list alone, as Escape selects it, goes on to the paragraph beside it.
+    const list: Sel = { anchor: { line: 2, col: 0 }, head: { line: 4, col: 3 } };
+    expect(extendBlocks(lines, list, "down")).toEqual({ anchor: { line: 2, col: 0 }, head: { line: 6, col: 3 } });
+    expect(extendBlocks(lines, list, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 4, col: 3 } });
+  });
+
   it("leaves a text selection alone", () => {
     const { lines } = setup("- abc\n- def");
     const partial: Sel = { anchor: { line: 0, col: 2 }, head: { line: 0, col: 4 } };

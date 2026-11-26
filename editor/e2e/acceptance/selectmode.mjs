@@ -194,6 +194,29 @@ suite("Select mode", null, (test) => {
     assert.ok(body.includes("First **bold** paragraph.") && body.includes("Last end."), body);
   });
 
+  test("a selected footnote and callout are drawn as formatted, like the ones without the cursor", async (s) => {
+    const page = "Claim[^1] here.\n\n[^1]: The note.\n\n> [!WARNING]\n> Mind the gap.\n\nEnd.";
+    await s.openWith("sel-gfm", page);
+    await s.win.click(".cm-line:has-text('Claim')");
+    await s.win.waitForSelector(".tessela-callout-title"); // the callout is not under the cursor
+    await s.key("Escape");
+    await s.win.waitForSelector(".tessela-fn-ref");
+    assert.equal(await s.win.locator(".tessela-fn-raw").count(), 0, "the selected reference is the number, not [^1]");
+    await s.key("ArrowDown");
+    assert.equal(await s.win.locator(".tessela-fn-label").count(), 1, "the selected definition shows its number");
+    await s.key("ArrowDown");
+    assert.equal((await picked(s)).toLowerCase(), "warning mind the gap.", "the selected callout shows its title, not [!WARNING]");
+    assert.equal(await s.win.locator(".tessela-callout-title").count(), 1);
+  });
+
+  test("Shift+Down goes from a paragraph into the list below, and on past it", async (s) => {
+    await select(s, "sel-into-list", "Second");
+    await s.key("Shift+ArrowDown");
+    assert.equal(await picked(s), "Second para continues item one child two item three");
+    await s.key("Shift+ArrowDown");
+    assert.ok((await picked(s)).endsWith("item three ```js const **x** = 1; let y = 2; ```"));
+  });
+
   test("the keys of the editor keep working on the selection: a selected group moves and nests", async (s) => {
     await select(s, "sel-keys", "First");
     await s.key("Alt+ArrowDown");

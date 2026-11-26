@@ -46,6 +46,9 @@ async function typeset(into: HTMLElement, tex: string, display: boolean): Promis
 /** Whether the window shows Markdown rendered (the live preview adds `cm-preview` to the editor). */
 const rendered = (state: EditorState): boolean => state.facet(EditorView.editorAttributes).some((a) => typeof a === "object" && /\bcm-preview\b/.test((a as { class?: string }).class ?? ""));
 
+/** Whether blocks are selected as blocks (select mode, which adds `cm-select-mode`): they are drawn, not typed. */
+const selecting = (state: EditorState): boolean => state.facet(EditorView.editorAttributes).some((a) => typeof a === "object" && /\bcm-select-mode\b/.test((a as { class?: string }).class ?? ""));
+
 /** The lines (0 is the first) that are in a code block, where none of this applies. */
 function codeLines(state: EditorState): Set<number> {
   const lines = new Set<number>();
@@ -138,8 +141,9 @@ function build(view: EditorView): DecorationSet {
   const lines = doc.toString().split("\n");
   const notes = footnotesOf(lines, (i) => code.has(i));
   const ranges: Range<Decoration>[] = [];
-  /** Where the cursor is the construct shows as written. */
-  const editing = (from: number, to: number) => view.hasFocus && state.selection.ranges.some((r) => r.from <= to && r.to >= from);
+  /** Where the cursor is the construct shows as written; in select mode nothing does. */
+  const blocksSelected = selecting(state);
+  const editing = (from: number, to: number) => view.hasFocus && !blocksSelected && state.selection.ranges.some((r) => r.from <= to && r.to >= from);
   const at = (line: number, column: number) => doc.line(line + 1).from + column;
 
   syntaxTree(state).iterate({
@@ -194,7 +198,7 @@ const drawing = ViewPlugin.fromClass(
       this.decorations = build(view);
     }
     update(update: ViewUpdate) {
-      const mode = rendered(update.startState) !== rendered(update.state);
+      const mode = rendered(update.startState) !== rendered(update.state) || selecting(update.startState) !== selecting(update.state);
       if (update.docChanged || update.selectionSet || update.focusChanged || mode || syntaxTree(update.startState) !== syntaxTree(update.state)) {
         this.decorations = build(update.view);
       }
