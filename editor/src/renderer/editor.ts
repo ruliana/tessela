@@ -9,7 +9,6 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { languages } from "@codemirror/language-data";
 import { GFM } from "@lezer/markdown";
 import { search, searchKeymap } from "@codemirror/search";
@@ -29,6 +28,7 @@ import { tags as t } from "@lezer/highlight";
 import type { VocabEntry } from "../shared/api";
 import { suggest } from "../shared/complete";
 import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../shared/linkFlows";
+import { frontMatterYaml, tessela } from "../shared/syntax";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { dayAt } from "../shared/dates";
 import type { PropertiesOverride } from "../shared/mods";
@@ -278,9 +278,9 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         history(),
         drawSelection(),
         EditorView.lineWrapping,
-        // YAML front matter, then Markdown (with tables and task lists) and code in the
-        // languages that fenced blocks name.
-        yamlFrontmatter({ content: markdown({ codeLanguages: languages, extensions: [GFM, noSetext] }) }),
+        // Markdown (with tables and task lists) and Tessela's own syntax (front matter, callouts,
+        // footnotes, math) in one parser, and code in the languages that fenced blocks name.
+        markdown({ codeLanguages: languages, extensions: [GFM, noSetext, tessela, frontMatterYaml] }),
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
