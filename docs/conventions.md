@@ -75,30 +75,55 @@ A page is an OKF concept file: UTF-8 Markdown with YAML frontmatter.
 
 ## 3. Blocks
 
-A block is the unit that queries return. Blocks are derived from the CommonMark
-structure of the page body; nothing about them is stored in the file.
+A page body has two kinds of node: **sections** and **blocks**. Both are derived from the
+CommonMark structure of the body; nothing about them is stored in the file. The editor's
+page model uses the same words and is checked against what `tessela blocks` prints (§10).
 
-| Markdown element                       | Block?                                    |
-| -------------------------------------- | ----------------------------------------- |
-| Top-level paragraph                    | Yes                                       |
-| List item, at any depth                | Yes (its own content, not its children)   |
-| Top-level code fence, table, quote     | Yes                                       |
-| Code fence, table, quote inside an item | Part of that item's block                |
-| Paragraph after a nested list, inside an item | A block of its own, a child of that item |
-| List item that starts with `[ ]` or `[x]` | A task: its block has `task: open` or `done`; the box is not part of the text |
-| Heading                                | Not a block, but a backlink holder (§5); its refs apply to the blocks below it |
-| Frontmatter                            | Not a block; it belongs to the page and can be a backlink (§5) |
+A heading is a *section*: it owns everything below it, up to the next heading of the same
+or a higher level (or the end of the page), blocks and deeper sections alike. A section is
+not a block, but it holds references (§5), and its refs apply to every block in it. A `#`
+line inside a list item or a quote is text of that block, not a heading.
+
+A *block* is the unit that queries return. Each has a **kind**:
+
+| Markdown element                          | Block?                                           | Kind        |
+| ----------------------------------------- | ------------------------------------------------ | ----------- |
+| Top-level paragraph                       | Yes                                              | `paragraph` |
+| List item, at any depth                   | Yes: its own text, not its children              | `item`      |
+| Top-level code fence or indented code     | Yes                                              | `code`      |
+| Top-level quote                           | Yes                                              | `quote`     |
+| Top-level quote that starts `> [!NOTE]`   | Yes (also TIP, IMPORTANT, WARNING, CAUTION, alone on its line) | `callout` |
+| Top-level table                           | Yes                                              | `table`     |
+| Top-level HTML block                      | Yes                                              | `html`      |
+| Code fence, quote or callout inside an item | A child block of that item                     | `code`, `quote`, `callout` |
+| Table or HTML block inside an item        | Part of that item's text                         |             |
+| Paragraph, table or HTML after a nested list or a child block, inside an item | A block of its own, a child of that item | |
+| List item that starts with `[ ]` or `[x]` | A task: its block has `task: open` or `done`; the box is not part of the text | |
+| Heading                                   | Not a block: a section (above) and a backlink holder (§5) |      |
+| Frontmatter                               | Not a block; it belongs to the page and can be a backlink (§5) | |
 
 Each block in the index carries:
 
 - **page**: the concept ID of its file (OKF: path without `.md`).
-- **parent**: the enclosing list item, if any. Nested lists form a tree, as in Logseq.
+- **kind**: one of the kinds above.
+- **line** and **end line**: where it starts and where it ends, 1-based and inclusive, counted
+  in the file (front matter included). A block ends where everything it owns ends: an item
+  after its last nested item or child block, a paragraph after the list it owns (below). Blank
+  lines after the last line are not part of it. A child always lies inside its parent, and
+  sibling blocks do not overlap.
+- **parent**: the enclosing list item, or the paragraph that owns the list the block starts
+  (below). Nested lists form a tree, as in Logseq, and a fence, quote or callout in an item is
+  a child of the item just like a nested item.
+- **section**: the heading whose section the block is in, the nearest one above it.
 - **heading path**: the headings above it, for display and search context.
 - **refs**: the concepts the block itself mentions (§4).
 - **path refs**: its own refs plus the refs of every ancestor list item and of
   every heading in its heading path. Queries match on path refs by default, so a
   child bullet shows up under its parent's tag, as in Logseq, and a paragraph
   shows up under a tag in the heading above it. An "own refs only" option exists.
+
+A heading carries its **line**, its **end line** (the last line of its section: a heading with
+nothing under it ends on its own line) and its parent heading.
 
 ### Outlines: a paragraph with a list beneath it
 
@@ -335,6 +360,14 @@ Every command takes `--api N` for the version the caller was written for.
   `column` (bytes into the file line, absent when the line could not be placed) and the
   `link` that would replace the words (`[ML](/machine-learning.md)`). A client turns a
   mention into a reference with a `save --patch`.
+  Hits carry `line`, `end_line` (the last line of the block and what it owns, or of a heading's
+  section) and, for a block, its `block_kind` (§3).
+- `tessela blocks PAGE`: the shape of one page, for clients that need the whole structure and
+  not only what matches (the editor's page model is tested against it). It prints `headings`
+  (each with `level`, `line`, `end_line` of its section, `parent` and `handle`) and `blocks`
+  (each with `kind`, `line`, `end_line`, `parent`, `section`, `text`, `task` and `handle`) in
+  document order, with `parent` and `section` as handles (§3). It takes `--bundle`, `--json` and
+  `--api` like the edit commands.
 - `tessela index`: what a folder holds, as an OKF `index.md` (§6 of OKF):
   sub-folders, then the folder's own pages (its `home.md` first) with their
   `description` or first line, then its journal days, newest first. It prints to

@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::blocks::{Block, Heading, TaskState};
+use crate::blocks::{Block, BlockKind, Heading, TaskState};
 use crate::bundle::Bundle;
 use crate::page::Page;
 use crate::refs::normalize_concept;
@@ -94,6 +94,12 @@ pub struct Hit {
     pub path: String,
     pub page_type: Option<String>,
     pub line: usize,
+    /// The last line, inclusive: of a block and what it owns, or of a heading's section. A
+    /// page hit is the whole page, so it is `line`.
+    pub end_line: usize,
+    /// What kind of block a block hit is (`paragraph`, `item`, `code`, `quote`, `callout`,
+    /// `table`, `html`); absent for headings and pages.
+    pub block_kind: Option<BlockKind>,
     pub heading_path: Vec<String>,
     /// Blocks: the text. Headings: the heading text. Pages: the title, or the page ID.
     pub text: String,
@@ -277,6 +283,8 @@ fn block_hit(page: &Page, block: &Block) -> Hit {
         path: page.path.clone(),
         page_type: page.kind().map(str::to_string),
         line: block.line,
+        end_line: block.end_line,
+        block_kind: Some(block.kind),
         heading_path: block.heading_path.clone(),
         dates: dates_in(&block.text),
         text: block.text.clone(),
@@ -298,12 +306,14 @@ fn heading_hit(page: &Page, heading: &Heading) -> Hit {
         path: page.path.clone(),
         page_type: page.kind().map(str::to_string),
         line: heading.line,
+        end_line: heading.end_line,
+        block_kind: None,
         heading_path: heading.heading_path.clone(),
         dates: dates_in(&heading.text),
         text: heading.text.clone(),
         refs: heading.refs.clone(),
         path_refs: heading.path_refs.clone(),
-        parent: None,
+        parent: heading.parent.map(|p| page.headings[p].handle.clone()),
         task: None,
         mentions: Vec::new(),
         home: page.is_home(),
@@ -320,6 +330,8 @@ fn page_hit(page: &Page) -> Hit {
         path: page.path.clone(),
         page_type: page.kind().map(str::to_string),
         line: 1,
+        end_line: 1,
+        block_kind: None,
         heading_path: Vec::new(),
         dates: dates_in(&text),
         text,

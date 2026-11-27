@@ -15,6 +15,7 @@ pub fn answer(name: &str, g: &mut SchemaGenerator) -> Option<Schema> {
     let schema = match name {
         "api" => g.subschema_for::<answers::Api>(),
         "pages" => g.subschema_for::<answers::Pages>(),
+        "blocks" => g.subschema_for::<tessela_core::Structure>(),
         "query" => g.subschema_for::<answers::Query>(),
         "vocab" => g.subschema_for::<answers::Vocab>(),
         "lint" => g.subschema_for::<answers::Lint>(),
