@@ -6,8 +6,7 @@ import { EditorState } from "@codemirror/state";
 import { GFM } from "@lezer/markdown";
 import { describe, expect, it } from "vitest";
 
-import { noSetext } from "../src/shared/blocks";
-import { frontMatterYaml, tessela } from "../src/shared/syntax";
+import { frontMatterYaml, noSetext, tessela } from "../src/shared/syntax";
 import { frontMatterGuard } from "../src/renderer/livePreview";
 import { pageLanguage, pageModel } from "../src/renderer/pageModelField";
 

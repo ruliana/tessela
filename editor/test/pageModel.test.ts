@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { pageModel } from "../src/renderer/pageModelField";
 import { type PageModel, type PageNode, findAgain } from "../src/shared/pageModel";
+import { parsePage } from "../src/shared/pageText";
 import { modelOf, outline, stateOf } from "./support/page";
 import { page, pageWithExtras } from "./support/pages";
 import { lines as wildLines, runs } from "./support/props";
@@ -356,6 +357,32 @@ describe("identity", () => {
         if (node.kind !== "section") expect(found!.endLine).toBe(node.endLine);
       }),
       runs(300),
+    );
+  });
+});
+
+describe("what a command needs to know about a node", () => {
+  it("tells a fenced block, with its info string and whether it closed, from an indented one", () => {
+    const fences = (text: string) => modelOf(text).nodes.filter((n) => n.kind === "code").map((n) => n.fence);
+    expect(fences("```js title\ncode\n```")).toEqual([{ info: "js title", closed: true }]);
+    expect(fences("~~~\nnever closed")).toEqual([{ info: "", closed: false }]);
+    expect(fences("- a\n  ```tessela\n  q\n  ```")).toEqual([{ info: "tessela", closed: true }]);
+    expect(fences("text\n\n    indented")).toEqual([null]);
+  });
+
+  it("is called by its first line, without a marker, a checkbox or the #s", () => {
+    const m = modelOf("# Title ##\n\n- [x] done task\n  more\n\n1. numbered\n\nplain\nparagraph");
+    expect(m.nodes.map((n) => n.label)).toEqual(["Title", "done task", "numbered", "plain"]);
+  });
+});
+
+describe("the same page, with or without an editor", () => {
+  it("is read the same by the state field and by `parsePage`, which commands use on text they have just made", () => {
+    fc.assert(
+      fc.property(page, (text) => {
+        expect(outline(parsePage(text))).toBe(outline(modelOf(text)));
+      }),
+      runs(200),
     );
   });
 });

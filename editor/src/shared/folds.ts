@@ -1,10 +1,11 @@
-// Fold and zoom: which blocks of a page can be folded (headings, list items, paragraphs with a list, code fences), which lines a zoom shows, and the
-// trail that leads back out. Everything works on lines, like blocks.ts, so it is tested
-// without an editor. Fold state is the window's, never the page's: a fold is remembered as a
-// key made from the block's first line, and a block whose first line has changed simply opens.
+// Fold and zoom: which blocks of a page can be folded (headings with their sections, list items, paragraphs
+// with a list, code fences), which lines a zoom shows, and the trail that leads back out. What a block is and
+// where it ends come from the page model (`shared/pageModel.ts`); lines are 0-based here, as in blocks.ts,
+// so it is tested without an editor. Fold state is the window's, never the page's: a fold is remembered by the
+// key of its node (the hash of its text, as in a block handle), and a block whose text has changed simply opens.
 
-import { type Block, parseBlocks, selectableAt } from "./blocks";
-import { headingText } from "./links";
+import { selectableAt } from "./blocks";
+import type { PageModel, PageNode } from "./pageModel";
 
 export interface Fold {
   /** The line that stays visible; the fold hides what follows it. */
@@ -13,8 +14,8 @@ export interface Fold {
   last: number;
   /** How deep the block sits in the outline: headings above it plus items around it. */
   depth: number;
-  /** What a window remembers a folded block by: its kind, its first line and which one of its kind that is. */
-  key: string;
+  /** What a window remembers a folded block by: the key of its node (`9f2c41d0`, `9f2c41d0.2` for the second of equal text). */
+  readonly key: string;
   /** Whether a page that is opened shows it folded until the window has been told otherwise: a code fence that something runs. */
   auto: boolean;
 }
@@ -22,80 +23,40 @@ export interface Fold {
 /** The info strings of the code fences whose output the editor draws under them: their source folds when a page opens. */
 export const RUN_FENCES: readonly string[] = ["tessela", "mermaid"];
 
-const OPENING = /^ {0,3}(`{3,}|~{3,}) *([^\s`]*)/;
-
-/** Whether a fence block is closed and runs, so that what it draws is worth more than its source. */
-function isRunFence(lines: string[], b: Block): boolean {
-  const open = OPENING.exec(lines[b.start]!);
-  if (!open || b.end <= b.start || !RUN_FENCES.includes(open[2]!)) return false;
-  const close = /^ {0,3}(`{3,}|~{3,}) *$/.exec(lines[b.end]!);
-  return !!close && close[1]![0] === open[1]![0] && close[1]!.length >= open[1]!.length;
-}
-
-const HEADING_LEVEL = /^ {0,3}(#{1,6})(?: |$)/;
-
-function level(lines: string[], b: Block): number {
-  return HEADING_LEVEL.exec(lines[b.start]!)?.[1]!.length ?? 0;
-}
-
-/** The last line of the section a heading opens: up to the next heading as high or higher. */
-function sectionEnd(lines: string[], roots: Block[], at: number): number {
-  const mine = level(lines, roots[at]!);
-  let end = roots[at]!.end;
-  for (let i = at + 1; i < roots.length; i++) {
-    const b = roots[i]!;
-    if (b.kind === "heading" && level(lines, b) <= mine) break;
-    end = b.end;
-  }
-  return end;
-}
-
-/** The text of a block's first line without its list marker or `#`s. */
-function label(lines: string[], b: Block): string {
-  const line = lines[b.start]!;
-  return (b.kind === "heading" ? headingText(line) : line.replace(/^\s*(?:[-*+]|\d{1,9}[.)])\s+(?:\[[ xX]\]\s+)?/, "")).trim();
+/** Whether a fence is closed and runs, so that what it draws is worth more than its source. */
+function isRunFence(n: PageNode): boolean {
+  const info = n.fence?.info.split(/\s/)[0] ?? "";
+  return !!n.fence?.closed && n.endLine > n.startLine && RUN_FENCES.includes(info);
 }
 
 /** Every block that can be folded, in page order. */
-export function foldables(lines: string[], blocks: Block[] = parseBlocks(lines)): Fold[] {
+export function foldables(model: PageModel): Fold[] {
   const out: Fold[] = [];
-  const seen = new Map<string, number>();
-  const keyOf = (b: Block): string => {
-    const base = `${b.kind}:${lines[b.start]!.trim()}`;
-    const n = seen.get(base) ?? 0;
-    seen.set(base, n + 1);
-    return `${base}#${n}`;
+  // The key is worked out when it is asked for: hashing the page is not needed to show a chevron.
+  const fold = (n: PageNode, line: number, last: number, auto = false): void => {
+    out.push({ line, last, depth: depthOf(n), get key() { return n.key; }, auto });
   };
-  const headings: number[] = [];
-  const walk = (b: Block, depth: number, roots?: { list: Block[]; at: number }): void => {
-    if (b.kind === "list") {
-      for (const c of b.children) walk(c, depth);
-      return;
+  for (const n of model.readingOrder()) {
+    if (n.kind === "section") {
+      if (n.endLine > n.startLine) fold(n, n.startLine - 1, n.endLine - 1);
+    } else if (n.kind === "code") {
+      // Only a fenced block: an indented one has no first line to stay.
+      if (n.fence && n.endLine > n.startLine) fold(n, n.startLine - 1, n.endLine - 1, isRunFence(n));
+    } else if (n.kind === "item") {
+      if (n.endLine > n.startLine) fold(n, n.startLine - 1, n.endLine - 1);
+    } else if (n.kind === "paragraph" && n.children.length > 0) {
+      // A paragraph keeps its own text and folds the list it owns.
+      fold(n, n.children[0]!.startLine - 2, n.endLine - 1);
     }
-    if (b.kind === "heading" && roots) {
-      while (headings.length > 0 && headings[headings.length - 1]! >= level(lines, b)) headings.pop();
-      const key = keyOf(b);
-      const last = sectionEnd(lines, roots.list, roots.at);
-      if (last > b.start) out.push({ line: b.start, last, depth: headings.length, key, auto: false });
-      headings.push(level(lines, b));
-      return;
-    }
-    if (b.kind === "fence") {
-      const key = keyOf(b);
-      if (b.end > b.start) out.push({ line: b.start, last: b.end, depth, key, auto: isRunFence(lines, b) });
-      return;
-    }
-    if (b.kind !== "item" && b.kind !== "para") return;
-    const key = keyOf(b);
-    if (b.kind === "item" && b.end > b.start) out.push({ line: b.start, last: b.end, depth, key, auto: false });
-    // A paragraph keeps its own text and folds the list it owns.
-    else if (b.kind === "para" && b.children.length > 0) {
-      out.push({ line: b.children[0]!.start - 1, last: b.end, depth, key, auto: false });
-    }
-    for (const c of b.children) walk(c, depth + 1);
-  };
-  blocks.forEach((b, at) => walk(b, headings.length, { list: blocks, at }));
+  }
   return out;
+}
+
+/** The sections and the blocks that hold this one: how far in the outline it sits. */
+function depthOf(n: PageNode): number {
+  let depth = 0;
+  for (const a of n.ancestors()) if (a.kind !== "page") depth++;
+  return depth;
 }
 
 /** The innermost foldable block around `line`, or the one above it when `skip` of them are to be passed. */
@@ -133,27 +94,13 @@ export interface Zoom {
 }
 
 /** What zooming in on the block at `line` shows: the block with what it owns, and the way out. */
-export function zoomAt(lines: string[], line: number, blocks: Block[] = parseBlocks(lines)): Zoom | null {
-  const b = selectableAt(blocks, line);
+export function zoomAt(model: PageModel, line: number): Zoom | null {
+  const b = selectableAt(model, line);
   if (!b) return null;
-  let top = b;
-  while (top.parent) top = top.parent;
-  const at = blocks.indexOf(top);
   const trail: Crumb[] = [];
-  // The headings that lead to the block: each is the last one of its level, above the top block.
-  const stack: Block[] = [];
-  for (const r of blocks.slice(0, at + 1)) {
-    if (r.kind !== "heading" || (r === top && b === top)) continue;
-    while (stack.length > 0 && level(lines, stack[stack.length - 1]!) >= level(lines, r)) stack.pop();
-    stack.push(r);
+  // The sections that lead to the block, then the items and paragraphs around it, outermost first.
+  for (const a of [...b.ancestors()].reverse()) {
+    if (a.kind === "section" || a.kind === "item" || a.kind === "paragraph") trail.push({ line: a.startLine - 1, text: a.label });
   }
-  if (b.kind === "heading") {
-    while (stack.length > 0 && level(lines, stack[stack.length - 1]!) >= level(lines, b)) stack.pop();
-  }
-  for (const h of stack) trail.push({ line: h.start, text: label(lines, h) });
-  const parents: Block[] = [];
-  for (let p = b.parent; p; p = p.parent) if (p.kind === "item" || p.kind === "para") parents.unshift(p);
-  for (const p of parents) trail.push({ line: p.start, text: label(lines, p) });
-  const end = b.kind === "heading" ? sectionEnd(lines, blocks, blocks.indexOf(b)) : b.end;
-  return { start: b.start, end, trail };
+  return { start: b.startLine - 1, end: b.endLine - 1, trail };
 }

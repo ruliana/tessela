@@ -1,9 +1,9 @@
 // The outline mod's logic, on lines like shared/blocks.ts, so it is tested without an editor:
 // which headings a page has, which lines a section covers, and what moving one past its neighbour
 // makes of the page. Only `#` headings at the top level count, so a `#` line in a code block, a
-// quote or a list is left alone (the page is read with the editor's own block parser).
+// quote or a list is left alone (the page is read with the editor's own page model).
 
-import { parseBlocks } from "../../shared/blocks";
+import { parsePage } from "../../shared/pageText";
 import { headingText } from "../../shared/links";
 
 export interface Heading {
@@ -17,10 +17,8 @@ export interface Heading {
 /** The headings of a page, in order. */
 export function headings(lines: string[]): Heading[] {
   const out: Heading[] = [];
-  for (const b of parseBlocks(lines)) {
-    if (b.kind !== "heading") continue;
-    const level = /^ {0,3}(#{1,6})/.exec(lines[b.start]!)?.[1]!.length;
-    if (level) out.push({ line: b.start, level, text: headingText(lines[b.start]!) });
+  for (const n of parsePage(lines.join("\n")).nodes) {
+    if (n.kind === "section") out.push({ line: n.startLine - 1, level: n.level, text: headingText(lines[n.startLine - 1]!) });
   }
   return out;
 }

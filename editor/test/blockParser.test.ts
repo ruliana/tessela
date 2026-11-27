@@ -4,27 +4,39 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  type Block,
-  type Sel,
-  blockAt,
-  editedBlockLines,
-  extendBlocks,
-  move,
-  parseBlocks,
-  selectBlock,
-} from "../src/shared/blocks";
+import { type Sel, blockAt, editedBlockLines, extendBlocks, move, selectBlock } from "../src/shared/blocks";
+import type { PageNode } from "../src/shared/pageModel";
+import { modelOf } from "./support/page";
 
-/** The blocks of `text` as one line each, `kind first-last`, children indented by two. */
+/**
+ * The blocks of `text` as one line each, `kind first-last` (0-based lines), children indented by two. The
+ * page model has no list nodes and makes a heading hold its section, so this draws it the way these
+ * tests were written: a run of items at the top is shown as a `list`, and what a heading holds is shown
+ * beside it.
+ */
 function outline(text: string): string[] {
   const out: string[] = [];
-  const walk = (blocks: Block[], depth: number) => {
-    for (const b of blocks) {
-      out.push(`${"  ".repeat(depth)}${b.kind} ${b.start}-${b.end}`);
-      walk(b.children, depth + 1);
+  const kind = (n: PageNode) => (n.kind === "paragraph" ? "para" : n.kind === "section" ? "heading" : n.kind === "code" && n.fence ? "fence" : n.kind);
+  const line = (n: PageNode, depth: number, own = false) =>
+    out.push(`${"  ".repeat(depth)}${kind(n)} ${n.startLine - 1}-${(own && n.kind === "section" ? n.startLine : n.endLine) - 1}`);
+  const walk = (nodes: readonly PageNode[], depth: number, top: boolean) => {
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i]!;
+      if (n.kind === "item" && top) {
+        let j = i;
+        while (nodes[j]?.kind === "item") j++;
+        out.push(`${"  ".repeat(depth)}list ${n.startLine - 1}-${nodes[j - 1]!.endLine - 1}`);
+        walk(nodes.slice(i, j), depth + 1, false);
+        i = j - 1;
+        continue;
+      }
+      line(n, depth, true);
+      // A heading's section is drawn beside it; an item's or a paragraph's children, inside.
+      if (n.kind === "section") walk(n.children, depth, true);
+      else walk(n.children, depth + 1, false);
     }
   };
-  walk(parseBlocks(text.split("\n")), 0);
+  walk(modelOf(text).root.children, 0, true);
   return out;
 }
 
@@ -33,7 +45,7 @@ const cursor = (line: number, col = 0): Sel => ({ anchor: { line, col }, head: {
 /** What Escape selects with the cursor on `line`, as `first-last`, or null. */
 function escape(text: string, line: number): string | null {
   const lines = text.split("\n");
-  const sel = selectBlock(lines, cursor(line));
+  const sel = selectBlock(modelOf(text), cursor(line));
   return sel ? `${sel.anchor.line}-${sel.head.line}` : null;
 }
 
@@ -139,11 +151,9 @@ describe("the block parser: lists", () => {
     expect(outline("- a\n***")).toEqual(["list 0-0", "  item 0-0", "rule 1-1"]);
   });
 
-  it("starts a new list when the bullet or the delimiter changes", () => {
-    expect(outline("- a\n* b\n+ c")).toEqual([
-      "list 0-0", "  item 0-0", "list 1-1", "  item 1-1", "list 2-2", "  item 2-2",
-    ]);
-    expect(outline("1. a\n2) b")).toEqual(["list 0-0", "  item 0-0", "list 1-1", "  item 1-1"]);
+  it("reads items of any bullet or delimiter as siblings: a list is not a node, a run of items is what it was", () => {
+    expect(outline("- a\n* b\n+ c")).toEqual(["list 0-2", "  item 0-0", "  item 1-1", "  item 2-2"]);
+    expect(outline("1. a\n2) b")).toEqual(["list 0-1", "  item 0-0", "  item 1-1"]);
   });
 
   it("reads ordered lists, with any start number", () => {
@@ -169,12 +179,12 @@ describe("the block parser: lists", () => {
     expect(outline("#tag text\n\n# real")).toEqual(["para 0-0", "heading 2-2"]);
   });
 
-  it("keeps a code fence inside an item as part of that item", () => {
-    expect(outline("- a\n  ```\n  - not\n\n  ```\n- b")).toEqual(["list 0-5", "  item 0-4", "  item 5-5"]);
+  it("keeps a code fence inside an item as part of that item, as its child block", () => {
+    expect(outline("- a\n  ```\n  - not\n\n  ```\n- b")).toEqual(["list 0-5", "  item 0-4", "    fence 1-4", "  item 5-5"]);
   });
 
-  it("keeps a quote inside an item as part of that item", () => {
-    expect(outline("- a\n  > quote\n  > more\n- b")).toEqual(["list 0-3", "  item 0-2", "  item 3-3"]);
+  it("keeps a quote inside an item as part of that item, as its child block", () => {
+    expect(outline("- a\n  > quote\n  > more\n- b")).toEqual(["list 0-3", "  item 0-2", "    quote 1-2", "  item 3-3"]);
   });
 
   it("keeps a table inside an item as part of that item", () => {
@@ -295,7 +305,7 @@ describe("the block parser: code", () => {
 describe("the block parser: quotes, tables, html", () => {
   it("reads a quote as one block, with a lazy line and a list inside it", () => {
     expect(outline("> a\n> b\nlazy\n\n> c")).toEqual(["quote 0-2", "quote 4-4"]);
-    expect(outline("> - a\n> - b\n\nPara")).toEqual(["quote 0-1", "para 3-3"]);
+    expect(outline("> - a\n> - b\n\nPara")).toEqual(["quote 0-1", "  item 0-0", "  item 1-1", "para 3-3"]);
   });
 
   it("reads a table as one block that ends at the first blank line", () => {
@@ -352,23 +362,21 @@ describe("the block parser: edge cases", () => {
   });
 
   it("finds the innermost block at a line", () => {
-    const blocks = parseBlocks(["- a", "  - b", "", "- c", "", "para"]);
-    expect(blockAt(blocks, 1)?.kind).toBe("item");
-    expect(blockAt(blocks, 1)?.start).toBe(1);
-    expect(blockAt(blocks, 0)?.start).toBe(0);
-    expect(blockAt(blocks, 2)?.kind).toBe("list");
-    expect(blockAt(blocks, 4)).toBeNull();
-    expect(blockAt(blocks, 5)?.kind).toBe("para");
+    const model = modelOf("- a\n  - b\n\n- c\n\npara");
+    expect(blockAt(model, 1)?.kind).toBe("item");
+    expect(blockAt(model, 1)?.startLine).toBe(2);
+    expect(blockAt(model, 0)?.startLine).toBe(1);
+    // The blank line between two items belongs to nothing but the page.
+    expect(blockAt(model, 2)).toBeNull();
+    expect(blockAt(model, 4)).toBeNull();
+    expect(blockAt(model, 5)?.kind).toBe("paragraph");
   });
 
-  it("records where the text of an item starts, for children that nest under it", () => {
-    const item = (text: string) => parseBlocks(text.split("\n"))[0]!.children[0]!.offset;
-    expect(item("- a")).toBe(2);
-    expect(item("  - a")).toBe(4);
-    expect(item("1. a")).toBe(3);
-    expect(item("10. a")).toBe(4);
-    expect(item("-   a")).toBe(4);
-    expect(item("-")).toBe(2);
+  it("has no block on the blank line under a heading, and the heading's own line is the heading", () => {
+    const model = modelOf("# H\n\ntext");
+    expect(blockAt(model, 0)?.kind).toBe("section");
+    expect(blockAt(model, 1)).toBeNull();
+    expect(blockAt(model, 2)?.kind).toBe("paragraph");
   });
 });
 
@@ -404,7 +412,7 @@ describe("Escape and block selection over blank lines", () => {
   it("selects the parent item when an item is already selected, then the page, and then stops", () => {
     const lines = ["- a", "  - b", "    - c", "", "Para"];
     const picked: string[] = [];
-    for (let sel = selectBlock(lines, cursor(2)); sel; sel = selectBlock(lines, sel)) {
+    for (let sel = selectBlock(modelOf(lines.join("\n")), cursor(2)); sel; sel = selectBlock(modelOf(lines.join("\n")), sel)) {
       picked.push(`${sel.anchor.line}-${sel.head.line}`);
     }
     expect(picked).toEqual(["2-2", "1-2", "0-2", "0-4"]);
@@ -412,22 +420,22 @@ describe("Escape and block selection over blank lines", () => {
 
   it("extends a selection over the next sibling but not into a paragraph beyond the list", () => {
     const lines = ["- a", "- b", "", "Para"];
-    const one = selectBlock(lines, cursor(1))!;
-    expect(extendBlocks(lines, one, "down")).toBeNull();
-    expect(extendBlocks(lines, one, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 3 } });
+    const one = selectBlock(modelOf(lines.join("\n")), cursor(1))!;
+    expect(extendBlocks(modelOf(lines.join("\n")), one, "down")).toBeNull();
+    expect(extendBlocks(modelOf(lines.join("\n")), one, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 3 } });
   });
 
   it("extends over blank lines between two paragraphs", () => {
     const lines = ["a", "", "", "b", "", "c"];
-    const one = selectBlock(lines, cursor(0))!;
-    expect(extendBlocks(lines, one, "down")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 3, col: 1 } });
+    const one = selectBlock(modelOf(lines.join("\n")), cursor(0))!;
+    expect(extendBlocks(modelOf(lines.join("\n")), one, "down")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 3, col: 1 } });
   });
 
   it("moves an item within its list and leaves the paragraph after the blank line where it is", () => {
     const lines = ["- a", "- b", "", " Para"];
-    const down = move(lines, cursor(0), "down")!;
+    const down = move(modelOf(lines.join("\n")), cursor(0), "down")!;
     expect(down.rows.map((r) => r.text)).toEqual(["- b", "- a", "", " Para"]);
-    const last = move(lines, cursor(1), "down")!;
+    const last = move(modelOf(lines.join("\n")), cursor(1), "down")!;
     expect(last.rows.map((r) => r.text)).toEqual(lines);
   });
 });
@@ -445,8 +453,9 @@ describe("the lines of the block being edited", () => {
     expect(lines("- a\n  - b\n- c", 1)).toEqual([1]);
   });
 
-  it("is an item and its continuation paragraphs, with the nested list left out", () => {
-    expect(lines("- a\n  - b\n\n  after\n- c", 0)).toEqual([0, 3]);
+  it("is an item's own text only: a paragraph that follows its nested list is a child block with lines of its own", () => {
+    expect(lines("- a\n  - b\n\n  after\n- c", 0)).toEqual([0]);
+    expect(lines("- a\n  - b\n\n  after\n- c", 3)).toEqual([3]);
   });
 
   it("is a heading's line, and a quote's lines", () => {
@@ -484,82 +493,16 @@ function generate(next: () => number): string[] {
   return Array.from({ length: count }, () => PIECES[Math.floor(next() * PIECES.length)]!);
 }
 
-describe("the block parser on generated pages", () => {
+describe("block selection on generated pages", () => {
   const pages: string[][] = [];
   const next = rng(2026);
   for (let i = 0; i < 400; i++) pages.push(generate(next));
 
-  const all = (blocks: Block[]): Block[] => blocks.flatMap((b) => [b, ...all(b.children)]);
-
-  it("never throws, and keeps every range inside the page", () => {
-    for (const page of pages) {
-      for (const b of all(parseBlocks(page))) {
-        expect(b.start, page.join("\n")).toBeGreaterThanOrEqual(0);
-        expect(b.end, page.join("\n")).toBeLessThan(page.length);
-        expect(b.end, page.join("\n")).toBeGreaterThanOrEqual(b.start);
-      }
-    }
-  });
-
-  it("starts and ends every block on a line with text", () => {
-    for (const page of pages) {
-      for (const b of all(parseBlocks(page))) {
-        expect(page[b.start]!.trim(), `${page.join("\n")} @${b.kind} ${b.start}`).not.toBe("");
-        expect(page[b.end]!.trim(), `${page.join("\n")} @${b.kind} ${b.end}`).not.toBe("");
-      }
-    }
-  });
-
-  it("orders top-level blocks and never lets two overlap", () => {
-    for (const page of pages) {
-      const blocks = parseBlocks(page);
-      for (let i = 1; i < blocks.length; i++) {
-        expect(blocks[i]!.start, page.join("\n")).toBeGreaterThan(blocks[i - 1]!.end);
-      }
-    }
-  });
-
-  it("keeps children inside their parent, in order, with the parent set", () => {
-    for (const page of pages) {
-      for (const b of all(parseBlocks(page))) {
-        let last = b.start - 1;
-        for (const c of b.children) {
-          expect(c.parent, page.join("\n")).toBe(b);
-          expect(c.start, page.join("\n")).toBeGreaterThan(last);
-          expect(c.end, page.join("\n")).toBeLessThanOrEqual(b.end);
-          last = c.end;
-        }
-      }
-    }
-  });
-
-  it("covers every line with text by exactly one top-level block", () => {
-    for (const page of pages) {
-      const blocks = parseBlocks(page);
-      page.forEach((line, i) => {
-        if (line.trim() === "") return;
-        const hits = blocks.filter((b) => i >= b.start && i <= b.end);
-        expect(hits.length, `${page.join("\n")}\n@${i}`).toBe(1);
-      });
-    }
-  });
-
-  it("never has a blank line inside a heading, a rule or the own text of a paragraph", () => {
-    for (const page of pages) {
-      for (const b of all(parseBlocks(page))) {
-        if (b.kind !== "para" && b.kind !== "heading" && b.kind !== "rule") continue;
-        const last = b.kind === "para" && b.children.length > 0 ? b.children[0]!.start - 1 : b.end;
-        for (let i = b.start; i <= last; i++) {
-          expect(page[i]!.trim(), `${page.join("\n")}\n@${b.kind} ${b.start}-${b.end}`).not.toBe("");
-        }
-      }
-    }
-  });
-
   it("selects, from any line, a range that holds that line", () => {
     for (const page of pages) {
+      const model = modelOf(page.join("\n"));
       page.forEach((_, i) => {
-        const sel = selectBlock(page, cursor(i));
+        const sel = selectBlock(model, cursor(i));
         if (!sel) return;
         expect(sel.anchor.line, `${page.join("\n")}\n@${i}`).toBeLessThanOrEqual(i);
         expect(sel.head.line, `${page.join("\n")}\n@${i}`).toBeGreaterThanOrEqual(i);

@@ -149,6 +149,8 @@ Decided by Ronie on 2026-11-27.
 | Process | PRs merge when checks pass, without review. Every bug found gets a test that fails before the fix and passes after it. |
 | Known bugs | Escape and Up/Down ignoring zoom and folds, Backspace unhandled in select mode, and focus mode taking Escape first are fixed by the rebuild, each with a proving test. |
 | Page model details | A list is not a node: its items are children of what holds the list (an item, the paragraph that owns it, a section or the page). Items in a quote, callout or footnote definition are children of it, so they can be stepped to; the index has those as part of the quote. The model also has `frontmatter`, `math`, `footnote`, `rule` and `other` nodes that the index does not list. A node's `key` is the hash of a block handle, computed in the editor with BLAKE3 (`@noble/hashes`). The differences from the index are listed in `test/pageModel.oracle.test.ts`. |
+| Sections in commands | A heading is a section for Alt+Up/Down (it takes what is under it) and for Shift+Down from a paragraph; Escape takes the heading line, then the section. The first block under a heading moves up past the heading line (out of the section) and the last moves down past the next heading (into that section), so a move is undone by the opposite move. A run of items at the top of a page or section is what a list was for Escape and Shift+Up/Down; nested items are children of their item. |
+| Fold keys | A fold is remembered by the node's `key` (the hash of its text, as in a block handle), not by its first line; editing the text of a folded block opens it, as before. |
 | ChangeSets | Block edits as ChangeSets is decided after the typed selection lands. |
 
 ## Rebuild order
@@ -169,7 +171,7 @@ changes a row.
 
 | Principle | Today |
 | --- | --- |
-| 1. One page model | Partly. `shared/pageModel.ts` builds the model from the syntax tree as the `pageModel` state field (`renderer/pageModelField.ts`), and the Rust index is its oracle. No reader uses it yet: they still parse the page their own way (`parseBlocks` in `shared/blocks.ts`, line regexes in `shared/folds.ts` and gfm-extras, the table cell parser in `livePreview.ts`). |
+| 1. One page model | Partly. `shared/pageModel.ts` builds the model from the syntax tree as the `pageModel` state field (`renderer/pageModelField.ts`), and the Rust index is its oracle. Block commands, selection stepping, folds and zoom read it (`shared/blocks.ts`, `shared/folds.ts`, `renderer/blockKeys.ts`, the fold mod); `parseBlocks` is gone as a parser. Still reading the page their own way: the live preview (`editedBlockLines` and the table cell parser in `livePreview.ts`) and gfm-extras. |
 | 2. Typed selection | Not met. `selectMode.ts` is a boolean `StateField`; selected blocks are a text range checked by `aligned()`. |
 | 3. Transactions | Partly. Typing and CodeMirror commands are; block commands work on line arrays and diff them in `apply()` (`blockKeys.ts`). |
 | 4. Views from state | Met for what is drawn from the text. One reveal policy (`reveal.ts`) serves live preview, tables and the front matter header, gfm-extras and the link clicks; tables are drawn from the syntax tree; mods ask `ctx.editor.isEditing`. The table's `picked` flag and the select-mode CSS class remain until the select-mode rebuild. |

@@ -552,7 +552,7 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | ----------------------------- | --------------------------------------------------------------------- |
 | Tab                           | Paragraph becomes a list item; an item nests under the one before it   |
 | Shift+Tab                     | Nested item moves out; a top-level item becomes a paragraph again      |
-| Alt+Up / Alt+Down             | Move the block, with what it owns, past its neighbour                  |
+| Alt+Up / Alt+Down             | Move the block, with what it owns (a heading takes its section), past its neighbour |
 | Esc, then Esc again           | Select the block at the cursor, then the one around it each time: parent item, list, section, the whole page |
 | Shift+Up / Shift+Down         | On a selected block, take in more blocks                              |
 | Up / Down (select mode)       | Select the block before or after, in reading order: code blocks, quotes, tables and nested items are blocks too |

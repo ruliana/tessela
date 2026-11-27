@@ -4,22 +4,41 @@
 // it. Neither touches the page: the window remembers the folds by block key (`FoldStore`), and a
 // zoom is for the moment.
 
-import { codeFolding, foldEffect, foldedRanges, unfoldEffect } from "@codemirror/language";
+import { codeFolding, foldEffect, foldedRanges, syntaxTree, unfoldEffect } from "@codemirror/language";
 import { EditorState, type Extension, Prec, type Range, StateEffect, StateField, type Text, Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType, keymap } from "@codemirror/view";
 
 import { type Crumb, type Fold, foldAround, foldables, foldsOnLoad, foldsToRemember, zoomAt } from "../../shared/folds";
+import { type PageModel, pageModelOf } from "../../shared/pageModel";
+import { parsePage } from "../../shared/pageText";
 
 // ---- folds -------------------------------------------------------------------------
 
+const models = new WeakMap<Text, PageModel>();
 const cache = new WeakMap<Text, Fold[]>();
+
+/**
+ * The page model of the state, made from the syntax tree of its editor, once for each version of the
+ * text. (A mod does not share the editor's own state field, so it builds the model itself, from the
+ * same tree with the same builder; `ctx.page` will hand it over.)
+ */
+function modelOf(state: EditorState): PageModel {
+  let model = models.get(state.doc);
+  if (!model) {
+    model = pageModelOf(state);
+    // A model that stops short of the end of the page is made again when the parser has got further.
+    if (model.complete) models.set(state.doc, model);
+  }
+  return model;
+}
 
 /** The foldable blocks of the page, worked out once for each version of the text. */
 function foldsOf(state: EditorState): Fold[] {
   let found = cache.get(state.doc);
   if (!found) {
-    found = foldables(state.doc.toString().split("\n"));
-    cache.set(state.doc, found);
+    const model = modelOf(state);
+    found = foldables(model);
+    if (model.complete) cache.set(state.doc, found);
   }
   return found;
 }
@@ -68,7 +87,7 @@ export interface FoldStore {
 function restoring(path: string, store: FoldStore): Extension {
   return EditorState.transactionExtender.of((tr) => {
     if (!isReplacement(tr)) return null;
-    const effects = foldsOnLoad(foldables(tr.newDoc.toString().split("\n")), store.read(path)).map((f) => foldEffect.of(hidden({ doc: tr.newDoc }, f)));
+    const effects = foldsOnLoad(foldables(parsePage(tr.newDoc.toString())), store.read(path)).map((f) => foldEffect.of(hidden({ doc: tr.newDoc }, f)));
     return effects.length > 0 ? { effects } : null;
   });
 }
@@ -189,7 +208,7 @@ const chevrons = ViewPlugin.fromClass(
       this.decorations = this.build(view);
     }
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || foldedRanges(update.startState) !== foldedRanges(update.state)) {
+      if (update.docChanged || update.viewportChanged || syntaxTree(update.startState) !== syntaxTree(update.state) || foldedRanges(update.startState) !== foldedRanges(update.state)) {
         this.decorations = this.build(update.view);
       }
     }
@@ -273,8 +292,7 @@ class End extends WidgetType {
 }
 
 function zoomState(state: EditorState, from: number, to: number): ZoomState {
-  const lines = state.doc.toString().split("\n");
-  const trail = zoomAt(lines, state.doc.lineAt(from).number - 1)?.trail ?? [];
+  const trail = zoomAt(modelOf(state), state.doc.lineAt(from).number - 1)?.trail ?? [];
   const widget = new Trail(trail);
   const marks: Range<Decoration>[] = [];
   // Everything before the block is replaced by the trail, everything after it by nothing.
@@ -306,7 +324,7 @@ const zoomField = StateField.define<ZoomState | null>({
 
 function zoomToLine(view: EditorView, line: number): void {
   const { state } = view;
-  const found = zoomAt(state.doc.toString().split("\n"), line);
+  const found = zoomAt(modelOf(state), line);
   if (!found) return;
   const from = state.doc.line(found.start + 1).from;
   const to = state.doc.line(found.end + 1).to;
@@ -321,7 +339,7 @@ function zoomToLine(view: EditorView, line: number): void {
 /** Shows only the block at the cursor and what it owns. */
 export function zoomIn(view: EditorView): boolean {
   const { state } = view;
-  const found = zoomAt(state.doc.toString().split("\n"), headLine(state));
+  const found = zoomAt(modelOf(state), headLine(state));
   if (!found) return false;
   const z = state.field(zoomField);
   const from = state.doc.line(found.start + 1).from;
@@ -334,7 +352,7 @@ export function zoomIn(view: EditorView): boolean {
 export function zoomOut(view: EditorView): boolean {
   const z = view.state.field(zoomField);
   if (!z) return false;
-  const found = zoomAt(view.state.doc.toString().split("\n"), view.state.doc.lineAt(z.from).number - 1);
+  const found = zoomAt(modelOf(view.state), view.state.doc.lineAt(z.from).number - 1);
   const parent = found?.trail[found.trail.length - 1];
   if (parent) zoomToLine(view, parent.line);
   else view.dispatch({ effects: zoomEffect.of(null), scrollIntoView: true });
