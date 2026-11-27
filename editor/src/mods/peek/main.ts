@@ -135,9 +135,10 @@ export default function (ctx: ModContext): void {
 
   ctx.commands.add({ id: "peek.open", label: "Peek at the link under the cursor", keys: "Mod-Alt-p", run: ({ view }) => peek(view) });
 
-  // Esc closes the peek from the page being written too, unless it is closing a menu of the editor.
+  // Esc closes the peek from the page being written too, unless it is closing a menu of the editor. A popup
+  // takes Escape before the block selection does, so this binds above the editor's own keys.
   ctx.editor.extend(
-    ctx.cm.state.Prec.high(
+    ctx.cm.state.Prec.highest(
       ctx.cm.view.keymap.of([
         {
           key: "Escape",

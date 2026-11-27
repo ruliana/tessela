@@ -10,10 +10,12 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { extendBlocks, frontmatterEndOf, indent, mapPos, move, outdent, selectBlock } from "../src/shared/blocks";
+import { respond } from "../src/renderer/blockKeys";
+import { frontmatterEndOf, indent, mapPos, move, outdent } from "../src/shared/blocks";
 import { foldAround, foldables, zoomAt } from "../src/shared/folds";
 import { modelOf } from "./support/page";
 import { outlineAndCursor, pageAndSelection, lines, runs } from "./support/props";
+import { offsetOf, pageState } from "./support/selecting";
 
 const model = (doc: string[]) => modelOf(doc.join("\n"));
 const frontEnd = (doc: string[]) => frontmatterEndOf(model(doc));
@@ -157,35 +159,22 @@ describe("edits on blocks", () => {
     );
   });
 
-  it("selects wider and wider until the page is selected", () => {
+  it("selects wider and wider until the page is selected, each time holding what was selected", () => {
     fc.assert(
       fc.property(pageAndSelection, ({ doc, sel }) => {
-        let current = sel;
+        const text = doc.join("\n");
+        const at = (p: { line: number; col: number }) => offsetOf(text, p.line, p.col);
+        let state = pageState(text, { at: at(sel.anchor), to: at(sel.head) });
+        let held = { from: Math.min(at(sel.anchor), at(sel.head)), to: Math.max(at(sel.anchor), at(sel.head)) };
         for (let step = 0; step <= doc.length * 2 + 2; step++) {
-          const next = selectBlock(model(doc), current);
-          if (!next) return;
-          const [a, b] = [next.anchor, next.head];
-          const inside = (p: { line: number; col: number }) =>
-            (p.line > a.line || (p.line === a.line && p.col >= a.col)) && (p.line < b.line || (p.line === b.line && p.col <= b.col));
-          expect(inside(current.anchor) && inside(current.head)).toBe(true);
-          current = next;
+          const reply = respond(state, "Escape");
+          if (typeof reply !== "object" || reply === null) return;
+          state = state.update(reply).state;
+          const { from, to } = state.selection.main;
+          expect(from <= held.from && to >= held.to).toBe(true);
+          held = { from, to };
         }
         throw new Error("Escape went on selecting for ever");
-      }),
-      runs(300),
-    );
-  });
-
-  it("extends a block selection over whole lines and keeps what was selected", () => {
-    fc.assert(
-      fc.property(pageAndSelection, fc.constantFrom("up", "down"), ({ doc, sel }, dir) => {
-        const next = extendBlocks(model(doc), sel, dir);
-        if (!next) return;
-        for (const p of [next.anchor, next.head]) {
-          expect(p.line).toBeGreaterThanOrEqual(0);
-          expect(p.line).toBeLessThan(doc.length);
-          expect(p.col).toBeLessThanOrEqual(doc[p.line]!.length);
-        }
       }),
       runs(300),
     );

@@ -18,7 +18,7 @@ import type { PropertiesArg, PropertiesOverride } from "../shared/mods";
 import { type Properties, bodyRepeatsTitle, bodyStart, parseProperties, showWhen } from "../shared/properties";
 import { pageModel } from "./pageModelField";
 import { isEditing, rendered, revealChanged } from "./reveal";
-import { selectMode } from "./selectMode";
+import { coversRange } from "./selectMode";
 
 class Glyph extends WidgetType {
   constructor(
@@ -320,12 +320,12 @@ class TableWidget extends WidgetType {
     private readonly table: ParsedTable,
     private readonly source: string,
     private readonly openLink: (dest: string) => void,
-    private readonly picked: boolean,
+    private readonly selected: boolean,
   ) {
     super();
   }
   override eq(other: TableWidget): boolean {
-    return other.source === this.source && other.picked === this.picked;
+    return other.source === this.source && other.selected === this.selected;
   }
   override ignoreEvent(): boolean {
     return true;
@@ -333,7 +333,7 @@ class TableWidget extends WidgetType {
   override toDOM(view: EditorView): HTMLElement {
     const { head, aligns, rows } = this.table;
     const wrap = document.createElement("div");
-    wrap.className = this.picked ? "cm-lp-tablewrap cm-lp-selected" : "cm-lp-tablewrap";
+    wrap.className = this.selected ? "cm-lp-tablewrap cm-block-selected" : "cm-lp-tablewrap";
     const table = document.createElement("table");
     table.className = "cm-lp-table";
     const row = (cells: Run[][], tag: "th" | "td", line: number) => {
@@ -486,9 +486,7 @@ function frontMatterOf(state: EditorState): PageNode | null {
  */
 export function blockWidgets(state: EditorState, opts: PreviewOptions): DecorationSet {
   const { openLink } = opts;
-  const selecting = state.field(selectMode, false) ?? false;
   const ranges: Range<Decoration>[] = [];
-  const touched = (from: number, to: number) => state.selection.ranges.some((r) => r.from <= to && r.to >= from);
   const front = frontMatterOf(state);
   if (front) {
     const fmEnd = front.endLine - 1;
@@ -533,8 +531,8 @@ export function blockWidgets(state: EditorState, opts: PreviewOptions): Decorati
       const table = readTable(state, node.node);
       if (table) {
         const source = state.sliceDoc(first.from, last.to);
-        const picked = selecting && touched(first.from, last.to);
-        ranges.push(Decoration.replace({ widget: new TableWidget(table, source, openLink, picked), block: true }).range(first.from, last.to));
+        const selected = coversRange(state, first.from, last.to);
+        ranges.push(Decoration.replace({ widget: new TableWidget(table, source, openLink, selected), block: true }).range(first.from, last.to));
       }
       return false;
     },

@@ -100,18 +100,20 @@ class Formula extends WidgetType {
   constructor(
     readonly tex: string,
     readonly display: boolean,
+    /** It stands in for blocks that are selected: it wears the class the editor draws selected blocks with. */
+    readonly selected = false,
   ) {
     super();
   }
   override eq(o: Formula): boolean {
-    return o.tex === this.tex && o.display === this.display;
+    return o.tex === this.tex && o.display === this.display && o.selected === this.selected;
   }
   /** A click on a formula puts the cursor at it, which shows its TeX. */
   override ignoreEvent(): boolean {
     return false;
   }
   override toDOM(): HTMLElement {
-    const dom = element(this.display ? "div" : "span", `tessela-math ${this.display ? "tessela-math-block" : "tessela-math-inline"}`, this.tex);
+    const dom = element(this.display ? "div" : "span", `tessela-math ${this.display ? "tessela-math-block" : "tessela-math-inline"}${this.selected ? " cm-block-selected" : ""}`, this.tex);
     void typeset(dom, this.tex, this.display);
     return dom;
   }
@@ -190,6 +192,8 @@ function mathBlocksOf(state: EditorState): { tex: string; from: number; to: numb
 export interface Reveal {
   rendered(state: EditorState): boolean;
   isEditing(state: EditorState, range: { from: number; to: number }): boolean;
+  /** The range lies in the selected blocks (select mode). */
+  isSelected?(state: EditorState, range: { from: number; to: number }): boolean;
 }
 
 /**
@@ -255,7 +259,8 @@ export function mathDecorations(state: EditorState, reveal: Reveal): DecorationS
   for (const b of mathBlocksOf(state)) {
     const widget = new Formula(b.tex, true);
     if (draw && b.top && !reveal.isEditing(state, { from: b.from, to: b.to })) {
-      ranges.push(Decoration.replace({ widget, block: true }).range(b.from, b.to));
+      const selected = reveal.isSelected?.(state, { from: b.from, to: b.to }) ?? false;
+      ranges.push(Decoration.replace({ widget: selected ? new Formula(b.tex, true, true) : widget, block: true }).range(b.from, b.to));
     } else {
       ranges.push(Decoration.widget({ widget, block: true, side: 1 }).range(b.to));
     }

@@ -45,7 +45,7 @@ suite("Select mode", null, (test) => {
     await s.key("Escape");
     assert.equal(await shown(s, "First"), "First bold paragraph.");
     assert.equal(await picked(s), "First bold paragraph.");
-    await s.win.waitForSelector(".cm-selectionBackground"); // the editor draws it on its next frame
+    await s.win.waitForSelector(".cm-line.cm-block-selected"); // the editor draws it on its next frame
     await s.key("Escape");
     assert.equal(await shown(s, "item one"), "• item one", "wider selections are drawn rendered too");
   });
@@ -227,5 +227,97 @@ suite("Select mode", null, (test) => {
     assert.equal(await picked(s), "First bold paragraph.", "still selected and drawn as Markdown after the move");
     await s.key("ArrowDown");
     assert.equal(await picked(s), "item one child two", "and the arrows still step from it");
+  });
+}, { rendered: true });
+
+// What select mode did wrong before it was a state of its own: it did not know about folds, a zoom,
+// Backspace or focus mode, and it drew the selection differently for each kind of block.
+suite("Select mode, as blocks", null, (test) => {
+  const mode = (s) => s.win.locator(".shell").getAttribute("data-focus");
+
+  test("Up and Down skip what a fold hides, and come back to the folded block", async (s) => {
+    await s.openWith("sel-fold", PAGE);
+    await s.win.click(".cm-line:has-text('item')");
+    await s.key("Control+ArrowUp");
+    await s.win.waitForSelector(".cm-foldchip");
+    await s.key("Escape");
+    await s.key("ArrowDown");
+    assert.equal(await picked(s), "item three", "the child inside the fold is not a stop");
+    await s.key("ArrowUp");
+    assert.ok((await picked(s)).startsWith("item one"), "going up lands on the folded block, not on its child");
+    assert.ok(!(await picked(s)).startsWith("child two"));
+  });
+
+  test("Esc stops at a zoom, and Up and Down stay inside it", async (s) => {
+    await s.openWith("sel-zoom", PAGE);
+    await s.win.click(".cm-line:has-text('child two')");
+    await s.key("Control+Alt+ArrowRight"); // zoom in on the child
+    await s.key("Control+Alt+ArrowLeft"); // and out one level: on `item one` and what is nested in it
+    await s.win.waitForSelector(".cm-zoomtrail");
+    await s.key("Escape");
+    assert.equal(await picked(s), "child two");
+    await s.key("Escape");
+    assert.equal(await picked(s), "item one child two", "the item is the widest block in view");
+    await s.key("ArrowDown");
+    assert.equal(await picked(s), "item one child two", "nothing after the zoomed block is reachable");
+    await s.key("Escape");
+    assert.equal(await s.win.locator(".cm-select-mode").count(), 0, "nothing wider in the zoom: Esc leaves select mode");
+    assert.equal(await s.selected(), "");
+  });
+
+  test("Backspace removes the selected blocks, selects the next one and stays in select mode", async (s) => {
+    await select(s, "sel-backspace", "Second");
+    await s.key("Backspace");
+    assert.equal(await picked(s), "item one child two", "the next block is selected");
+    assert.equal(await s.win.locator(".cm-select-mode").count(), 1);
+    assert.equal(await saved(s, "sel-backspace"), PAGE.replace("Second *para*\ncontinues\n\n", "").replace(/^# Title\n\n/, ""));
+    await select(s, "sel-delete-last", "Last");
+    await s.key("Delete");
+    assert.equal(await picked(s), "```js const **x** = 1; let y = 2; ```", "the block before, at the end of the page");
+    assert.equal(await saved(s, "sel-delete-last"), PAGE.replace("\n\nLast end.", "").replace(/^# Title\n\n/, ""));
+  });
+
+  test("focus mode does not take Esc first: the block is selected, and focus mode ends with the page selected", async (s) => {
+    await s.openWith("sel-focus", PAGE);
+    await s.win.click(".cm-line:has-text('Second')");
+    await s.key("Control+.");
+    await s.win.waitForFunction(() => document.querySelector(".shell")?.dataset.focus === "1");
+    await s.key("Escape");
+    assert.equal(await picked(s), "Second para continues", "the first Esc selects the block");
+    assert.equal(await mode(s), "1");
+    for (let i = 0; i < 12 && (await s.win.locator(".cm-select-mode").count()) > 0 && (await mode(s)) === "1"; i++) {
+      await s.key("Escape");
+      if ((await mode(s)) === "1") assert.equal(await s.win.locator(".cm-select-mode").count(), 1);
+    }
+    assert.equal(await mode(s), "0", "with nothing left to widen, Esc leaves focus mode");
+  });
+
+  test("every selected line, and a selected table, are drawn by the same class", async (s) => {
+    await s.openWith("sel-draw", "First line\ncontinues\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nEnd");
+    await s.win.click(".cm-line:has-text('continues')");
+    await s.key("Escape");
+    assert.equal(await s.win.locator(".cm-line.cm-block-selected").count(), 2);
+    assert.equal(await s.win.locator(".cm-selectionLayer").evaluate((el) => getComputedStyle(el).display), "none", "the text selection is not what is drawn");
+    await s.key("ArrowDown");
+    await s.win.waitForSelector(".cm-lp-tablewrap.cm-block-selected");
+    assert.equal(await s.win.locator(".cm-line.cm-block-selected").count(), 0, "a table is a widget: it wears the class, not its lines");
+  });
+
+  test("Shift+click on another block takes in everything between", async (s) => {
+    await select(s, "sel-shift-click", "First");
+    await s.win.click(".cm-line:has-text('Last end')", { modifiers: ["Shift"] });
+    const text = await picked(s);
+    assert.ok(text.startsWith("First bold paragraph.") && text.endsWith("Last end."), text);
+    assert.equal(await s.win.locator(".cm-select-mode").count(), 1);
+  });
+
+  test("Ctrl+D duplicates the blocks and selects the copy, Ctrl+Enter ticks the selected items", async (s) => {
+    await s.openWith("sel-dup", "- [ ] one\n- two\n\nend");
+    await s.win.click(".cm-line:has-text('one')");
+    await s.key("Escape");
+    await s.key("Control+Enter");
+    await s.key("Control+d");
+    assert.equal(await saved(s, "sel-dup"), "- [x] one\n- [x] one\n- two\n\nend");
+    assert.equal(await picked(s), "one");
   });
 }, { rendered: true });

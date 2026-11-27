@@ -11,6 +11,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import { type Crumb, type Fold, foldAround, foldables, foldsOnLoad, foldsToRemember, zoomAt } from "../../shared/folds";
 import type { PageModel } from "../../shared/pageModel";
 import { parsePage } from "../../shared/pageText";
+import type { ModContext } from "../../renderer/mods";
 
 // ---- folds -------------------------------------------------------------------------
 
@@ -19,8 +20,12 @@ const cache = new WeakMap<Text, Fold[]>();
 /** The page model of a state: the editor's own, which the mod is handed (`ctx.page`). */
 type PageOf = (state: EditorState) => PageModel;
 
-// `ctx.page` is one function for every editor of the window, so `folding` keeps it here.
+/** What the mod asks of the editor besides the page (`ctx.editor`): which blocks are selected, and a way to say what it hides. */
+export type EditorApi = Pick<ModContext["editor"], "hidden" | "selectedBlocks" | "selectBlocks">;
+
+// `ctx.page` and `ctx.editor` are one object for every editor of the window, so `folding` keeps them here.
 let page: PageOf;
+let editorApi: EditorApi;
 function modelOf(state: EditorState): PageModel {
   return page(state);
 }
@@ -123,8 +128,28 @@ function dispatchFold(view: EditorView, effects: StateEffect<{ from: number; to:
   view.dispatch({ effects, selection: { anchor: at }, scrollIntoView: true });
 }
 
+/**
+ * In select mode, folds (or opens) the selected blocks, and they stay selected. False when blocks
+ * are not selected, so that the key does what it does at the cursor.
+ */
+function foldSelected(view: EditorView, fold: boolean): boolean {
+  const { state } = view;
+  const blocks = editorApi.selectedBlocks(state);
+  if (blocks.length === 0) return false;
+  const keys = new Set(blocks.map((b) => b.key));
+  const effects: StateEffect<{ from: number; to: number }>[] = [];
+  for (const f of foldsOf(state)) {
+    if (!keys.has(f.key)) continue;
+    const r = hidden(state, f);
+    if (fold !== isFolded(state, r)) effects.push(fold ? foldEffect.of(r) : unfoldEffect.of(r));
+  }
+  if (effects.length > 0) view.dispatch({ effects, ...editorApi.selectBlocks(state, blocks[0]!, blocks[blocks.length - 1]) });
+  return true;
+}
+
 /** Folds the block around the cursor; pressed again, the block around that. */
 function foldHere(view: EditorView): boolean {
+  if (foldSelected(view, true)) return true;
   const { state } = view;
   const folds = foldsOf(state);
   for (let skip = 0; ; skip++) {
@@ -139,6 +164,7 @@ function foldHere(view: EditorView): boolean {
 
 /** Opens the folded block at the cursor. */
 function unfoldHere(view: EditorView): boolean {
+  if (foldSelected(view, false)) return true;
   const { state } = view;
   const folds = foldsOf(state);
   for (let skip = 0; ; skip++) {
@@ -373,10 +399,16 @@ function selectZoomed(view: EditorView): boolean {
 }
 
 /** Everything the fold mod adds to the editor of the page at `path`. */
-export function folding(path: string, store: FoldStore, pageOf: PageOf): Extension {
+export function folding(path: string, store: FoldStore, pageOf: PageOf, editor: EditorApi): Extension {
   page = pageOf;
+  editorApi = editor;
   return [
     placeholder,
+    // Block selection does not go to blocks that the zoom hides, as it does not to those in a fold.
+    editor.hidden((state) => {
+      const z = state.field(zoomField, false);
+      return z ? [{ from: 1, to: state.doc.lineAt(z.from).number - 1 }, { from: state.doc.lineAt(z.to).number + 1, to: state.doc.lines }] : [];
+    }),
     chevrons,
     // Above the page's other block widgets (the properties), which the zoom has to cover.
     Prec.highest(zoomField),

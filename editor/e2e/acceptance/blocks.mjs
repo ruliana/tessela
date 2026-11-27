@@ -216,7 +216,8 @@ suite("Block move and select", null, (test) => {
     assert.equal(await s.selected(), "# One\n\nText\n\n- a\n  - b\n\n## Two\n\nDeep");
     await s.key("Escape");
     const page = await s.selected();
-    assert.ok(page.startsWith("---\n") && page.endsWith("Last"), page);
+    // The front matter is drawn as a title, not selected: the page is its blocks.
+    assert.ok(page.startsWith("# One") && page.endsWith("Last"), page);
   });
 
   test("Esc on an item does not take in the paragraph after the blank line below it", async (s) => {
@@ -241,8 +242,11 @@ suite("Block move and select", null, (test) => {
     assert.equal(await s.selected(), "Gamma");
     await s.key("Shift+ArrowDown");
     assert.match(await s.selected(), /^Gamma\s+Delta$/);
+    // The head moves from a fixed anchor, so the opposite key gives a block back before it takes one in.
     await s.key("Shift+ArrowUp");
-    assert.match(await s.selected(), /^Beta\s+Gamma\s+Delta$/, "Shift+Up takes in the block before");
+    assert.equal(await s.selected(), "Gamma", "Shift+Up gives the block back");
+    await s.key("Shift+ArrowUp");
+    assert.match(await s.selected(), /^Beta\s+Gamma$/, "and then takes in the block before");
   });
 
   test("Esc on an item selects the item, Esc again its parent", async (s) => {

@@ -91,7 +91,7 @@ suite("Command palette and focus", bundle, (test) => {
     await s.win.waitForFunction(() => document.querySelector(".shell")?.dataset.backlinks === "1");
   });
 
-  test("focus mode hides both panels, dims the other blocks, and Escape leaves it", async (s) => {
+  test("focus mode hides both panels, dims the other blocks, and Escape leaves it when there is nothing left to select", async (s) => {
     await s.open("alpha");
     await s.win.click(".cm-line:has-text('First paragraph')");
     await s.key("Control+.");
@@ -107,7 +107,10 @@ suite("Command palette and focus", bundle, (test) => {
       const opacity = (t) => Number(getComputedStyle([...document.querySelectorAll(".cm-line")].find((l) => l.textContent.includes(t))).opacity);
       return opacity("First paragraph") < 0.5 && opacity("Second paragraph") === 1;
     });
+    // Escape selects the block first and widens it; focus mode is left when the whole page is selected.
     await s.key("Escape");
+    assert.equal(await s.win.locator(".shell").getAttribute("data-focus"), "1", "the first Escape selects the block and stays in focus mode");
+    for (let i = 0; i < 10 && (await s.win.locator(".shell").getAttribute("data-focus")) === "1"; i++) await s.key("Escape");
     await s.win.waitForFunction(() => document.querySelector(".shell")?.dataset.focus === "0");
     await s.win.waitForSelector(".sidebar", { state: "visible" });
   });

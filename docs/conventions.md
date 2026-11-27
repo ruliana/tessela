@@ -553,14 +553,20 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Tab                           | Paragraph becomes a list item; an item nests under the one before it   |
 | Shift+Tab                     | Nested item moves out; a top-level item becomes a paragraph again      |
 | Alt+Up / Alt+Down             | Move the block, with what it owns (a heading takes its section), past its neighbour |
-| Esc, then Esc again           | Select the block at the cursor, then the one around it each time: parent item, list, section, the whole page |
-| Shift+Up / Shift+Down         | On a selected block, take in more blocks                              |
-| Up / Down (select mode)       | Select the block before or after, in reading order: code blocks, quotes, tables and nested items are blocks too |
+| Esc, then Esc again           | Select the block at the cursor, then the one around it each time: parent item, list, section, the whole page (the page is its blocks, not its front matter). A zoom is a limit: nothing outside it is selected. When nothing is left to widen, Esc leaves focus mode |
+| Up / Down (select mode)       | Select the block before or after, in reading order, among the blocks that are shown: code blocks, quotes, tables and nested items are blocks too, a heading is its own line, and what a fold hides or a zoom leaves out is skipped |
+| Shift+Up / Shift+Down (select mode) | Take in the next block in that direction (a list at the top of a page or a section in one step); from a heading's line, its section first; past the last (or first) block of an item, the item itself; with the selection taken in the other direction, give a block back |
+| Shift+click (select mode)     | Take in everything from the selection to the block clicked |
 | Enter (select mode)           | Add a block below the selected ones (another item below an item) and edit it |
 | Space, Left (select mode)     | Edit, with the cursor at the start of the selected blocks              |
 | Right (select mode)           | Edit, with the cursor at the end of the selected blocks                |
 | Any character (select mode)   | Edit, typing it at the start of the selected blocks                    |
-| Ctrl+Up / Ctrl+Down           | Fold, or open, the block at the cursor; pressed again, the block around it |
+| Backspace, Delete (select mode) | Remove the selected blocks, with the blank lines that went with them; the next block is selected (the one before, at the end of the page) |
+| Tab, Shift+Tab, Alt+Up / Alt+Down (select mode) | The same edits, on the selected blocks, which stay selected |
+| Ctrl+D (select mode)          | Copy the selected blocks under themselves and select the copy          |
+| Ctrl+C / Ctrl+X (select mode) | Copy or cut the whole blocks, as Markdown                              |
+| Ctrl+Enter (select mode)      | Tick or untick every selected item (a plain item becomes a task)       |
+| Ctrl+Up / Ctrl+Down           | Fold, or open, the block at the cursor (in select mode, the selected blocks); pressed again, the block around it |
 | Ctrl+Alt+Right / Left         | Zoom in on the block at the cursor, or back out one level              |
 | Ctrl+B, Ctrl+I, Ctrl+E        | Bold, italic, code (the word at the cursor when nothing is selected)   |
 | Ctrl+Shift+X                  | Strikethrough                                                         |
@@ -570,9 +576,12 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | `/`                           | Menu: headings, lists, tasks, quote, code, table, dates, link, tag     |
 | Ctrl+F                        | Find in the page                                                      |
 
-Esc leaves the cursor in *select mode*: the selected blocks are drawn as Markdown, like the blocks
-without the cursor, and the keys above act on blocks. A click anywhere, or any other key that moves
-the cursor or changes the text, goes back to editing.
+Esc leaves the cursor in *select mode*: whole blocks are selected (a run of neighbours under one
+parent, each with what it owns), they are drawn as Markdown, like the blocks without the cursor, and
+the keys above act on blocks. The only ways back to editing are Enter, Space, Left, Right, typing a
+character, removing the last block, Esc with nothing left to widen (when focus mode is off), and
+anything that moves the selection or changes the text on its own, a click above all. Esc is taken in
+this order: a menu or popup that is open, then widening the selection, then leaving focus mode.
 
 Fold and zoom change what the editor shows, never the page. A heading folds its section (up
 to the next heading as high or higher), a list item folds what is nested in it and its wrapped

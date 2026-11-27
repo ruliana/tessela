@@ -42,6 +42,10 @@ export interface CardDeps {
   properties?: () => PropertiesOverride | undefined;
   /** The page was loaded into the card. */
   onOpened?: (path: string) => void;
+  /** Escape had nothing left to widen: leaves focus mode when it is on, and says whether it did. */
+  onLeaveFocus?: () => boolean;
+  /** Blocks of this page were selected, or no longer are. */
+  onSelectMode?: (path: string, on: boolean) => void;
   /** A save changed the page's title. */
   onTitleEdited?: (path: string, from: string, to: string) => void;
   /** What the menu in the head of the card offers; no menu while this is empty or absent. */
@@ -155,6 +159,8 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     pageName: () => pageId(path).split("/").pop() ?? "",
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
+    ...(deps.onLeaveFocus ? { onLeaveFocus: deps.onLeaveFocus } : {}),
+    ...(deps.onSelectMode ? { onSelectMode: (on: boolean) => deps.onSelectMode?.(path, on) } : {}),
     ...(deps.extensions ? { extensions: () => deps.extensions?.(path) ?? [] } : {}),
     ...(deps.properties ? { properties: deps.properties, pagePath: () => path } : {}),
   });
