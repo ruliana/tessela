@@ -73,18 +73,31 @@ typed selection lands.
 
 ### 4. Views are pure functions of state, with one reveal policy
 
-Decorations are derived from state. The rule for "raw or rendered?" is written once
-and every provider asks it:
+Decorations are derived from state. The rule for "raw or rendered?" is written once, in
+`renderer/reveal.ts`, and every provider asks it:
 
 - Only the **exact construct under the cursor** shows raw: a bold span, a link, a
-  footnote reference, a callout title.
+  footnote reference, a callout title, the marks of a heading or a list item.
 - A **block widget** (table, math block, front matter) opens as a whole when the
   cursor is inside it.
 - Everything else stays rendered, including the rest of the block being edited.
-- In select mode nothing is raw.
+- In select mode nothing is raw. An editor without the keyboard focus draws everything.
 
-Mods ask the editor (for example `ctx.editor.isEditing(range)`); they do not read
-CSS classes.
+"Under the cursor" means a selection range touches the construct's own range in the syntax
+tree, its ends included, so a cursor right after `**bold**` is still in it. A construct inside
+another is raw with it (the cursor in a link inside bold shows both). A line of a quote and a
+bullet or checkbox are constructs of their own: the `>` shows on the line the cursor is on, the
+bullet while the cursor is at it.
+
+The facts the rule reads are kept in one place each: the focus in `editorFocus` (`reveal.ts`),
+the mode in `selectMode`, whether the Markdown is drawn at all in the `rendered` facet that live
+preview provides. Providers call `isEditing(state, range)` and `isDrawn(state, range)`, and rebuild
+when `revealChanged(before, after)` says the selection, the focus, the mode or the preview moved.
+A provider does not keep its own copy of any of it, and does not read a CSS class.
+
+Mods ask the editor the same way: `ctx.editor.isEditing(state, range)`,
+`ctx.editor.rendered(state)` and `ctx.editor.revealChanged(before, after)`, and read the page
+with `ctx.page(state)`. They do not read CSS classes.
 
 ### 5. Commands are functions that return a transaction or nothing
 
@@ -159,10 +172,10 @@ changes a row.
 | 1. One page model | Partly. `shared/pageModel.ts` builds the model from the syntax tree as the `pageModel` state field (`renderer/pageModelField.ts`), and the Rust index is its oracle. No reader uses it yet: they still parse the page their own way (`parseBlocks` in `shared/blocks.ts`, line regexes in `shared/folds.ts` and gfm-extras, the table cell parser in `livePreview.ts`). |
 | 2. Typed selection | Not met. `selectMode.ts` is a boolean `StateField`; selected blocks are a text range checked by `aligned()`. |
 | 3. Transactions | Partly. Typing and CodeMirror commands are; block commands work on line arrays and diff them in `apply()` (`blockKeys.ts`). |
-| 4. Views from state | Partly. Decorations are state-driven, but each provider has its own reveal rule, and mods read `cm-select-mode`. |
+| 4. Views from state | Met for what is drawn from the text. One reveal policy (`reveal.ts`) serves live preview, tables and the front matter header, gfm-extras and the link clicks; tables are drawn from the syntax tree; mods ask `ctx.editor.isEditing`. The table's `picked` flag and the select-mode CSS class remain until the select-mode rebuild. |
 | 5. Commands | Partly. The logic is pure; the wiring checks `selectMode` in each handler. |
 | 6. Explicit modes | Not met. Escape is bound in several places and routed by DOM queries. |
-| 7. Property tests | Partly. `test/props.blocks.test.ts` covers edits; nothing checks that the readers agree or that modes only exit by listed transitions. |
+| 7. Property tests | Partly. `test/props.blocks.test.ts` covers edits; `test/livePreview.test.ts` checks the reveal policy on generated paragraphs and tables (which characters are hidden for any selection); nothing yet checks that modes only exit by listed transitions. |
 
 ## Working on the editor
 

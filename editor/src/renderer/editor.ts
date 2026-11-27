@@ -21,6 +21,7 @@ import {
   drawSelection,
   keymap,
 } from "@codemirror/view";
+import type { SyntaxNode } from "@lezer/common";
 import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
@@ -35,7 +36,8 @@ import { blockKeymap } from "./blockKeys";
 import { selectMode } from "./selectMode";
 import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
-import { focusMarks, livePreview, renderedLine } from "./livePreview";
+import { focusMarks, livePreview } from "./livePreview";
+import { isDrawn, revealPolicy } from "./reveal";
 import { slashSource } from "./slash";
 import { pageLanguage, pageModel } from "./pageModelField";
 import { bodyStart } from "../shared/properties";
@@ -125,15 +127,14 @@ function smartLinkCommand(view: EditorView): boolean {
   return true;
 }
 
-/** Where the link under `pos` points: `[text](target)` or a bare address. */
-function linkDestAt(state: EditorState, pos: number): string | null {
-  for (let node = syntaxTree(state).resolveInner(pos, 0) as { name: string; from: number; to: number; parent: unknown } | null; node; ) {
+/** The link under `pos`: where it points, and the text that is the link: `[text](target)` or a bare address. */
+function linkAt(state: EditorState, pos: number): { dest: string; from: number; to: number } | null {
+  for (let node = syntaxTree(state).resolveInner(pos, 0) as SyntaxNode | null; node; node = node.parent) {
     if (node.name === "Link") {
-      const url = (node as unknown as { getChild(name: string): { from: number; to: number } | null }).getChild("URL");
-      return url ? state.sliceDoc(url.from, url.to) : null;
+      const url = node.getChild("URL");
+      return url ? { dest: state.sliceDoc(url.from, url.to), from: node.from, to: node.to } : null;
     }
-    if (node.name === "URL" || node.name === "Autolink") return state.sliceDoc(node.from, node.to).replace(/^<|>$/g, "");
-    node = node.parent as typeof node;
+    if (node.name === "URL" || node.name === "Autolink") return { dest: state.sliceDoc(node.from, node.to).replace(/^<|>$/g, ""), from: node.from, to: node.to };
   }
   return null;
 }
@@ -279,6 +280,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         // footnotes, math) in one parser, and code in the languages that fenced blocks name.
         pageLanguage(languages),
         pageModel,
+        revealPolicy(),
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
@@ -328,19 +330,22 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
             const pos = v.posAtCoords({ x: event.clientX, y: event.clientY });
             if (pos === null) return false;
             const line = v.state.doc.lineAt(pos);
-            // A link drawn as text opens with a plain click; one shown as Markdown is being edited.
-            // (A click on selected blocks edits them, like any click: it does not follow a link.)
-            const drawn = renderedLine(v, line.number) && !v.state.field(selectMode, false);
-            const dest = modifier || drawn ? linkDestAt(v.state, pos) : null;
+            // A link drawn as text opens with a plain click; one shown as Markdown is being edited,
+            // and a click there places the cursor. (A click on selected blocks edits them, like any
+            // click: it does not follow a link. The reveal policy says what is drawn.)
+            const selecting = v.state.field(selectMode, false) ?? false;
+            const link = linkAt(v.state, pos);
+            const dest = link && (modifier || (!selecting && isDrawn(v.state, link))) ? link.dest : null;
             if (dest !== null) {
               event.preventDefault();
               openDest(dest);
               return true;
             }
-            // A date leads to its journal day: with a plain click where the line is drawn as text,
-            // with Ctrl/Cmd where it is being edited. Dates in code are only text.
-            const day = modifier || drawn ? dayAt(line.text, pos - line.from) : null;
-            if (day !== null && !inCode(v.state, line.from + day.from)) {
+            // A date leads to its journal day: with a plain click where it is drawn, with Ctrl/Cmd
+            // where it is being edited. Dates in code are only text.
+            const day = dayAt(line.text, pos - line.from);
+            const dayDrawn = day !== null && !selecting && isDrawn(v.state, { from: line.from + day.from, to: line.from + day.to });
+            if (day !== null && (modifier || dayDrawn) && !inCode(v.state, line.from + day.from)) {
               event.preventDefault();
               openDest(journalDest(day.day));
               return true;

@@ -1,40 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { asQuote, calloutKind, displayMath, footnoteRefs, footnotesOf, headingLink, inlineMath, nextLabel, pageTitle } from "../src/mods/gfm-extras/plan";
+import { asQuote, headingLink, nextLabel, numberFootnotes, pageTitle } from "../src/mods/gfm-extras/plan";
 
-describe("the gfm-extras mod's reading of a page", () => {
-  it("knows the five callout markers, in any case, and nothing else", () => {
-    expect(calloutKind("> [!NOTE]")).toBe("note");
-    expect(calloutKind(">[!warning]  ")).toBe("warning");
-    expect(calloutKind("> [!CAUTION] and text")).toBeNull();
-    expect(calloutKind("> [!DANGER]")).toBeNull();
-    expect(calloutKind("[!NOTE]")).toBeNull();
-  });
+describe("footnote numbers", () => {
+  const ref = (id: string, from: number) => ({ id, from, to: from + id.length + 3 });
+  const def = (id: string, from: number, text = "") => ({ id, from, label: { from, to: from + id.length + 4 }, text });
 
-  it("numbers footnotes by their first reference and keeps the definitions' text", () => {
-    const lines = ["B[^b] a[^a] again[^b].", "", "[^a]: Note A", "    goes on.", "[^b]: Note B", "[^orphan]: nobody cites me"];
-    const f = footnotesOf(lines);
+  it("are given by the first reference, and the definitions and first references are found by label", () => {
+    const f = numberFootnotes([ref("b", 1), ref("a", 10), ref("b", 20)], [def("a", 30, "Note A goes on."), def("b", 50, "Note B"), def("orphan", 70)]);
     expect([...f.numbers]).toEqual([["b", 1], ["a", 2]]);
-    expect(f.defs.get("a")).toEqual({ line: 2, text: "Note A goes on." });
-    expect(f.first.get("a")).toBe(0);
-    expect(footnoteRefs("[^a]: text with [^b]").map((r) => r.id)).toEqual(["b"]);
-    expect(nextLabel(lines)).toBe("1");
-    expect(nextLabel(["[^1]", "[^2]: x"])).toBe("3");
+    expect(f.first.get("a")).toBe(10);
+    expect(f.defs.get("a")?.text).toBe("Note A goes on.");
   });
 
-  it("finds inline math, but not prices or code", () => {
-    expect(inlineMath("Cost $5 and $6, then $a+b$.").map((m) => m.tex)).toEqual(["a+b"]);
-    expect(inlineMath("GitHub's $`x_1`$ form").map((m) => m.tex)).toEqual(["x_1"]);
-    expect(inlineMath("code `$x$` is not math").length).toBe(0);
-    expect(inlineMath("escaped \\$x\\$ too").length).toBe(0);
+  it("take the first definition of a label that is defined twice", () => {
+    expect(numberFootnotes([ref("a", 0)], [def("a", 10, "first"), def("a", 30, "second")]).defs.get("a")?.text).toBe("first");
   });
 
-  it("finds $$ blocks on one line and across lines, not inside code", () => {
-    const lines = ["$$ a^2 $$", "text", "$$", "\\frac{1}{2}", "$$", "```", "$$", "```"];
-    expect(displayMath(lines, (i) => i >= 5)).toEqual([
-      { from: 0, to: 0, tex: "a^2" },
-      { from: 2, to: 4, tex: "\\frac{1}{2}" },
-    ]);
+  it("pick the smallest number that no label uses for the next one", () => {
+    expect(nextLabel([])).toBe("1");
+    expect(nextLabel(["1", "2", "x"])).toBe("3");
+    expect(nextLabel(["2"])).toBe("1");
   });
 });
 

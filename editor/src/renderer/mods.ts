@@ -10,6 +10,8 @@ import { type Extension, Prec } from "@codemirror/state";
 import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
+import type { PageModel } from "../shared/pageModel";
+
 import type { ModsInfo } from "../shared/api";
 import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModOverrides, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
 import type { Card } from "./card";
@@ -17,6 +19,8 @@ import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { drawer } from "./drawer";
 import { el } from "./dom";
 import { fenceExtension, refreshFences } from "./fences";
+import { pageModel } from "./pageModelField";
+import { type Span, isEditing, isRendered, revealChanged } from "./reveal";
 
 /** An extension a mod gives for each editor, told which page the editor shows. */
 export type PageExtension = (page: { path: string }) => Extension;
@@ -110,8 +114,28 @@ export interface ModContext {
   readonly id: string;
   commands: { add(command: ModCommand<EditorView>): void };
   slash: { add(item: ModSlash): void };
-  /** Extensions for every editor; a function is called for each, with the page the editor shows. */
-  editor: { extend(extension: Extension | PageExtension): void };
+  /**
+   * The editor, for extensions that draw the page. `extend` adds an extension to every editor; a
+   * function is called for each, with the page the editor shows. The rest is the reveal policy, the
+   * one rule that says whether Markdown is shown as typed or drawn: ask it, and read neither the
+   * focus nor a CSS class. Only the exact construct under the cursor is typed; a block widget opens
+   * as a whole when the cursor is inside it; in select mode nothing is typed.
+   * - `isEditing(state, range)`: the cursor is in `range`, so the Markdown there shows as typed.
+   * - `rendered(state)`: the window shows the Markdown drawn at all (live preview is on).
+   * - `revealChanged(before, after)`: what is typed may differ between two states (the selection, the
+   *   focus, the mode or the preview changed): decorations are made again when it is true, or the text changed.
+   */
+  editor: {
+    extend(extension: Extension | PageExtension): void;
+    isEditing(state: state.EditorState, range: Span): boolean;
+    rendered(state: state.EditorState): boolean;
+    revealChanged(before: state.EditorState, after: state.EditorState): boolean;
+  };
+  /**
+   * The structure of the page in `state`: sections, blocks and their children, as the editor reads
+   * them (see `shared/pageModel.ts`). Read it instead of scanning the text for lines.
+   */
+  page(state: state.EditorState): PageModel;
   settings: { get(name: string): unknown; set(name: string, value: unknown): void };
   /** Runs a tessela command on the open notes folder and returns its `{api, ok, ...}` JSON (see Api.cli). */
   cli(argv: string[], options?: { input?: string | Uint8Array }): Promise<unknown>;
@@ -180,7 +204,13 @@ function contextFor(mod: string): ModContext {
     id: mod,
     commands: { add: (command) => registry.addCommand(mod, command) },
     slash: { add: (item) => registry.addSlash(mod, item) },
-    editor: { extend: (extension) => registry.addExtension(mod, extension) },
+    editor: {
+      extend: (extension) => registry.addExtension(mod, extension),
+      isEditing,
+      rendered: isRendered,
+      revealChanged,
+    },
+    page: (editorState) => editorState.field(pageModel),
     settings: settingsOf(mod),
     ui: {
       dialog: (options) => openDialog(options),
