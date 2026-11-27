@@ -9,8 +9,7 @@ import { TreeFragment } from "@lezer/common";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { frontmatterEnd } from "../src/shared/blocks";
-import { calloutKindOf, frontMatterLength, frontMatterYaml, noSetext, tessela } from "../src/shared/syntax";
+import { calloutKindOf, frontMatterLength, frontmatterEnd, frontMatterYaml, noSetext, tessela } from "../src/shared/syntax";
 import { runs } from "./support/props";
 
 /** What the editor had before: no Tessela syntax. */

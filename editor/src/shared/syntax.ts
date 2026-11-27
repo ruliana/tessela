@@ -59,6 +59,19 @@ const depthOf = (line: Line) => (line as unknown as { depth: number }).depth;
 
 // ---- front matter ------------------------------------------------------------
 
+/**
+ * The last line (0-based) of the front matter of a page given as lines, or -1 when it has none: for code that
+ * edits text without an editor, such as the properties header. In an editor the page model has it.
+ */
+export function frontmatterEnd(lines: string[]): number {
+  if (lines[0]?.trimEnd() !== "---") return -1;
+  for (let i = 1; i < lines.length; i++) {
+    const t = lines[i]!.trimEnd();
+    if (t === "---" || t === "...") return i;
+  }
+  return -1;
+}
+
 /** Where the front matter that opens `text` ends: the offset after its closing line, or -1 when there is none. */
 export function frontMatterLength(text: string): number {
   const lines = /^---[ \t]*(?:\r?\n|$)/.exec(text);

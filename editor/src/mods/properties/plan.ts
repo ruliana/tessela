@@ -1,7 +1,7 @@
 // The properties mod, without the window: changing one key of a page's front matter and leaving
 // every other byte alone, checking a date, and the choices the small editors offer.
 
-import { frontmatterEnd } from "../../shared/blocks";
+import { frontmatterEnd } from "../../shared/syntax";
 import { normalizeConcept } from "../../shared/links";
 import { slashItems } from "../../shared/slash";
 

@@ -2,7 +2,7 @@
 // needs (title, type, tags, when). The editor draws these in place of the YAML until the
 // front matter is edited.
 
-import { frontmatterEnd } from "./blocks";
+import { frontmatterEnd } from "./syntax";
 import { normalizeConcept } from "./links";
 
 export interface Properties {

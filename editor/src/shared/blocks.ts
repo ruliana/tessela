@@ -56,16 +56,6 @@ export function linesOf(model: PageModel): string[] {
   return lines;
 }
 
-/** The last line of the front matter, or -1 when the page has none. (A line scan: the properties header and the preview ask it on every update.) */
-export function frontmatterEnd(lines: string[]): number {
-  if (lines[0]?.trimEnd() !== "---") return -1;
-  for (let i = 1; i < lines.length; i++) {
-    const t = lines[i]!.trimEnd();
-    if (t === "---" || t === "...") return i;
-  }
-  return -1;
-}
-
 /** The last line of the front matter of a model, or -1 when the page has none. */
 export function frontmatterEndOf(model: PageModel): number {
   const first = model.root.children[0];
@@ -563,40 +553,4 @@ export function blockBelow(model: PageModel, sel: Sel): Insertion {
       : { at: lineEnd(lines, last + 1), insert: "\n\n", caret: 1 };
   }
   return { at: lineEnd(lines, last), insert: "\n\n\n", caret: 2 };
-}
-
-// ---- for the live preview ------------------------------------------------------------
-// The live preview still asks for "the lines of the block being edited" the old way. It moves onto the
-// page model with the reveal policy (the rebuild's PR6), and these go then.
-
-/** A block as the live preview is handed it: the top-level nodes of the page model. */
-export type Block = PageNode;
-
-/** The top-level blocks of a page. */
-export function parseBlocks(lines: string[]): Block[] {
-  return [...parsePage(lines.join("\n")).root.children];
-}
-
-function deepest(nodes: readonly PageNode[], line: number): PageNode | null {
-  for (const n of nodes) if (line >= startOf(n) && line <= endOf(n)) return deepest(n.children, line) ?? n;
-  return null;
-}
-
-/**
- * The lines (0-based) of the block being edited at `line`: its own text, without the items
- * nested in it and without blank lines. A code block is not one text, so there it is the
- * line alone. Nothing for a blank line, or where no block is.
- */
-export function editedBlockLines(lines: string[], line: number, blocks: Block[] = parseBlocks(lines)): number[] {
-  if (blank(lines[line])) return [];
-  const b = deepest(blocks, line);
-  if (!b) return [];
-  if (b.kind === "section") return startOf(b) === line ? [line] : [];
-  if (b.kind === "frontmatter" || b.kind === "code" || b.kind === "html") return [line];
-  const own: number[] = [];
-  for (let n = startOf(b); n <= endOf(b); n++) {
-    if (blank(lines[n]) || b.children.some((c) => n >= startOf(c) && n <= endOf(c))) continue;
-    own.push(n);
-  }
-  return own;
 }
