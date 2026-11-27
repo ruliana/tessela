@@ -30,6 +30,24 @@ const good = {
   editor: `export default (ctx) => {
     ctx.editor.extend(ctx.cm.view.EditorView.editorAttributes.of({ "data-mod-editor": "on" }));
   };`,
+  reveal: `export default (ctx) => {
+    ctx.commands.add({
+      id: "reveal",
+      label: "Ask the reveal policy",
+      keys: "Mod-Alt-r",
+      run: ({ view }) => {
+        const { head } = view.state.selection.main;
+        const model = ctx.page(view.state);
+        document.body.dataset.modReveal = JSON.stringify({
+          here: ctx.editor.isEditing(view.state, { from: head, to: head }),
+          elsewhere: ctx.editor.isEditing(view.state, { from: head + 5, to: head + 9 }),
+          rendered: ctx.editor.rendered(view.state),
+          kinds: [...new Set(model.nodes.map((n) => n.kind))],
+          at: model.nodeAt(head).kind,
+        });
+      },
+    });
+  };`,
   settings: `export default (ctx) => {
     document.body.dataset.modCount = String(ctx.settings.get("n") ?? 0);
     ctx.commands.add({ id: "count", label: "Count one more", run: () => ctx.settings.set("n", (ctx.settings.get("n") ?? 0) + 1) });
@@ -84,6 +102,17 @@ suite("Mods in the config folder", files, (test) => {
   test("a mod adds a CodeMirror extension to every editor", async (s) => {
     await s.open("alpha");
     assert.equal(await s.win.$$eval('.cm-editor[data-mod-editor="on"]', (e) => e.length > 0), true);
+  });
+
+  test("a mod asks the editor's reveal policy and reads the page model, with ctx.editor and ctx.page", async (s) => {
+    await s.open("alpha");
+    await s.key("Control+Alt+r");
+    const r = JSON.parse(await s.win.evaluate(() => document.body.dataset.modReveal));
+    assert.equal(r.here, true, "the cursor is in a range that holds it");
+    assert.equal(r.elsewhere, false, "and not in one a few characters on");
+    assert.equal(r.rendered, false, "the Markdown is typed while the preview is off");
+    assert.deepEqual(r.kinds, ["frontmatter", "paragraph"]);
+    assert.equal(r.at, "paragraph");
   });
 
   test("a mod's settings are kept when the window reloads", async (s) => {

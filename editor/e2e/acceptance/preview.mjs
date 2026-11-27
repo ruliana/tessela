@@ -1,4 +1,6 @@
-// Live preview: Markdown shown rendered, raw only in the block being edited.
+// Live preview: Markdown shown rendered, raw only for the construct under the cursor (the reveal
+// policy, src/renderer/reveal.ts): a bold span, a link, the marks of a heading. The rest of the
+// block being edited stays drawn; a table opens as a whole when the cursor enters it.
 
 import assert from "node:assert/strict";
 import { suite, write } from "../harness.mjs";
@@ -48,7 +50,7 @@ suite("Live preview", null, (test) => {
     assert.ok((await s.doc()).includes("First **bold**"));
   });
 
-  test("the button renders the Markdown outside the block being edited", async (s) => {
+  test("the button renders the Markdown, except the construct under the cursor", async (s) => {
     await s.win.click("#preview-toggle");
     await rendered(s);
     // The cursor is in the last paragraph; the rest is rendered.
@@ -57,28 +59,40 @@ suite("Live preview", null, (test) => {
     assert.equal(await shown(s, "Last paragraph"), "Last paragraph.");
   });
 
-  test("the block with the cursor stays raw, and the others render", async (s) => {
+  const drawnFirst = "First bold and slanted and gone and code and site.";
+
+  test("with the cursor in plain text, the bold and the other marks of its paragraph stay drawn", async (s) => {
     await s.win.click(".cm-line:has-text('Last paragraph')");
-    assert.equal(await shown(s, "Last paragraph"), "Last paragraph.");
-    assert.equal(await shown(s, "First"), "First bold and slanted and gone and code and site.");
-    await s.win.click(".cm-line:has-text('First')");
+    assert.equal(await shown(s, "First"), drawnFirst);
+    // At the start of the paragraph: in the block, but in none of its constructs.
+    await s.win.click(".cm-line:has-text('First')", { position: { x: 3, y: 6 } });
+    await s.key("Home");
+    assert.equal(await shown(s, "First"), drawnFirst, "the rest of the block being edited is drawn");
+    await s.key("ArrowRight");
+    await s.key("ArrowRight");
+    assert.equal(await shown(s, "First"), drawnFirst);
+  });
+
+  test("with the cursor on the bold span, only that span is raw", async (s) => {
+    await s.win.click(".cm-line:has-text('First') >> text=bold");
     await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("**bold**")));
-    assert.equal(await shown(s, "First"), "First **bold** and *slanted* and ~~gone~~ and `code` and [site](https://example.com).");
+    assert.equal(await shown(s, "First"), "First **bold** and slanted and gone and code and site.");
     assert.equal((await shown(s, "Big title")).trim(), "Big title");
   });
 
-  test("moving the cursor away renders the block again", async (s) => {
+  test("moving the cursor away draws the span again", async (s) => {
     await s.win.click(".cm-line:has-text('Last paragraph')");
     await s.win.waitForFunction(() => ![...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("**bold**")));
+    assert.equal(await shown(s, "First"), drawnFirst);
   });
 
-  test("a paragraph over several lines is edited as one block", async (s) => {
-    await s.win.click(".cm-line:has-text('second line two')");
-    await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("**more**")));
+  test("in a paragraph over several lines, only the construct is raw, not the lines around it", async (s) => {
+    await s.win.click(".cm-line:has-text('second line two') >> text=this");
+    await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("*this*")));
     assert.equal(await shown(s, "second line two"), "second line two with *this*");
+    assert.equal(await shown(s, "Second line one"), "Second line one with more", "the other line of the paragraph stays drawn");
     await s.win.click(".cm-line:has-text('Last paragraph')");
-    await s.win.waitForFunction(() => ![...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("**more**")));
-    assert.equal(await shown(s, "Second line one"), "Second line one with more");
+    await s.win.waitForFunction(() => ![...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("*this*")));
     assert.equal(await shown(s, "second line two"), "second line two with this");
   });
 
@@ -248,6 +262,20 @@ suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype
     assert.ok(body.includes("| Name | Count | Note |\n| :--- | ---: | :---: |\n| alpha | 1 | **big** and `code` |\n| gamma | 3 | x |\n| beta |"), body);
   });
 
+  test("the keys carry the cursor into the table, which opens as a whole", async (s) => {
+    await s.win.click(".cm-line:has-text('After the table')");
+    await s.win.waitForSelector(".cm-lp-table");
+    // Up goes to the blank line under the table, and Left from there to the end of the table.
+    // (Up and Down alone step over a drawn table, as they do over any block widget.)
+    await s.key("ArrowUp");
+    await s.key("ArrowLeft");
+    await s.win.waitForFunction(() => !document.querySelector(".cm-lp-table"));
+    const doc = await s.doc();
+    assert.ok(doc.includes("| alpha | 1 | **big** and `code` |") && doc.includes("| gamma | 3 | x |"), doc);
+    await s.win.click(".cm-line:has-text('After the table')");
+    await s.win.waitForSelector(".cm-lp-table");
+  });
+
   test("a link in a table opens the address", async (s) => {
     await s.win.click(".cm-lp-table a");
     assert.deepEqual(await opened(s), ["https://example.com/t"]);
@@ -285,7 +313,11 @@ suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype
     assert.deepEqual((await opened(s)).slice(1), ["https://example.com/page"]);
   });
 
-  test("a link to a concept opens its page", async (s) => {
+  test("a link to a concept opens its page, also when the cursor is in the same paragraph", async (s) => {
+    // The cursor goes to the start of "Concept [project](...) there.": in the block, not in the link.
+    await s.win.click(".cm-line:has-text('Concept')", { position: { x: 3, y: 6 } });
+    await s.key("Home");
+    assert.equal(await s.win.locator(".cm-lp-link:has-text('project')").count(), 1, "the link is drawn");
     await s.win.click(".cm-lp-link:has-text('project')");
     await s.win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "project/tessela");
     assert.ok((await s.doc()).includes("The project."));
@@ -293,8 +325,13 @@ suite("Live preview tables and links", () => ({ "project/tessela.md": "---\ntype
     await s.win.waitForSelector(".cm-lp-link");
   });
 
-  test("in the block being edited a plain click only places the cursor", async (s) => {
-    await s.win.click(".cm-line:has-text('Web')");
+  test("on a link shown as Markdown a plain click only places the cursor", async (s) => {
+    // Put the cursor in the link with the keys, so that nothing follows it: from the last paragraph
+    // up to the first one, and into "Web [si|te]".
+    await s.win.click(".cm-line:has-text('Last paragraph')");
+    for (let i = 0; i < 4; i++) await s.key("ArrowUp");
+    await s.key("Home");
+    for (let i = 0; i < 7; i++) await s.key("ArrowRight");
     await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("](https://example.com/page)")));
     const before = (await opened(s)).length;
     await s.win.click(".cm-line:has-text('](https://example.com/page)') >> text=site");

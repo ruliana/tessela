@@ -9,9 +9,10 @@
 import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import type { SyntaxNode } from "@lezer/common";
 
 import type { ModContext } from "../../renderer/mods";
-import { CALLOUTS, asQuote, calloutKind, displayMath, footnotesOf, footnoteDefinition, footnoteRefs, headingLink, inlineMath, nextLabel, pageTitle } from "./plan";
+import { CALLOUTS, type CalloutKind, type FootnoteDef, type FootnoteRef, asQuote, headingLink, nextLabel, numberFootnotes, pageTitle } from "./plan";
 
 const lazy = <T>(name: string): Promise<T> => import(/* @vite-ignore */ new URL(`./${name}.js`, import.meta.url).href) as Promise<T>;
 let katexLoaded: Promise<{ render(tex: string, display: boolean): string }> | undefined;
@@ -41,29 +42,6 @@ async function typeset(into: HTMLElement, tex: string, display: boolean): Promis
   }
 }
 
-// ---- where the Markdown is drawn ------------------------------------------------
-
-/** Whether the window shows Markdown rendered (the live preview adds `cm-preview` to the editor). */
-const rendered = (state: EditorState): boolean => state.facet(EditorView.editorAttributes).some((a) => typeof a === "object" && /\bcm-preview\b/.test((a as { class?: string }).class ?? ""));
-
-/** Whether blocks are selected as blocks (select mode, which adds `cm-select-mode`): they are drawn, not typed. */
-const selecting = (state: EditorState): boolean => state.facet(EditorView.editorAttributes).some((a) => typeof a === "object" && /\bcm-select-mode\b/.test((a as { class?: string }).class ?? ""));
-
-/** The lines (0 is the first) that are in a code block, where none of this applies. */
-function codeLines(state: EditorState): Set<number> {
-  const lines = new Set<number>();
-  syntaxTree(state).iterate({
-    enter: (node) => {
-      if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
-      for (let n = state.doc.lineAt(node.from).number; n <= state.doc.lineAt(node.to).number; n++) lines.add(n - 1);
-      return false;
-    },
-  });
-  return lines;
-}
-
-const inInlineCode = (state: EditorState, pos: number) => syntaxTree(state).resolveInner(pos, 1).name === "InlineCode";
-
 // ---- widgets --------------------------------------------------------------------
 
 class Title extends WidgetType {
@@ -72,6 +50,10 @@ class Title extends WidgetType {
   }
   override eq(o: Title): boolean {
     return o.kind === this.kind;
+  }
+  /** A click on the title puts the cursor there, which shows the marker. */
+  override ignoreEvent(): boolean {
+    return false;
   }
   override toDOM(): HTMLElement {
     return element("span", "tessela-callout-title", CALLOUTS[this.kind]);
@@ -124,6 +106,10 @@ class Formula extends WidgetType {
   override eq(o: Formula): boolean {
     return o.tex === this.tex && o.display === this.display;
   }
+  /** A click on a formula puts the cursor at it, which shows its TeX. */
+  override ignoreEvent(): boolean {
+    return false;
+  }
   override toDOM(): HTMLElement {
     const dom = element(this.display ? "div" : "span", `tessela-math ${this.display ? "tessela-math-block" : "tessela-math-inline"}`, this.tex);
     void typeset(dom, this.tex, this.display);
@@ -131,93 +117,178 @@ class Formula extends WidgetType {
   }
 }
 
-// ---- the drawing in the text ----------------------------------------------------
+// ---- reading the page -----------------------------------------------------------
+//
+// What is drawn is found in the syntax tree, where Tessela's own syntax (callouts, footnotes, math)
+// is nodes next to the CommonMark ones: nothing here scans the lines.
 
-function build(view: EditorView): DecorationSet {
-  const { state } = view;
-  const doc = state.doc;
-  const draw = rendered(state);
-  const code = codeLines(state);
-  const lines = doc.toString().split("\n");
-  const notes = footnotesOf(lines, (i) => code.has(i));
-  const ranges: Range<Decoration>[] = [];
-  /** Where the cursor is the construct shows as written; in select mode nothing does. */
-  const blocksSelected = selecting(state);
-  const editing = (from: number, to: number) => view.hasFocus && !blocksSelected && state.selection.ranges.some((r) => r.from <= to && r.to >= from);
-  const at = (line: number, column: number) => doc.line(line + 1).from + column;
+const KINDS = new Set<string>(Object.keys(CALLOUTS));
 
+/** The callouts: the kind each `> [!NOTE]` says, and where its first line and marker are. */
+function calloutsOf(state: EditorState): { kind: CalloutKind; from: number; to: number; first: { from: number; to: number }; marker: { from: number; to: number } }[] {
+  const out: ReturnType<typeof calloutsOf> = [];
   syntaxTree(state).iterate({
     enter: (node) => {
       if (node.name !== "Callout") return;
-      const first = doc.lineAt(node.from);
-      const kind = calloutKind(first.text);
-      if (!kind) return;
-      for (let n = first.number; n <= doc.lineAt(node.to).number; n++) {
-        ranges.push(Decoration.line({ class: `tessela-callout tessela-callout-${kind}${n === first.number ? " tessela-callout-first" : ""}` }).range(doc.line(n).from));
-      }
-      const marker = first.text.indexOf("[");
-      if (draw && !editing(first.from, first.to)) {
-        ranges.push(Decoration.replace({ widget: new Title(kind) }).range(first.from + marker, first.to - (first.text.length - first.text.trimEnd().length)));
+      const mark = node.node.getChild("CalloutMark");
+      const kind = mark ? state.sliceDoc(mark.from + 2, mark.to - 1).toLowerCase() : "";
+      if (!mark || !KINDS.has(kind)) return;
+      const first = state.doc.lineAt(node.from);
+      out.push({ kind: kind as CalloutKind, from: node.from, to: node.to, first: { from: first.from, to: first.to }, marker: { from: mark.from, to: mark.to } });
+    },
+  });
+  return out;
+}
+
+/** The footnote references, the definitions and the label of each, in the order of the page. */
+function footnotesIn(state: EditorState): { refs: FootnoteRef[]; defs: FootnoteDef[] } {
+  const refs: FootnoteRef[] = [];
+  const defs: FootnoteDef[] = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name === "FootnoteReference") {
+        refs.push({ id: state.sliceDoc(node.from + 2, node.to - 1), from: node.from, to: node.to });
+      } else if (node.name === "FootnoteDefinition") {
+        const label = node.node.getChild("FootnoteLabel");
+        if (!label) return;
+        const text = state.sliceDoc(label.to, node.to).replace(/\s+/g, " ").trim();
+        defs.push({ id: state.sliceDoc(label.from + 2, label.to - 2), from: node.from, label: { from: label.from, to: label.to }, text });
       }
     },
   });
+  return { refs, defs };
+}
 
-  for (const [i, text] of lines.entries()) {
-    if (code.has(i)) continue;
-    const def = footnoteDefinition(text);
-    if (def) {
-      const n = notes.numbers.get(def.id);
-      ranges.push(Decoration.line({ class: "tessela-fn-def" }).range(at(i, 0)));
-      if (draw && n !== undefined && !editing(at(i, 0), at(i, def.to))) {
-        ranges.push(Decoration.replace({ widget: new Number_(n, true, null, at(notes.first.get(def.id)!, 0)) }).range(at(i, 0), at(i, def.to)));
-      }
+/** Inline math: the TeX between its two marks. */
+function inlineMathOf(state: EditorState, node: SyntaxNode): { tex: string; from: number; to: number } | null {
+  const [open, close] = node.getChildren("MathMark");
+  return open && close ? { tex: state.sliceDoc(open.to, close.from), from: node.from, to: node.to } : null;
+}
+
+/** `$$` blocks that have a closing line: the TeX, and the lines they take. One that never closes is not drawn. */
+function mathBlocksOf(state: EditorState): { tex: string; from: number; to: number; top: boolean }[] {
+  const out: ReturnType<typeof mathBlocksOf> = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name !== "MathBlock") return;
+      const marks = node.node.getChildren("MathMark");
+      const text = node.node.getChild("MathText");
+      if (marks.length < 2 || !text) return false;
+      const first = state.doc.lineAt(node.from);
+      const last = state.doc.lineAt(node.to);
+      // Only a block that starts its line can stand in for its lines; one in a list or a quote is drawn under its source.
+      out.push({ tex: state.sliceDoc(text.from, text.to).trim(), from: first.from, to: last.to, top: first.from === node.from });
+      return false;
+    },
+  });
+  return out;
+}
+
+// ---- the drawing in the text ----------------------------------------------------
+
+/** What the editor says about the Markdown being drawn: `ctx.editor`'s reveal policy. */
+export interface Reveal {
+  rendered(state: EditorState): boolean;
+  isEditing(state: EditorState, range: { from: number; to: number }): boolean;
+}
+
+/**
+ * Callouts, footnotes and inline math, drawn where the Markdown is rendered and the cursor is not in
+ * them. The reveal policy is the editor's (`ctx.editor.isEditing`), the same one that hides the `**`
+ * of a bold span: a construct is typed where the cursor touches it, and nothing else is.
+ */
+export function textDecorations(state: EditorState, reveal: Reveal): DecorationSet {
+  const doc = state.doc;
+  const draw = reveal.rendered(state);
+  const editing = (from: number, to: number) => reveal.isEditing(state, { from, to });
+  const ranges: Range<Decoration>[] = [];
+
+  for (const { kind, from, to, first, marker } of calloutsOf(state)) {
+    const top = doc.lineAt(from).number;
+    for (let n = top; n <= doc.lineAt(to).number; n++) {
+      ranges.push(Decoration.line({ class: `tessela-callout tessela-callout-${kind}${n === top ? " tessela-callout-first" : ""}` }).range(doc.line(n).from));
     }
-    for (const r of footnoteRefs(text)) {
-      if (inInlineCode(state, at(i, r.from) + 1)) continue;
-      const n = notes.numbers.get(r.id);
-      const defined = notes.defs.get(r.id);
-      if (draw && n !== undefined && !editing(at(i, r.from), at(i, r.to))) {
-        ranges.push(Decoration.replace({ widget: new Number_(n, false, defined?.text ?? null, defined ? at(defined.line, 0) : null) }).range(at(i, r.from), at(i, r.to)));
-      } else {
-        ranges.push(Decoration.mark({ class: "tessela-fn-raw" }).range(at(i, r.from), at(i, r.to)));
-      }
+    if (draw && !editing(first.from, first.to)) ranges.push(Decoration.replace({ widget: new Title(kind) }).range(marker.from, marker.to));
+  }
+
+  const { refs, defs } = footnotesIn(state);
+  const notes = numberFootnotes(refs, defs);
+  const lineStart = (pos: number) => doc.lineAt(pos).from;
+  for (const def of defs) {
+    const n = notes.numbers.get(def.id);
+    ranges.push(Decoration.line({ class: "tessela-fn-def" }).range(lineStart(def.from)));
+    const firstRef = notes.first.get(def.id);
+    if (draw && n !== undefined && !editing(def.label.from, def.label.to)) {
+      ranges.push(Decoration.replace({ widget: new Number_(n, true, null, firstRef === undefined ? null : lineStart(firstRef)) }).range(def.label.from, def.label.to));
     }
-    if (draw && text.includes("$")) {
-      for (const m of inlineMath(text)) {
-        if (!editing(at(i, m.from), at(i, m.to))) ranges.push(Decoration.replace({ widget: new Formula(m.tex, false) }).range(at(i, m.from), at(i, m.to)));
-      }
+  }
+  for (const r of refs) {
+    const n = notes.numbers.get(r.id);
+    const defined = notes.defs.get(r.id);
+    if (draw && n !== undefined && !editing(r.from, r.to)) {
+      ranges.push(Decoration.replace({ widget: new Number_(n, false, defined?.text ?? null, defined ? lineStart(defined.from) : null) }).range(r.from, r.to));
+    } else {
+      ranges.push(Decoration.mark({ class: "tessela-fn-raw" }).range(r.from, r.to));
+    }
+  }
+
+  if (draw) {
+    syntaxTree(state).iterate({
+      enter: (node) => {
+        if (node.name === "FencedCode" || node.name === "CodeBlock" || node.name === "MathBlock") return false;
+        if (node.name !== "InlineMath") return;
+        const m = inlineMathOf(state, node.node);
+        if (m && !editing(m.from, m.to)) ranges.push(Decoration.replace({ widget: new Formula(m.tex, false) }).range(m.from, m.to));
+      },
+    });
+  }
+  return Decoration.set(ranges, true);
+}
+
+/**
+ * `$$` blocks. Drawn, one takes the place of its source, and where the cursor is in it, or the
+ * Markdown is not rendered, it is typeset under its closing line and the source stays as written.
+ */
+export function mathDecorations(state: EditorState, reveal: Reveal): DecorationSet {
+  const draw = reveal.rendered(state);
+  const ranges: Range<Decoration>[] = [];
+  for (const b of mathBlocksOf(state)) {
+    const widget = new Formula(b.tex, true);
+    if (draw && b.top && !reveal.isEditing(state, { from: b.from, to: b.to })) {
+      ranges.push(Decoration.replace({ widget, block: true }).range(b.from, b.to));
+    } else {
+      ranges.push(Decoration.widget({ widget, block: true, side: 1 }).range(b.to));
     }
   }
   return Decoration.set(ranges, true);
 }
 
-const drawing = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(view: EditorView) {
-      this.decorations = build(view);
-    }
-    update(update: ViewUpdate) {
-      const mode = rendered(update.startState) !== rendered(update.state) || selecting(update.startState) !== selecting(update.state);
-      if (update.docChanged || update.selectionSet || update.focusChanged || mode || syntaxTree(update.startState) !== syntaxTree(update.state)) {
-        this.decorations = build(update.view);
+/** Decorations that depend on what is typed are made again when the text, the tree or what is revealed changes. */
+function drawing(ctx: ModContext): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = textDecorations(view.state, ctx.editor);
       }
-    }
-  },
-  { decorations: (v) => v.decorations },
-);
+      update(update: ViewUpdate) {
+        if (update.docChanged || ctx.editor.revealChanged(update.startState, update.state) || syntaxTree(update.startState) !== syntaxTree(update.state)) {
+          this.decorations = textDecorations(update.state, ctx.editor);
+        }
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
 
-/** `$$` blocks are typeset under their closing line; the source stays as written. */
-const blocks = StateField.define<DecorationSet>({
-  create: (state) => blocksOf(state),
-  update: (value, tr) => (tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) ? blocksOf(tr.state) : value),
-  provide: (f) => EditorView.decorations.from(f),
-});
-
-function blocksOf(state: EditorState): DecorationSet {
-  const code = codeLines(state);
-  const found = displayMath(state.doc.toString().split("\n"), (i) => code.has(i));
-  return Decoration.set(found.map((b) => Decoration.widget({ widget: new Formula(b.tex, true), block: true, side: 1 }).range(state.doc.line(b.to + 1).to)));
+/** Block widgets cannot come from a plugin, so `$$` blocks are a field. */
+function blocks(ctx: ModContext): Extension {
+  return StateField.define<DecorationSet>({
+    create: (state) => mathDecorations(state, ctx.editor),
+    update: (value, tr) =>
+      tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) || ctx.editor.revealChanged(tr.startState, tr.state) ? mathDecorations(tr.state, ctx.editor) : value,
+    provide: (f) => EditorView.decorations.from(f),
+  });
 }
 
 const theme = EditorView.baseTheme({
@@ -240,7 +311,7 @@ const theme = EditorView.baseTheme({
   ".tessela-diagram svg": { maxWidth: "100%", height: "auto" },
 });
 
-const extension: Extension = [drawing, blocks, theme];
+const extension = (ctx: ModContext): Extension => [drawing(ctx), blocks(ctx), theme];
 
 // ---- the mod --------------------------------------------------------------------
 
@@ -262,7 +333,7 @@ async function copy(text: string): Promise<boolean> {
 let drawings = 0;
 
 export default function (ctx: ModContext): void {
-  ctx.editor.extend(extension);
+  ctx.editor.extend(extension(ctx));
 
   ctx.fences.add("math", async ({ body }) => {
     const dom = element("div", "tessela-math tessela-math-block", body);
@@ -316,12 +387,14 @@ export default function (ctx: ModContext): void {
       if (!view) return;
       const doc = view.state.doc;
       const text = doc.toString();
-      const label = nextLabel(text.split("\n"));
+      const { refs, defs } = footnotesIn(view.state);
+      const label = nextLabel([...refs, ...defs].map((n) => n.id));
       const ref = `[^${label}]`;
       // The definition goes at the end, after a blank line; after another definition, right under it.
       const trailing = text.length - text.trimEnd().length;
-      const lastLine = text.trimEnd().split("\n").pop() ?? "";
-      const tail = `${footnoteDefinition(lastLine) ? "\n" : "\n\n"}[^${label}]: `;
+      const last = ctx.page(view.state).nodes.at(-1);
+      const afterDefinition = last !== undefined && [last, ...last.ancestors()].some((n) => n.kind === "footnote");
+      const tail = `${afterDefinition ? "\n" : "\n\n"}[^${label}]: `;
       const head = view.state.selection.main.head;
       const cursor = doc.length - trailing + ref.length + tail.length;
       view.dispatch({

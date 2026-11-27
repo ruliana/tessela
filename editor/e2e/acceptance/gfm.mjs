@@ -68,6 +68,17 @@ suite("GFM extras: callouts", () => ({}), (test) => {
     await s.win.waitForFunction(() => !document.querySelector(".tessela-callout-title"));
     assert.equal(await s.win.locator(".tessela-callout-tip").count(), 2, "it is still a callout, only drawn plainer");
   });
+
+  test("with the cursor on another line of the callout, the title stays drawn", async (s) => {
+    await pageWith(s, "gfm-callout-body", "> [!TIP]\n> Try this.\n\nEnd.\n");
+    await s.win.waitForSelector(".tessela-callout-title");
+    await goTo(s, "Try this");
+    await s.key("ArrowRight");
+    assert.equal(await s.win.locator(".tessela-callout-title").count(), 1, "the marker is the title's own construct: the cursor is not in it");
+    // A click on the drawn title shows the marker.
+    await s.win.click(".tessela-callout-title");
+    await s.win.waitForFunction(() => !document.querySelector(".tessela-callout-title"));
+  });
 }, { rendered: true });
 
 suite("GFM extras: footnotes", () => ({}), (test) => {
@@ -102,6 +113,26 @@ suite("GFM extras: math", () => ({}), (test) => {
     await s.win.waitForFunction(() => document.querySelectorAll(".tessela-math math").length >= 1);
     assert.equal(await s.win.locator(".tessela-math-inline math").count(), 1, "one inline formula, not the prices");
     await s.win.waitForFunction(() => document.querySelectorAll(".tessela-live math, .tessela-math-block math").length >= 2);
+  });
+
+  test("a $$ block takes the place of its source, and opens as a whole when the cursor enters it", async (s) => {
+    await pageWith(s, "gfm-math-open", "Intro.\n\n$$\n\\frac{1}{2}\n\nx\n$$\n\nEnd.\n");
+    await s.win.waitForFunction(() => document.querySelectorAll(".tessela-math-block math").length >= 1);
+    assert.doesNotMatch(await s.doc(), /frac/, "the source is replaced by the formula");
+    // A click on the drawn formula puts the cursor at it: the source shows, with the formula under it.
+    await s.win.click(".tessela-math-block");
+    await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("\\frac{1}{2}")));
+    assert.match(await s.doc(), /\$\$\n\\frac\{1\}\{2\}\n\nx\n\$\$/);
+    assert.equal(await s.win.locator(".tessela-math-block math").count(), 1, "typeset under the source");
+    await s.win.click(".cm-line:has-text('Intro')");
+    await s.win.waitForFunction(() => ![...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("\\frac{1}{2}")));
+  });
+
+  test("a $$ block that never closes is text", async (s) => {
+    await pageWith(s, "gfm-math-open-end", "Intro.\n\n$$\nx^2\n\nEnd of the page.\n");
+    await s.win.waitForSelector(".cm-line");
+    assert.equal(await s.win.locator(".tessela-math").count(), 0);
+    assert.match(await s.doc(), /\$\$\nx\^2/);
   });
 
   test("a formula with an error shows the error and the page goes on", async (s) => {

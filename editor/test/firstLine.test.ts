@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { frontMatterYaml, noSetext, tessela } from "../src/shared/syntax";
 import { frontMatterGuard } from "../src/renderer/livePreview";
+import { pageLanguage, pageModel } from "../src/renderer/pageModelField";
 
 /** The node names of the page's tree, the way the editor's language builds it (editor.ts). */
 function nodes(text: string): string[] {
@@ -41,7 +42,7 @@ describe("no setext headings", () => {
 
 describe("the caret and the front matter", () => {
   // Line 1 `---`, 2 `type`, 3 `title`, 4 `---`, 5 blank, 6 the body.
-  const start = (head: number) => EditorState.create({ doc: page + "body", selection: { anchor: head }, extensions: [frontMatterGuard()] });
+  const start = (head: number) => EditorState.create({ doc: page + "body", selection: { anchor: head }, extensions: [pageLanguage(), pageModel, frontMatterGuard()] });
   const bodyHead = (page + "body").length;
 
   it("sends a caret moved up from the body to the first property", () => {
@@ -68,7 +69,7 @@ describe("the caret and the front matter", () => {
   it("leaves a selection alone, and a page without front matter", () => {
     const sel = start(bodyHead).update({ selection: { anchor: 0, head: 5 }, userEvent: "select" }).state;
     expect(sel.selection.main.from).toBe(0);
-    const plain = EditorState.create({ doc: "a\nb\nc", selection: { anchor: 4 }, extensions: [frontMatterGuard()] });
+    const plain = EditorState.create({ doc: "a\nb\nc", selection: { anchor: 4 }, extensions: [pageLanguage(), pageModel, frontMatterGuard()] });
     expect(plain.update({ selection: { anchor: 0 }, userEvent: "select" }).state.selection.main.head).toBe(0);
   });
 });
