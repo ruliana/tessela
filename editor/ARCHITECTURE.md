@@ -135,6 +135,7 @@ Decided by Ronie on 2026-11-27.
 | Mod API | Green field: breaking changes are allowed, with no deprecation shims. Built-in mods are updated in the same PR. Mods get `ctx.editor.selectedBlocks()` and events for entering and leaving select mode, in place of the `cm-select-mode` class. |
 | Process | PRs merge when checks pass, without review. Every bug found gets a test that fails before the fix and passes after it. |
 | Known bugs | Escape and Up/Down ignoring zoom and folds, Backspace unhandled in select mode, and focus mode taking Escape first are fixed by the rebuild, each with a proving test. |
+| Page model details | A list is not a node: its items are children of what holds the list (an item, the paragraph that owns it, a section or the page). Items in a quote, callout or footnote definition are children of it, so they can be stepped to; the index has those as part of the quote. The model also has `frontmatter`, `math`, `footnote`, `rule` and `other` nodes that the index does not list. A node's `key` is the hash of a block handle, computed in the editor with BLAKE3 (`@noble/hashes`). The differences from the index are listed in `test/pageModel.oracle.test.ts`. |
 | ChangeSets | Block edits as ChangeSets is decided after the typed selection lands. |
 
 ## Rebuild order
@@ -155,7 +156,7 @@ changes a row.
 
 | Principle | Today |
 | --- | --- |
-| 1. One page model | Not met. Five readers: the CodeMirror tree, `parseBlocks` in `shared/blocks.ts`, line regexes (`shared/folds.ts`, gfm-extras), the table cell parser in `livePreview.ts`, and `pulldown-cmark` in the Rust index. |
+| 1. One page model | Partly. `shared/pageModel.ts` builds the model from the syntax tree as the `pageModel` state field (`renderer/pageModelField.ts`), and the Rust index is its oracle. No reader uses it yet: they still parse the page their own way (`parseBlocks` in `shared/blocks.ts`, line regexes in `shared/folds.ts` and gfm-extras, the table cell parser in `livePreview.ts`). |
 | 2. Typed selection | Not met. `selectMode.ts` is a boolean `StateField`; selected blocks are a text range checked by `aligned()`. |
 | 3. Transactions | Partly. Typing and CodeMirror commands are; block commands work on line arrays and diff them in `apply()` (`blockKeys.ts`). |
 | 4. Views from state | Partly. Decorations are state-driven, but each provider has its own reveal rule, and mods read `cm-select-mode`. |
