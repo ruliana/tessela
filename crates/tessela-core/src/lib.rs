@@ -18,7 +18,7 @@ pub mod rewrite;
 pub mod unlinked;
 pub mod vocab;
 
-pub use blocks::{Block, Heading, TaskState};
+pub use blocks::{Block, BlockKind, Heading, Structure, TaskState};
 pub use bundle::Bundle;
 pub use index::{Listing, WriteReport};
 pub use lint::{Diagnostic, Linter, Rule, Severity};

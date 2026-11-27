@@ -20,6 +20,7 @@ Use the `tessela` CLI for everything it can do, changes included. Pass `--json` 
 | See what changed in the notes since a commit or the last pull (by git or by another agent) | `tessela changes -b . --json [--since REV]` (`ORIG_HEAD` after a pull): pages added/modified/deleted with block-level `changes` (`raw`, `old_raw`, `line`); read-only |
 | Find related pages, and the home pages that lead to one | `tessela related -b . NAME --json`: `together` (with a `reason`) and `chain` of home pages |
 | See what a folder holds | `tessela index . [--dir folder] [--recursive]` (prints; writes nothing; `--recursive` lists every page below the folder, sub-folders included; `--json` also gives the folder's `home` and the pages its home page `links` to, the best place to start reading) |
+| See the structure of one page: sections, and each block's kind, span and parent | `tessela blocks -b . PAGE --json` (`headings` and `blocks`, with `line`, `end_line`, `kind`, `parent`, `section`) |
 | List every page with its title and type | `tessela pages . --json` (`pages`: `id`, `path`, `title`, `type`; sorted by path) |
 | Follow changes as they happen | `tessela watch . --json [--exit-on-stdin-close]` (one JSON line per burst: `{"event":"changed","paths":[...]}`; runs until stopped) |
 | See every command, argument and answer shape | `tessela schema` (one JSON document: `commands.NAME.args`, `commands.NAME.answer` as JSON Schema) |

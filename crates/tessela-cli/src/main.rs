@@ -352,6 +352,14 @@ enum Command {
         #[arg(long, default_value = "HEAD")]
         since: String,
     },
+    /// The shape of a page: its headings with their sections, its blocks with their kinds,
+    /// spans and parents
+    Blocks {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page, e.g. `project/tessela.md`
+        page: String,
+    },
     /// Pages mentioned together with a page, and the home pages that lead to it
     Related {
         #[command(flatten)]
@@ -528,6 +536,45 @@ fn main() -> ExitCode {
             let from = edit::existing_path(&page)?;
             let to = edit::move_target(&from, &dest)?;
             moved(store, &from, &to, expect.as_deref(), dry_run)
+        }),
+        Command::Blocks { edit, page } => run_edit(&edit, |_| {
+            let path = edit::existing_path(&page)?;
+            let bundle = Bundle::load(&edit.bundle)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
+            let page = bundle
+                .pages
+                .iter()
+                .find(|p| p.path == path)
+                .ok_or_else(|| EditError::new(ErrorCode::NotFound, format!("no page {path}")))?;
+            let structure = tessela_core::Structure::of(page);
+            Ok(Done::new(
+                &structure,
+                |s| {
+                    let mut rows: Vec<(usize, String)> = Vec::new();
+                    for h in &s.headings {
+                        rows.push((
+                            h.line,
+                            format!("{}-{} heading {}", h.line, h.end_line, h.text),
+                        ));
+                    }
+                    for b in &s.blocks {
+                        let kind = serde_json::to_value(b.kind).unwrap();
+                        rows.push((
+                            b.line,
+                            format!(
+                                "{}-{} {} {}",
+                                b.line,
+                                b.end_line,
+                                kind.as_str().unwrap_or(""),
+                                b.text.lines().next().unwrap_or("")
+                            ),
+                        ));
+                    }
+                    rows.sort_by_key(|(line, _)| *line);
+                    rows.into_iter().map(|(_, r)| r + "\n").collect()
+                },
+                true,
+            ))
         }),
         Command::Related { edit, name, limit } => run_edit(&edit, |_| {
             let bundle = Bundle::load(&edit.bundle)
