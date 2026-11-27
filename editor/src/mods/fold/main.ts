@@ -33,7 +33,7 @@ function storeIn(settings: ModContext["settings"]): FoldStore {
 }
 
 export default function (ctx: ModContext): void {
-  ctx.editor.extend(({ path }) => folding(path, storeIn(ctx.settings)));
+  ctx.editor.extend(({ path }) => folding(path, storeIn(ctx.settings), ctx.page));
 
   const mac = navigator.userAgent.includes("Mac");
   const mod = mac ? "⌘" : "Ctrl";

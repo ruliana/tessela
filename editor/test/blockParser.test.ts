@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { type Sel, blockAt, editedBlockLines, extendBlocks, move, selectBlock } from "../src/shared/blocks";
+import { type Sel, blockAt, extendBlocks, move, selectBlock } from "../src/shared/blocks";
 import type { PageNode } from "../src/shared/pageModel";
 import { modelOf } from "./support/page";
 
@@ -440,38 +440,6 @@ describe("Escape and block selection over blank lines", () => {
   });
 });
 
-describe("the lines of the block being edited", () => {
-  const lines = (text: string, at: number) => editedBlockLines(text.split("\n"), at);
-
-  it("is a paragraph's lines, and not the list under it", () => {
-    expect(lines("one\ntwo\n- a", 0)).toEqual([0, 1]);
-    expect(lines("one\ntwo\n- a", 2)).toEqual([2]);
-  });
-
-  it("is an item's own lines, and not the items nested in it", () => {
-    expect(lines("- a\n  lazy\n  - b\n- c", 0)).toEqual([0, 1]);
-    expect(lines("- a\n  - b\n- c", 1)).toEqual([1]);
-  });
-
-  it("is an item's own text only: a paragraph that follows its nested list is a child block with lines of its own", () => {
-    expect(lines("- a\n  - b\n\n  after\n- c", 0)).toEqual([0]);
-    expect(lines("- a\n  - b\n\n  after\n- c", 3)).toEqual([3]);
-  });
-
-  it("is a heading's line, and a quote's lines", () => {
-    expect(lines("# H\n- a", 0)).toEqual([0]);
-    expect(lines("> a\n> b", 1)).toEqual([0, 1]);
-  });
-
-  it("is nothing for a blank line, and the line itself in a fence", () => {
-    expect(lines("a\n\nb", 1)).toEqual([]);
-    expect(lines("```\na\n\nb\n```", 3)).toEqual([3]);
-  });
-});
-
-// ---- generated pages -------------------------------------------------------------------
-
-/** A small deterministic random generator, so a failure can be reproduced. */
 function rng(seed: number): () => number {
   let s = seed >>> 0;
   return () => {

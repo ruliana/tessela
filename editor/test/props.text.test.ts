@@ -10,7 +10,7 @@ import { inlineParts } from "../src/shared/inline";
 import { anchorOf, conceptAt, findAnchor, headingText, linkTargetId, localTarget, normalizeConcept, refsInLine } from "../src/shared/links";
 import { emptyHistory, relocate, relocateRecent, step, touch, visit, type History, type Place } from "../src/shared/nav";
 import { rank, score } from "../src/shared/palette";
-import { frontmatterEnd } from "../src/shared/blocks";
+import { frontmatterEnd } from "../src/shared/syntax";
 import { parseProperties } from "../src/shared/properties";
 import { smartLink } from "../src/shared/smartLink";
 import { inlineTokens } from "../src/shared/tokens";

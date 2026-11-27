@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { frontmatterEnd } from "../src/shared/blocks";
+import { frontmatterEnd } from "../src/shared/syntax";
 import { bodyRepeatsTitle, bodyStart, parseProperties, showWhen } from "../src/shared/properties";
 
 const read = (text: string) => {

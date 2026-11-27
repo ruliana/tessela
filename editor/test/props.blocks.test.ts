@@ -1,4 +1,4 @@
-// Property tests for the block structure: whatever a page holds, `parseBlocks` describes it
+// Property tests for the block structure: whatever a page holds, the page model describes it
 // consistently, and the edits that act on blocks neither lose nor invent text.
 //
 // Moving a block and moving it back, or nesting an item and taking it out, are checked on

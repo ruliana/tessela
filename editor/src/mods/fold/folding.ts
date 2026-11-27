@@ -9,27 +9,20 @@ import { EditorState, type Extension, Prec, type Range, StateEffect, StateField,
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType, keymap } from "@codemirror/view";
 
 import { type Crumb, type Fold, foldAround, foldables, foldsOnLoad, foldsToRemember, zoomAt } from "../../shared/folds";
-import { type PageModel, pageModelOf } from "../../shared/pageModel";
+import type { PageModel } from "../../shared/pageModel";
 import { parsePage } from "../../shared/pageText";
 
 // ---- folds -------------------------------------------------------------------------
 
-const models = new WeakMap<Text, PageModel>();
 const cache = new WeakMap<Text, Fold[]>();
 
-/**
- * The page model of the state, made from the syntax tree of its editor, once for each version of the
- * text. (A mod does not share the editor's own state field, so it builds the model itself, from the
- * same tree with the same builder; `ctx.page` will hand it over.)
- */
+/** The page model of a state: the editor's own, which the mod is handed (`ctx.page`). */
+type PageOf = (state: EditorState) => PageModel;
+
+// `ctx.page` is one function for every editor of the window, so `folding` keeps it here.
+let page: PageOf;
 function modelOf(state: EditorState): PageModel {
-  let model = models.get(state.doc);
-  if (!model) {
-    model = pageModelOf(state);
-    // A model that stops short of the end of the page is made again when the parser has got further.
-    if (model.complete) models.set(state.doc, model);
-  }
-  return model;
+  return page(state);
 }
 
 /** The foldable blocks of the page, worked out once for each version of the text. */
@@ -380,7 +373,8 @@ function selectZoomed(view: EditorView): boolean {
 }
 
 /** Everything the fold mod adds to the editor of the page at `path`. */
-export function folding(path: string, store: FoldStore): Extension {
+export function folding(path: string, store: FoldStore, pageOf: PageOf): Extension {
+  page = pageOf;
   return [
     placeholder,
     chevrons,
