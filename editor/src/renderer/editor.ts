@@ -8,9 +8,7 @@ import {
   startCompletion,
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { GFM } from "@lezer/markdown";
 import { search, searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { Annotation, Compartment, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
@@ -28,7 +26,6 @@ import { tags as t } from "@lezer/highlight";
 import type { VocabEntry } from "../shared/api";
 import { suggest } from "../shared/complete";
 import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../shared/linkFlows";
-import { frontMatterYaml, tessela } from "../shared/syntax";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { dayAt } from "../shared/dates";
 import type { PropertiesOverride } from "../shared/mods";
@@ -40,7 +37,7 @@ import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { focusMarks, livePreview, renderedLine } from "./livePreview";
 import { slashSource } from "./slash";
-import { noSetext } from "../shared/blocks";
+import { pageLanguage, pageModel } from "./pageModelField";
 import { bodyStart } from "../shared/properties";
 
 export interface EditorOptions {
@@ -280,7 +277,8 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         EditorView.lineWrapping,
         // Markdown (with tables and task lists) and Tessela's own syntax (front matter, callouts,
         // footnotes, math) in one parser, and code in the languages that fenced blocks name.
-        markdown({ codeLanguages: languages, extensions: [GFM, noSetext, tessela, frontMatterYaml] }),
+        pageLanguage(languages),
+        pageModel,
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
