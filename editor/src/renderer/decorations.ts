@@ -5,8 +5,8 @@ import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, StateEffect } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
-import { frontmatterEnd } from "../shared/blocks";
 import { type Token, frontmatterTags, inlineTokens } from "../shared/tokens";
+import { pageModel } from "./pageModelField";
 
 /** Dispatch this when what the decorations depend on (the vocabulary) has changed. */
 export const refreshDecorations = StateEffect.define<null>();
@@ -60,7 +60,8 @@ export function queryableMarks(opts: DecorationOptions): Extension {
         const ranges = [];
         // The tags of the front matter tag the page itself.
         const head = Array.from({ length: Math.min(state.doc.lines, 200) }, (_, i) => state.doc.line(i + 1).text);
-        const fmEnd = frontmatterEnd(head);
+        const front = state.field(pageModel, false)?.root.children.find((n) => n.kind === "frontmatter");
+        const fmEnd = front ? front.endLine - 1 : -1;
         const pageTags = fmEnd > 0 ? frontmatterTags(head, fmEnd) : new Map<number, Token[]>();
         for (const { from, to } of view.visibleRanges) {
           for (let pos = from; pos <= to; ) {

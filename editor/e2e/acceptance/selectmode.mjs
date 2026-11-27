@@ -40,8 +40,8 @@ const saved = async (s, name) => (await s.savedBody(name)).replace(/^# Title\n\n
 suite("Select mode", null, (test) => {
   test("the selected block is drawn as Markdown, like the ones without the cursor", async (s) => {
     await s.openWith("sel-look", PAGE);
-    await s.win.click(".cm-line:has-text('First')");
-    assert.equal(await shown(s, "First"), "First **bold** paragraph.", "the block with the cursor is raw");
+    await s.win.click(".cm-line:has-text('First') >> text=bold");
+    assert.equal(await shown(s, "First"), "First **bold** paragraph.", "the construct with the cursor is raw");
     await s.key("Escape");
     assert.equal(await shown(s, "First"), "First bold paragraph.");
     assert.equal(await picked(s), "First bold paragraph.");
@@ -104,10 +104,12 @@ suite("Select mode", null, (test) => {
     assert.ok((await saved(s, "sel-click")).includes("Second *para*\ncontinues\n"));
   });
 
-  test("a click on the selected block itself also gets out, and shows it as typed", async (s) => {
+  test("a click on the selected block itself also gets out", async (s) => {
     await select(s, "sel-click-in", "First");
     await s.win.click(".cm-line:has-text('First')");
-    assert.equal(await shown(s, "First"), "First **bold** paragraph.");
+    // The click is past the end of the text: the cursor is at the end of the paragraph, in none of its constructs.
+    assert.equal(await shown(s, "First"), "First bold paragraph.");
+    assert.equal(await s.win.locator(".cm-select-mode").count(), 0, "select mode is left");
     assert.equal(await s.selected(), "");
     await s.key("Home");
     await s.type("> ");
@@ -147,10 +149,11 @@ suite("Select mode", null, (test) => {
     assert.ok((await saved(s, "sel-enter-many")).includes("continues\n\nfresh\n\n- item"));
   });
 
-  test("Space edits from the start of the block, and the block shows as typed", async (s) => {
+  test("Space edits from the start of the block", async (s) => {
     await select(s, "sel-space", "Second");
     await s.key(" ");
-    assert.equal(await shown(s, "Second"), "Second *para*", "back in edit mode");
+    // The cursor is at the start of the block, in none of its constructs: they stay drawn.
+    assert.equal(await shown(s, "Second"), "Second para", "back in edit mode");
     await s.type("X");
     assert.ok((await saved(s, "sel-space")).includes("\nXSecond *para*\ncontinues\n"), "no space was typed");
   });
@@ -182,7 +185,7 @@ suite("Select mode", null, (test) => {
   test("a character starts editing at the start of the block and is typed there", async (s) => {
     await select(s, "sel-type", "Second");
     await s.type("Q");
-    assert.equal(await shown(s, "QSecond"), "QSecond *para*");
+    assert.equal(await shown(s, "QSecond"), "QSecond para");
     await s.type("w");
     assert.ok((await saved(s, "sel-type")).includes("\nQwSecond *para*\ncontinues\n"));
   });
