@@ -145,6 +145,13 @@ function toggleFocus(): void {
   active?.focus();
 }
 
+/** Escape with nothing left to widen leaves focus mode, if it is on: true when it did. */
+function leaveFocusMode(): boolean {
+  if (!focusMode) return false;
+  toggleFocus();
+  return true;
+}
+
 const RECENT_KEY = "tessela.recent";
 /** The notes folder, which the Recent list belongs to. */
 let root = "";
@@ -791,16 +798,20 @@ function openPalette(): void {
   });
 }
 
+// Escape in an editor is the editor's: it closes a menu, widens the block selection and, when there is
+// nothing left to widen, leaves focus mode (blockKeys.ts). Only where no editor or field has the key does
+// the window take it, so that focus mode can be left from anywhere.
+window.addEventListener("keydown", (e) => {
+  const target = e.target instanceof Element ? e.target : null;
+  if (e.key !== "Escape" || !focusMode || e.defaultPrevented || paletteOpen() || target?.closest(".cm-editor, input, textarea, [role=dialog], #peek")) return;
+  toggleFocus();
+  e.preventDefault();
+});
+
 // Captured, so the editor never sees these keys: the palette, and the panels and focus.
 window.addEventListener(
   "keydown",
   (e) => {
-    if (e.key === "Escape" && focusMode && !paletteOpen() && !document.querySelector(".cm-tooltip-autocomplete")) {
-      toggleFocus();
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
     if (!document.getElementById("new-page") || e.altKey) return;
     const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
     if (!mod) return;
@@ -839,6 +850,8 @@ function cardDeps() {
       registry.emit("page-saved", { path });
     },
     onOpened: (path: string) => registry.emit("page-opened", { path }),
+    onLeaveFocus: leaveFocusMode,
+    onSelectMode: (path: string, on: boolean) => registry.emit(on ? "select-mode-entered" : "select-mode-left", { path }),
     onTitleEdited: (path: string, from: string, to: string) => registry.emit("title-edited", { path, from, to }),
     pageMenu: (path: string) =>
       registry.pageMenuItems().map((item) => ({ label: item.label, run: () => registry.call(item.mod, item.label, () => item.run({ path })) })),

@@ -14,13 +14,13 @@
 // right after `**bold**` is still in it.
 //
 // The facts it needs are kept in one place each: the focus here (`editorFocus`), the mode in
-// `selectMode.ts` and whether the Markdown is drawn at all in the `rendered` facet that live preview
+// `blockSelection` (selectMode.ts) and whether the Markdown is drawn at all in the `rendered` facet that live preview
 // provides. Nobody else keeps a copy, and nobody reads a CSS class to find them out.
 
 import { type EditorState, type Extension, Facet, StateEffect, StateField } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
-import { selectMode } from "./selectMode";
+import { blockSelection } from "./selectMode";
 
 /** A piece of the page, `from` to `to` (both ends count as touching). */
 export interface Span {
@@ -57,7 +57,7 @@ export function isRendered(state: EditorState): boolean {
  * selection range touches it. What is being edited shows as typed; what is not shows drawn.
  */
 export function isEditing(state: EditorState, span: Span): boolean {
-  if (!state.field(editorFocus, false) || state.field(selectMode, false)) return false;
+  if (!state.field(editorFocus, false) || state.field(blockSelection, false)) return false;
   return state.selection.ranges.some((r) => r.from <= span.to && r.to >= span.from);
 }
 
@@ -75,7 +75,7 @@ export function revealChanged(before: EditorState, after: EditorState): boolean 
   return (
     !before.selection.eq(after.selection) ||
     before.field(editorFocus, false) !== after.field(editorFocus, false) ||
-    before.field(selectMode, false) !== after.field(selectMode, false) ||
+    before.field(blockSelection, false) !== after.field(blockSelection, false) ||
     isRendered(before) !== isRendered(after)
   );
 }

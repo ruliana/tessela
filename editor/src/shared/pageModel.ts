@@ -108,6 +108,11 @@ export class PageNode {
     this.#keyText = extra.keyText ?? (() => "");
   }
 
+  /** The model this node belongs to: a node is one of one version of the page. */
+  get model(): PageModel {
+    return this.#model;
+  }
+
   /** @internal */
   get keyText(): string {
     return this.#keyText();

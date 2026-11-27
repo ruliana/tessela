@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { mathDecorations, textDecorations } from "../src/mods/gfm-extras/main";
 import { isEditing, isRendered } from "../src/renderer/reveal";
+import { coversRange } from "../src/renderer/selectMode";
 import { describe as shown, revealState } from "./support/reveal";
 
 const reveal = { rendered: isRendered, isEditing };
@@ -83,6 +84,16 @@ describe("a $$ block opens as a whole when the cursor enters it", () => {
     expect(math(doc, { at: from + 4, focused: false })).toEqual([`${from}-${to} Formula`]);
     expect(math(doc, { at: from + 4, selecting: true })).toEqual([`${from}-${to} Formula`]);
     expect(math(doc, { at: 2, preview: false })).toEqual([`${to}-${to} Formula`]);
+  });
+
+  it("wears the selected class when select mode has it selected, and not otherwise", () => {
+    const selected = (where = {}) => {
+      const set = mathDecorations(revealState(doc, where), { ...reveal, isSelected: (state, r) => coversRange(state, r.from, r.to) });
+      const spec = set.iter().value?.spec as { widget: { selected: boolean } } | undefined;
+      return spec?.widget.selected;
+    };
+    expect(selected({ at: from + 4, selecting: true })).toBe(true);
+    expect(selected({ at: from + 4, focused: false })).toBe(false);
   });
 
   it("is not drawn at all when it never closes", () => {

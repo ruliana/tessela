@@ -10,7 +10,8 @@ import { type Extension, Prec } from "@codemirror/state";
 import * as view from "@codemirror/view";
 import { type EditorView, keymap } from "@codemirror/view";
 
-import type { PageModel } from "../shared/pageModel";
+import { makeSelection } from "../shared/blockSelection";
+import type { PageModel, PageNode } from "../shared/pageModel";
 
 import type { ModsInfo } from "../shared/api";
 import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModOverrides, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
@@ -21,6 +22,7 @@ import { el } from "./dom";
 import { fenceExtension, refreshFences } from "./fences";
 import { pageModel } from "./pageModelField";
 import { type Span, isEditing, isRendered, revealChanged } from "./reveal";
+import { type HiddenLines, coversRange, hiddenLines, selectedBlocks, selectionSpec } from "./selectMode";
 
 /** An extension a mod gives for each editor, told which page the editor shows. */
 export type PageExtension = (page: { path: string }) => Extension;
@@ -124,12 +126,27 @@ export interface ModContext {
    * - `rendered(state)`: the window shows the Markdown drawn at all (live preview is on).
    * - `revealChanged(before, after)`: what is typed may differ between two states (the selection, the
    *   focus, the mode or the preview changed): decorations are made again when it is true, or the text changed.
+   *
+   * Select mode (blocks selected as blocks) is a value in the state, not a CSS class:
+   * - `selectedBlocks(state)`: the selected blocks as nodes of `ctx.page(state)`, in page order (a selected
+   *   block includes the blocks it owns), or none while the person is editing.
+   * - `isSelected(state, range)`: `range` lies in the selected blocks: a widget that stands in for a block
+   *   wears the class `cm-block-selected` then (the editor draws the lines of the blocks itself).
+   * - `selectBlocks(state, anchor, head?)`: the part of a transaction that selects the run of blocks from
+   *   `anchor` to `head` (both nodes of `ctx.page(state)`); merge it into the `dispatch` of a command that
+   *   keeps the blocks selected. Anything else that sets the selection or the text ends select mode.
+   * - `hidden(provide)`: an extension that says which lines (1-based, `{ from, to }`) the mod hides, as the
+   *   fold mod's zoom does; block selection does not step to or widen to a block that starts on one.
    */
   editor: {
     extend(extension: Extension | PageExtension): void;
     isEditing(state: state.EditorState, range: Span): boolean;
     rendered(state: state.EditorState): boolean;
     revealChanged(before: state.EditorState, after: state.EditorState): boolean;
+    selectedBlocks(state: state.EditorState): PageNode[];
+    isSelected(state: state.EditorState, range: Span): boolean;
+    selectBlocks(state: state.EditorState, anchor: PageNode, head?: PageNode): state.TransactionSpec;
+    hidden(provide: (state: state.EditorState) => readonly HiddenLines[]): Extension;
   };
   /**
    * The structure of the page in `state`: sections, blocks and their children, as the editor reads
@@ -209,6 +226,13 @@ function contextFor(mod: string): ModContext {
       isEditing,
       rendered: isRendered,
       revealChanged,
+      selectedBlocks,
+      isSelected: (editorState, range) => coversRange(editorState, range.from, range.to),
+      selectBlocks: (editorState, anchor, head = anchor) => {
+        const sel = makeSelection(anchor, head);
+        return sel ? selectionSpec(editorState, sel) : {};
+      },
+      hidden: (provide) => hiddenLines.of(provide),
     },
     page: (editorState) => editorState.field(pageModel),
     settings: settingsOf(mod),

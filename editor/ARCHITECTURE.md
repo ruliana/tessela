@@ -113,7 +113,10 @@ each mode is in one table, and select mode is a pure function
 order: an open menu or popup, then widening the block selection (block, parent,
 section, page), then leaving focus mode only when there is nothing left to widen.
 Select mode exits only through named transitions: Enter, Space, Left, Right, a
-typed character, a click, and any edit or selection that select mode did not make.
+typed character, Backspace or Delete when no block is left to select, Escape with
+nothing left to widen (and focus mode off), a click, and any edit or selection that
+select mode did not make. A menu or popup that is open takes Escape before all that:
+it binds the key above the editor's own keys.
 
 ### 7. Invariants are tested as properties of the model
 
@@ -151,6 +154,7 @@ Decided by Ronie on 2026-11-27.
 | Page model details | A list is not a node: its items are children of what holds the list (an item, the paragraph that owns it, a section or the page). Items in a quote, callout or footnote definition are children of it, so they can be stepped to; the index has those as part of the quote. The model also has `frontmatter`, `math`, `footnote`, `rule` and `other` nodes that the index does not list. A node's `key` is the hash of a block handle, computed in the editor with BLAKE3 (`@noble/hashes`). The differences from the index are listed in `test/pageModel.oracle.test.ts`. |
 | Sections in commands | A heading is a section for Alt+Up/Down (it takes what is under it) and for Shift+Down from a paragraph; Escape takes the heading line, then the section. The first block under a heading moves up past the heading line (out of the section) and the last moves down past the next heading (into that section), so a move is undone by the opposite move. A run of items at the top of a page or section is what a list was for Escape and Shift+Up/Down; nested items are children of their item. |
 | Fold keys | A fold is remembered by the node's `key` (the hash of its text, as in a block handle), not by its first line; editing the text of a folded block opens it, as before. |
+| Select mode, as built | A heading selected by Escape or by stepping is its own line (`heading` on the selection), and its section once Escape or Shift+Down takes it in. The page, for Escape and Backspace, is its blocks: the front matter is drawn as a title and is never selected, cut or typed over. Shift+Up/Down move the head from a fixed anchor, so they also give a block back, and a run of items at the top of a page or a section is taken in or given back whole when it is entered from outside. After Backspace or Delete the next block in reading order is selected, or the previous one at the end of what is shown; of the two gaps around the removed blocks the larger stays, and at an end of the page none. Tab, Shift+Tab and Alt+Up/Down in select mode find the same blocks again by the lines they started on (an edit that changes nothing leaves the selection alone). Ctrl+Enter ticks the selected items themselves, not the ones nested in them. The folds are CodeMirror's; anything else that hides lines (the fold mod's zoom) says so through `ctx.editor.hidden`, and a block that starts on a hidden line is neither stepped to nor widened to. The fold keys act on `ctx.editor.selectedBlocks` when there are some. |
 | ChangeSets | Block edits as ChangeSets is decided after the typed selection lands. |
 
 ## Rebuild order
@@ -172,12 +176,12 @@ changes a row.
 | Principle | Today |
 | --- | --- |
 | 1. One page model | Met for the editor. `shared/pageModel.ts` builds the model from the syntax tree as the `pageModel` state field (`renderer/pageModelField.ts`), and the Rust index is its oracle. Block commands, selection stepping, folds and zoom (`shared/blocks.ts`, `shared/folds.ts`, `renderer/blockKeys.ts`), the live preview and the mods (`ctx.page`) read it; `parseBlocks` and `editedBlockLines` are gone. Text-only code with no editor (the properties edits) still finds the front matter with `frontmatterEnd(lines)` in `shared/syntax.ts`, and commands that have just made new text read it with `parsePage` (`shared/pageText.ts`), the same builder. |
-| 2. Typed selection | Not met. `selectMode.ts` is a boolean `StateField`; selected blocks are a text range checked by `aligned()`. |
+| 2. Typed selection | Met. `blockSelection` (`renderer/selectMode.ts`) holds a `BlockSelection` (`shared/blockSelection.ts`): anchor and head nodes of the page model, normalised to a run of siblings. The text selection is its projection, set in the same transaction (`selectionSpec`), and one filter clears the field on any other selection or edit. It is drawn from the field: a line decoration, and the class a table widget wears (`coversRange`). |
 | 3. Transactions | Partly. Typing and CodeMirror commands are; block commands work on line arrays and diff them in `apply()` (`blockKeys.ts`). |
-| 4. Views from state | Met for what is drawn from the text. One reveal policy (`reveal.ts`) serves live preview, tables and the front matter header, gfm-extras and the link clicks; tables are drawn from the syntax tree; mods ask `ctx.editor.isEditing`. The table's `picked` flag and the select-mode CSS class remain until the select-mode rebuild. |
-| 5. Commands | Partly. The logic is pure; the wiring checks `selectMode` in each handler. |
-| 6. Explicit modes | Not met. Escape is bound in several places and routed by DOM queries. |
-| 7. Property tests | Partly. `test/props.blocks.test.ts` covers edits; `test/livePreview.test.ts` checks the reveal policy on generated paragraphs and tables (which characters are hidden for any selection); nothing yet checks that modes only exit by listed transitions. |
+| 4. Views from state | Met. One reveal policy (`reveal.ts`) serves live preview, tables and the front matter header, gfm-extras and the link clicks; tables are drawn from the syntax tree; mods ask `ctx.editor.isEditing` and `ctx.editor.selectedBlocks`. The `cm-select-mode` class is left on the editor for CSS alone (it hides the caret and the selection layer); no code reads it. |
+| 5. Commands | Met for the keys: every action is `(state) => Reply` (`renderer/blockKeys.ts`) and the keymap only runs it. What is left of principle 3 is that Tab, Shift+Tab and Alt+Up/Down still work on line arrays and are diffed into one change (`rowsChange`). |
+| 6. Explicit modes | Met. The mode is whether `blockSelection` is set; each key's meaning in each mode is the table in `blockKeys.ts`, and `respond(state, key)` is the machine. Escape is resolved there (popup, widen, focus mode); the window's capture handler is gone, and only an Escape that no editor, field or dialog took leaves focus mode from the window. |
+| 7. Property tests | Met for the model, the reveal policy and select mode. `test/props.blocks.test.ts` covers edits; `test/livePreview.test.ts` checks the reveal policy on generated paragraphs and tables; `test/props.selectMode.test.ts` runs any keys on any page, with folds and a zoom, and checks that the result is editing or a valid run, that the text selection is exactly its lines, that only shown blocks are selected, and that the mode is entered and left only by the listed keys. |
 
 ## Working on the editor
 

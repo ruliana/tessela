@@ -32,8 +32,8 @@ import { dayAt } from "../shared/dates";
 import type { PropertiesOverride } from "../shared/mods";
 import { journalDest } from "../shared/pages";
 import { smartLink } from "../shared/smartLink";
-import { blockKeymap } from "./blockKeys";
-import { selectMode } from "./selectMode";
+import { blockKeymap, leaveFocus } from "./blockKeys";
+import { isSelecting } from "./selectMode";
 import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { focusMarks, livePreview } from "./livePreview";
@@ -69,6 +69,10 @@ export interface EditorOptions {
   properties?: () => PropertiesOverride | undefined;
   /** The path of the page the editor shows. */
   pagePath?: () => string;
+  /** Escape has nothing left to widen: leave focus mode if it is on, and say whether it was. */
+  onLeaveFocus?: () => boolean;
+  /** Blocks were selected (select mode began) or the selection ended. */
+  onSelectMode?: (on: boolean) => void;
 }
 
 export interface EditorHandle {
@@ -287,6 +291,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         focusMarks(),
         preview.of(previewOn ? previewExtension() : []),
         blockKeymap,
+        opts.onLeaveFocus ? leaveFocus.of(opts.onLeaveFocus) : [],
         formatting,
         // What mods add comes before the defaults below, so their keys win over them.
         ...(opts.extensions?.() ?? []),
@@ -333,7 +338,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
             // A link drawn as text opens with a plain click; one shown as Markdown is being edited,
             // and a click there places the cursor. (A click on selected blocks edits them, like any
             // click: it does not follow a link. The reveal policy says what is drawn.)
-            const selecting = v.state.field(selectMode, false) ?? false;
+            const selecting = isSelecting(v.state);
             const link = linkAt(v.state, pos);
             const dest = link && (modifier || (!selecting && isDrawn(v.state, link))) ? link.dest : null;
             if (dest !== null) {
@@ -361,6 +366,8 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         EditorView.updateListener.of((update) => {
           const own = update.transactions.some((tr) => tr.annotation(programmatic));
           if (update.docChanged && !own) opts.onChange(update.state.doc.toString());
+          const was = isSelecting(update.startState);
+          if (was !== isSelecting(update.state)) opts.onSelectMode?.(!was);
         }),
       ],
     }),

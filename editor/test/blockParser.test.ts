@@ -4,9 +4,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { type Sel, blockAt, extendBlocks, move, selectBlock } from "../src/shared/blocks";
+import { respond } from "../src/renderer/blockKeys";
+import { type Sel, blockAt, move } from "../src/shared/blocks";
 import type { PageNode } from "../src/shared/pageModel";
 import { modelOf } from "./support/page";
+import { picked, press, selecting } from "./support/selecting";
 
 /**
  * The blocks of `text` as one line each, `kind first-last` (0-based lines), children indented by two. The
@@ -44,9 +46,8 @@ const cursor = (line: number, col = 0): Sel => ({ anchor: { line, col }, head: {
 
 /** What Escape selects with the cursor on `line`, as `first-last`, or null. */
 function escape(text: string, line: number): string | null {
-  const lines = text.split("\n");
-  const sel = selectBlock(modelOf(text), cursor(line));
-  return sel ? `${sel.anchor.line}-${sel.head.line}` : null;
+  const sel = picked(selecting(text, line));
+  return sel ? `${sel[0]}-${sel[1]}` : null;
 }
 
 describe("the block parser: where a paragraph meets a list item", () => {
@@ -410,25 +411,28 @@ describe("Escape and block selection over blank lines", () => {
   });
 
   it("selects the parent item when an item is already selected, then the page, and then stops", () => {
-    const lines = ["- a", "  - b", "    - c", "", "Para"];
-    const picked: string[] = [];
-    for (let sel = selectBlock(modelOf(lines.join("\n")), cursor(2)); sel; sel = selectBlock(modelOf(lines.join("\n")), sel)) {
-      picked.push(`${sel.anchor.line}-${sel.head.line}`);
+    const text = ["- a", "  - b", "    - c", "", "Para"].join("\n");
+    const widened: string[] = [];
+    let state = selecting(text, 2);
+    for (let reply = respond(state, "Escape"); ; reply = respond(state, "Escape")) {
+      widened.push(picked(state)!.join("-"));
+      if (typeof reply !== "object" || reply === null) break;
+      state = state.update(reply).state;
     }
-    expect(picked).toEqual(["2-2", "1-2", "0-2", "0-4"]);
+    expect(widened).toEqual(["2-2", "1-2", "0-2", "0-4"]);
   });
 
-  it("extends a selection over the next sibling but not into a paragraph beyond the list", () => {
-    const lines = ["- a", "- b", "", "Para"];
-    const one = selectBlock(modelOf(lines.join("\n")), cursor(1))!;
-    expect(extendBlocks(modelOf(lines.join("\n")), one, "down")).toBeNull();
-    expect(extendBlocks(modelOf(lines.join("\n")), one, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 3 } });
+  it("takes the next block in with Shift+Down, even one beyond the list, and gives it back with Shift+Up", () => {
+    const text = ["- a", "- b", "", "Para"].join("\n");
+    const one = selecting(text, 1);
+    expect(picked(press(one, "Shift-ArrowDown"))).toEqual([1, 3]);
+    expect(picked(press(one, "Shift-ArrowUp"))).toEqual([0, 1]);
+    expect(picked(press(one, "Shift-ArrowDown", "Shift-ArrowUp"))).toEqual([1, 1]);
   });
 
   it("extends over blank lines between two paragraphs", () => {
-    const lines = ["a", "", "", "b", "", "c"];
-    const one = selectBlock(modelOf(lines.join("\n")), cursor(0))!;
-    expect(extendBlocks(modelOf(lines.join("\n")), one, "down")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 3, col: 1 } });
+    const one = selecting(["a", "", "", "b", "", "c"].join("\n"), 0);
+    expect(picked(press(one, "Shift-ArrowDown"))).toEqual([0, 3]);
   });
 
   it("moves an item within its list and leaves the paragraph after the blank line where it is", () => {
@@ -470,10 +474,10 @@ describe("block selection on generated pages", () => {
     for (const page of pages) {
       const model = modelOf(page.join("\n"));
       page.forEach((_, i) => {
-        const sel = selectBlock(model, cursor(i));
+        const sel = picked(selecting(page.join("\n"), i));
         if (!sel) return;
-        expect(sel.anchor.line, `${page.join("\n")}\n@${i}`).toBeLessThanOrEqual(i);
-        expect(sel.head.line, `${page.join("\n")}\n@${i}`).toBeGreaterThanOrEqual(i);
+        expect(sel[0], `${page.join("\n")}\n@${i}`).toBeLessThanOrEqual(i);
+        expect(sel[1], `${page.join("\n")}\n@${i}`).toBeGreaterThanOrEqual(i);
       });
     }
   });

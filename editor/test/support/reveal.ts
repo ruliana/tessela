@@ -7,7 +7,8 @@ import type { DecorationSet } from "@codemirror/view";
 import type { PreviewOptions } from "../../src/renderer/livePreview";
 import { pageLanguage, pageModel } from "../../src/renderer/pageModelField";
 import { focusEffect, rendered, revealPolicy } from "../../src/renderer/reveal";
-import { enterSelectMode, selectMode } from "../../src/renderer/selectMode";
+import { selectModeState, selectionSpec } from "../../src/renderer/selectMode";
+import { widenBlock } from "../../src/shared/blockSelection";
 
 export interface Where {
   /** The cursor, or the start of the selection. Defaults to the start of the page. */
@@ -28,10 +29,14 @@ export function revealState(doc: string, where: Where = {}): EditorState {
   let state = EditorState.create({
     doc,
     selection: EditorSelection.single(at, to),
-    extensions: [pageLanguage(), pageModel, revealPolicy(), selectMode, preview ? rendered.of(true) : [], ...extensions],
+    extensions: [pageLanguage(), pageModel, revealPolicy(), selectModeState, preview ? rendered.of(true) : [], ...extensions],
   });
   if (focused) state = state.update({ effects: focusEffect(true) }).state;
-  if (selecting) state = state.update({ effects: enterSelectMode.of(null), selection: EditorSelection.single(at, to) }).state;
+  if (selecting) {
+    // The block at the selection (the first block of the page when it is in none) is selected.
+    const found = widenBlock(state.field(pageModel), { from: at, to }) ?? widenBlock(state.field(pageModel), { from: 0, to: 0 });
+    if (found) state = state.update(selectionSpec(state, found)).state;
+  }
   return state;
 }
 

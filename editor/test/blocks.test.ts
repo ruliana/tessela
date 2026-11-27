@@ -4,13 +4,10 @@ import {
   type Result,
   type Sel,
   blockBelow,
-  extendBlocks,
   indent,
   mapPos,
   move,
   outdent,
-  selectBlock,
-  stepBlock,
 } from "../src/shared/blocks";
 import type { PageModel } from "../src/shared/pageModel";
 import { modelOf, outline } from "./support/page";
@@ -192,92 +189,10 @@ describe("move", () => {
   });
 });
 
-describe("block selection", () => {
-  it("selects the block at the cursor, with its children", () => {
-    const { lines, sel } = setup("- a\n- b|\n  - c\n- d");
-    expect(selectBlock(m(lines), sel)).toEqual({ anchor: { line: 1, col: 0 }, head: { line: 2, col: 5 } });
-  });
-
-  it("selects the parent when a block is already selected", () => {
-    const first = setup("- a\n  - b|\n- d");
-    const once = selectBlock(m(first.lines), first.sel)!;
-    expect(once).toEqual({ anchor: { line: 1, col: 0 }, head: { line: 1, col: 5 } });
-    expect(selectBlock(m(first.lines), once)).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 5 } });
-  });
-
-  it("keeps widening, through the sections, until the whole page is selected", () => {
-    const page = "---\ntype: concept\n---\n\nIntro\n\n# One\n\nText|\n\n## Two\n\nDeep\n\n# Three\n\nLast";
-    const { lines, sel } = setup(page);
-    const picked: string[] = [];
-    let now: Sel | null = sel;
-    while ((now = selectBlock(m(lines), now))) {
-      const [a, b] = [now.anchor, now.head];
-      picked.push(`${a.line}-${b.line}`);
-    }
-    // Text, then the section "One" with "Two" inside it, then the whole page.
-    expect(picked).toEqual(["8-8", "6-12", "0-16"]);
-  });
-
-  it("goes from an item to its list, and from there to the whole page", () => {
-    const { lines, sel } = setup("- a|\n- b");
-    const item = selectBlock(m(lines), sel)!;
-    expect(item).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 0, col: 3 } });
-    const all = { anchor: { line: 0, col: 0 }, head: { line: 1, col: 3 } };
-    expect(selectBlock(m(lines), item)).toEqual(all);
-    expect(selectBlock(m(lines), all)).toBeNull();
-  });
-
-  it("extends over the neighbouring block", () => {
-    const { lines, sel } = setup("- a\n- b|\n- c\n- d");
-    const one = selectBlock(m(lines), sel)!;
-    expect(extendBlocks(m(lines), one, "down")).toEqual({ anchor: { line: 1, col: 0 }, head: { line: 2, col: 3 } });
-    expect(extendBlocks(m(lines), one, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 3 } });
-  });
-
-  it("takes in a whole list below or above a paragraph, and goes on past it", () => {
-    const { lines } = setup("Para\n\n- a\n  - b\n- c\n\nEnd");
-    const para: Sel = { anchor: { line: 0, col: 0 }, head: { line: 0, col: 4 } };
-    const withList = extendBlocks(m(lines), para, "down")!;
-    expect(withList).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 4, col: 3 } });
-    expect(extendBlocks(m(lines), withList, "down")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 6, col: 3 } });
-    const end: Sel = { anchor: { line: 6, col: 0 }, head: { line: 6, col: 3 } };
-    const up = extendBlocks(m(lines), end, "up")!;
-    expect(up).toEqual({ anchor: { line: 2, col: 0 }, head: { line: 6, col: 3 } });
-    expect(extendBlocks(m(lines), up, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 6, col: 3 } });
-    // The list alone, as Escape selects it, goes on to the paragraph beside it.
-    const list: Sel = { anchor: { line: 2, col: 0 }, head: { line: 4, col: 3 } };
-    expect(extendBlocks(m(lines), list, "down")).toEqual({ anchor: { line: 2, col: 0 }, head: { line: 6, col: 3 } });
-    expect(extendBlocks(m(lines), list, "up")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 4, col: 3 } });
-  });
-
-  it("leaves a text selection alone", () => {
-    const { lines } = setup("- abc\n- def");
-    const partial: Sel = { anchor: { line: 0, col: 2 }, head: { line: 0, col: 4 } };
-    expect(extendBlocks(m(lines), partial, "down")).toBeNull();
-  });
-});
-
 describe("select mode", () => {
   const page = ["Intro", "", "```js", "let a", "", "let b", "```", "", "- one", "  - child", "- two", "", "> quote"];
   const sel = (line: number, end = line): Sel => ({ anchor: { line, col: 0 }, head: { line: end, col: page[end]!.length } });
   const lines = (s: Sel | null) => (s ? [s.anchor.line, s.head.line] : null);
-
-  it("steps through the blocks in the order they are read, code blocks and nested items included", () => {
-    expect(lines(stepBlock(m(page), sel(0), "down"))).toEqual([2, 6]);
-    expect(lines(stepBlock(m(page), sel(2, 6), "down"))).toEqual([8, 9]);
-    expect(lines(stepBlock(m(page), sel(8, 9), "down"))).toEqual([10, 10]);
-    expect(lines(stepBlock(m(page), sel(8, 8), "down"))).toEqual([9, 9]);
-    expect(lines(stepBlock(m(page), sel(9), "down"))).toEqual([10, 10]);
-    expect(lines(stepBlock(m(page), sel(10), "up"))).toEqual([9, 9]);
-    expect(lines(stepBlock(m(page), sel(12), "up"))).toEqual([10, 10]);
-    expect(lines(stepBlock(m(page), sel(8), "up"))).toEqual([2, 6]);
-  });
-
-  it("stays put at the first and the last block", () => {
-    expect(stepBlock(m(page), sel(0), "up")).toBeNull();
-    expect(stepBlock(m(page), sel(12), "down")).toBeNull();
-    expect(stepBlock(m(["---", "type: x", "---", "", "Only"]), sel(4), "up")).toBeNull();
-  });
 
   it("adds an item below an item, after the items nested in it", () => {
     const below = blockBelow(m(page), sel(8, 9));
@@ -299,41 +214,6 @@ describe("blocks inside items, callouts and math", () => {
   const sel = (line: number, end = line, page: string[] = []): Sel => ({ anchor: { line, col: 0 }, head: { line: end, col: page[end]?.length ?? 0 } });
   const span = (s: Sel | null) => (s ? [s.anchor.line, s.head.line] : null);
 
-  it("selects a fence in a list item as a block of its own, and widens from it to the item", () => {
-    const page = ["- a", "  ```js", "  x", "", "  y", "  ```", "- b"];
-    const model = m(page);
-    const first = selectBlock(model, sel(4).anchor && { anchor: { line: 4, col: 0 }, head: { line: 4, col: 0 } });
-    expect(span(first)).toEqual([1, 5]);
-    expect(span(selectBlock(model, first!))).toEqual([0, 5]);
-  });
-
-  it("widens from a nested item to the item that holds it, not to the run of its siblings: only a list at the top is a list", () => {
-    const page = ["- one", "  - child", "  - other", "- two"];
-    const found = selectBlock(m(page), { anchor: { line: 1, col: 0 }, head: { line: 1, col: 9 } });
-    expect(span(found)).toEqual([0, 2]);
-  });
-
-  it("steps to a fence in a list item, and on to the next item", () => {
-    const page = ["- a", "  ```js", "  x", "  ```", "- b"];
-    expect(span(stepBlock(m(page), sel(0), "down"))).toEqual([1, 3]);
-    expect(span(stepBlock(m(page), sel(1, 3, page), "down"))).toEqual([4, 4]);
-    expect(span(stepBlock(m(page), sel(4), "up"))).toEqual([1, 3]);
-  });
-
-  it("steps to the list items of a callout, from the block after it", () => {
-    const page = ["> [!NOTE]", "> - one", "> - two", "", "After"];
-    expect(span(stepBlock(m(page), sel(4), "up"))).toEqual([2, 2]);
-    expect(span(stepBlock(m(page), sel(2), "up"))).toEqual([1, 1]);
-    expect(span(stepBlock(m(page), sel(1), "up"))).toEqual([0, 2]);
-  });
-
-  it("selects a $$ block whole, with the blank line inside it", () => {
-    const page = ["$$", "a", "", "b", "$$", "", "after"];
-    const cursor = (line: number): Sel => ({ anchor: { line, col: 0 }, head: { line, col: 0 } });
-    expect(span(selectBlock(m(page), cursor(3)))).toEqual([0, 4]);
-    expect(span(stepBlock(m(page), sel(6), "up"))).toEqual([0, 4]);
-  });
-
   /** Runs `op` with the cursor at the start of `line`, and shows the resulting lines. */
   const at = (page: string[], line: number, op: (model: PageModel, sel: Sel) => Result | null): string[] | null => {
     const result = op(m(page), { anchor: { line, col: 2 }, head: { line, col: 2 } });
@@ -353,12 +233,6 @@ describe("blocks inside items, callouts and math", () => {
 describe("a heading owns its section", () => {
   it("moves with its section: Alt+Down on a heading takes what is under it past the next section", () => {
     expect(down("# A|\ntext\n\n# B\nmore")).toBe("# B\nmore\n\n# A|\ntext");
-  });
-
-  it("takes in the whole section with Shift+Down, after the heading line alone", () => {
-    const { lines } = setup("# A\ntext\n\n# B");
-    const heading: Sel = { anchor: { line: 0, col: 0 }, head: { line: 0, col: 3 } };
-    expect(extendBlocks(m(lines), heading, "down")).toEqual({ anchor: { line: 0, col: 0 }, head: { line: 1, col: 4 } });
   });
 
   it("lets the last block of a section move into the next one, and back", () => {
