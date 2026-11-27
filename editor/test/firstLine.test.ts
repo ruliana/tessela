@@ -1,20 +1,20 @@
 // Typing on the first line of a page must not turn the front matter into a heading.
 
 import { markdown } from "@codemirror/lang-markdown";
-import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { GFM } from "@lezer/markdown";
 import { describe, expect, it } from "vitest";
 
 import { noSetext } from "../src/shared/blocks";
+import { frontMatterYaml, tessela } from "../src/shared/syntax";
 import { frontMatterGuard } from "../src/renderer/livePreview";
 
 /** The node names of the page's tree, the way the editor's language builds it (editor.ts). */
 function nodes(text: string): string[] {
   const state = EditorState.create({
     doc: text,
-    extensions: [yamlFrontmatter({ content: markdown({ extensions: [GFM, noSetext] }) })],
+    extensions: [markdown({ extensions: [GFM, noSetext, tessela, frontMatterYaml] })],
   });
   const names: string[] = [];
   ensureSyntaxTree(state, state.doc.length, 5000)!.iterate({ enter: (n) => void names.push(n.name) });

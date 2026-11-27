@@ -148,7 +148,7 @@ function build(view: EditorView): DecorationSet {
 
   syntaxTree(state).iterate({
     enter: (node) => {
-      if (node.name !== "Blockquote") return;
+      if (node.name !== "Callout") return;
       const first = doc.lineAt(node.from);
       const kind = calloutKind(first.text);
       if (!kind) return;
