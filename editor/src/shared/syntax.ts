@@ -25,6 +25,13 @@ import { parseMixed } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import type { BlockContext, Element, Line, MarkdownConfig } from "@lezer/markdown";
 
+/**
+ * Tessela writes headings with `#`. A line of dashes or equals under a paragraph is a rule or
+ * text, not an underline: otherwise `hello---` on the first line of a page, in front of the
+ * front matter, turned the whole front matter into one big heading.
+ */
+export const noSetext: MarkdownConfig = { remove: ["SetextHeading"] };
+
 /** The kinds of callout, as GitHub writes them. */
 export const CALLOUT_KINDS = ["note", "tip", "important", "warning", "caution"] as const;
 export type CalloutKind = (typeof CALLOUT_KINDS)[number];

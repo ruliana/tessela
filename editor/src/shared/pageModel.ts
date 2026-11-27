@@ -38,7 +38,8 @@
 // A node is found again after an edit by mapping its position through the change (`findAgain`). Across
 // sessions it is its `key`, which is the part of a block handle after the `#` (conventions §3).
 
-import { type ChangeDesc, MapMode, type Text } from "@codemirror/state";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
+import { type ChangeDesc, type EditorState, MapMode, type Text } from "@codemirror/state";
 import type { SyntaxNode, Tree } from "@lezer/common";
 import { blake3 } from "@noble/hashes/blake3";
 
@@ -79,6 +80,8 @@ export class PageNode {
   readonly level: number;
   /** For an item that starts with a checkbox: whether it is ticked. */
   readonly task: TaskState | null;
+  /** For a fenced code block: its info string (`js`, `tessela`) and whether the closing fence is there. Null for the rest, indented code included. */
+  readonly fence: { info: string; closed: boolean } | null;
 
   /** What the key is a hash of, before normalizing; read once the keys are wanted. */
   readonly #keyText: () => string;
@@ -90,7 +93,7 @@ export class PageNode {
     kind: PageKind,
     range: { from: number; to: number; startLine: number; endLine: number },
     parent: PageNode | null,
-    extra: { level?: number; task?: TaskState | null; keyText?: () => string } = {},
+    extra: { level?: number; task?: TaskState | null; fence?: PageNode["fence"]; keyText?: () => string } = {},
   ) {
     this.#model = model;
     this.kind = kind;
@@ -101,6 +104,7 @@ export class PageNode {
     this.parent = parent;
     this.level = extra.level ?? 0;
     this.task = extra.task ?? null;
+    this.fence = extra.fence ?? null;
     this.#keyText = extra.keyText ?? (() => "");
   }
 
@@ -121,6 +125,11 @@ export class PageNode {
   /** The key without the ordinal: equal for nodes of equal text. */
   get hash(): string {
     return this.key.split(".")[0]!;
+  }
+
+  /** The first line of its text without the list marker, checkbox or `#`s: what a trail or a fold is called. */
+  get label(): string {
+    return this.keyText.split("\n")[0]!.trim();
   }
 
   /** The number of lines it covers. */
@@ -278,6 +287,15 @@ export function findAgain(next: PageModel, node: PageNode, changes: ChangeDesc):
   return found;
 }
 
+/** How long to wait for the parser to reach the end of the page when the model is made. */
+const PARSE_BUDGET_MS = 50;
+
+/** The model of the document of a state, from the syntax tree its Markdown language keeps. */
+export function pageModelOf(state: EditorState): PageModel {
+  const whole = ensureSyntaxTree(state, state.doc.length, PARSE_BUDGET_MS);
+  return buildPageModel(state.doc, whole ?? syntaxTree(state), whole !== null);
+}
+
 // ---- keys: the hash of a block handle, as `tessela-core` computes it ------------------------------
 
 /** White space as Rust's `str::trim` and `split_whitespace` mean it. */
@@ -390,7 +408,7 @@ export function buildPageModel(doc: Text, tree: Tree, complete = true): PageMode
     from: number,
     to: number,
     parent: PageNode,
-    extra: { level?: number; task?: TaskState | null; keyText?: () => string } = {},
+    extra: { level?: number; task?: TaskState | null; fence?: PageNode["fence"]; keyText?: () => string } = {},
   ): PageNode => {
     let end = to;
     while (end > from && WS_CHAR.test(doc.sliceString(end - 1, end))) end--;
@@ -408,7 +426,18 @@ export function buildPageModel(doc: Text, tree: Tree, complete = true): PageMode
 
   /** A node of a syntax node that is a leaf of the model: the key is the hash of its source. */
   const leaf = (kind: PageKind, n: SyntaxNode, parent: PageNode): PageNode =>
-    make(kind, n.from, n.to, parent, { keyText: () => sliceTo(n.from, n.to) });
+    make(kind, n.from, n.to, parent, { fence: n.name === "FencedCode" ? fenceOf(n) : null, keyText: () => sliceTo(n.from, n.to) });
+
+  /** The info string of a fenced block and whether its closing fence is there: the syntax tree says both. */
+  const fenceOf = (n: SyntaxNode): { info: string; closed: boolean } => {
+    let info = "";
+    let marks = 0;
+    for (let c = n.firstChild; c; c = c.nextSibling) {
+      if (c.name === "CodeMark") marks++;
+      else if (c.name === "CodeInfo") info = sliceTo(c.from, c.to).trim();
+    }
+    return { info, closed: marks >= 2 };
+  };
 
   /** The items of a list, as children of `parent`. */
   const items = (list: SyntaxNode, parent: PageNode) => {

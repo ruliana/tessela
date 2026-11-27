@@ -10,44 +10,20 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { type Block, extendBlocks, frontmatterEnd, indent, mapPos, move, outdent, parseBlocks, selectBlock } from "../src/shared/blocks";
+import { extendBlocks, frontmatterEndOf, indent, mapPos, move, outdent, selectBlock } from "../src/shared/blocks";
 import { foldAround, foldables, zoomAt } from "../src/shared/folds";
+import { modelOf } from "./support/page";
 import { outlineAndCursor, pageAndSelection, lines, runs } from "./support/props";
 
-const all = (blocks: Block[]): Block[] => blocks.flatMap((b) => [b, ...all(b.children)]);
+const model = (doc: string[]) => modelOf(doc.join("\n"));
+const frontEnd = (doc: string[]) => frontmatterEndOf(model(doc));
 
-describe("the structure of any page", () => {
-  it("nests blocks inside blocks, in order, inside the page", () => {
+describe("folding and zooming any page", () => {
+  it("never folds a block onto itself or past the page, with a key of its own each", () => {
     fc.assert(
       fc.property(lines, (doc) => {
-        const blocks = parseBlocks(doc);
-        let last = -1;
-        for (const b of blocks) {
-          expect(b.start).toBeGreaterThan(last);
-          last = b.end;
-        }
-        for (const b of all(blocks)) {
-          expect(b.start).toBeGreaterThanOrEqual(0);
-          expect(b.end).toBeGreaterThanOrEqual(b.start);
-          expect(b.end).toBeLessThan(doc.length);
-          let before = b.start - 1;
-          for (const c of b.children) {
-            expect(c.parent).toBe(b);
-            expect(c.start).toBeGreaterThanOrEqual(b.start);
-            expect(c.end).toBeLessThanOrEqual(b.end);
-            expect(c.start).toBeGreaterThan(before);
-            before = c.end;
-          }
-        }
-      }),
-      runs(300),
-    );
-  });
-
-  it("can be folded and zoomed anywhere", () => {
-    fc.assert(
-      fc.property(lines, (doc) => {
-        const folds = foldables(doc);
+        const m = model(doc);
+        const folds = foldables(m);
         const keys = new Set<string>();
         for (const f of folds) {
           expect(f.last).toBeGreaterThan(f.line);
@@ -58,9 +34,28 @@ describe("the structure of any page", () => {
         for (let line = 0; line < doc.length; line++) {
           const fold = foldAround(folds, line);
           if (fold) expect(line >= fold.line && line <= fold.last).toBe(true);
-          const zoom = zoomAt(doc, line);
-          if (zoom) expect(JSON.stringify(zoom)).toBeTypeOf("string");
+          const zoom = zoomAt(m, line);
+          if (zoom) {
+            expect(zoom.start).toBeLessThanOrEqual(line);
+            expect(zoom.end).toBeGreaterThanOrEqual(line);
+            expect(zoom.end).toBeLessThan(doc.length);
+          }
         }
+      }),
+      runs(200),
+    );
+  });
+
+  it("folds exactly the sections, items and fences with more than a line, and the paragraphs that own a list", () => {
+    fc.assert(
+      fc.property(lines, (doc) => {
+        const m = model(doc);
+        const want = new Set<number>();
+        for (const n of m.nodes) {
+          if (n.kind === "paragraph" && n.children.length > 0) want.add(n.children[0]!.startLine - 2);
+          else if ((n.kind === "section" || n.kind === "item" || (n.kind === "code" && n.fence)) && n.endLine > n.startLine) want.add(n.startLine - 1);
+        }
+        expect(new Set(foldables(m).map((f) => f.line))).toEqual(want);
       }),
       runs(200),
     );
@@ -75,20 +70,20 @@ const core = (s: string): string => {
 
 describe("edits on blocks", () => {
   const edits = {
-    indent: (doc: string[], sel: Parameters<typeof indent>[1]) => indent(doc, sel),
-    outdent: (doc: string[], sel: Parameters<typeof indent>[1]) => outdent(doc, sel),
-    up: (doc: string[], sel: Parameters<typeof indent>[1]) => move(doc, sel, "up"),
-    down: (doc: string[], sel: Parameters<typeof indent>[1]) => move(doc, sel, "down"),
+    indent,
+    outdent,
+    up: (m: ReturnType<typeof model>, sel: Parameters<typeof indent>[1]) => move(m, sel, "up"),
+    down: (m: ReturnType<typeof model>, sel: Parameters<typeof indent>[1]) => move(m, sel, "down"),
   };
 
   for (const [name, edit] of Object.entries(edits)) {
     it(`${name} keeps every line's words and puts the selection on a real position`, () => {
       fc.assert(
         fc.property(pageAndSelection, ({ doc, sel }) => {
-          const result = edit(doc, sel);
+          const result = edit(model(doc), sel);
           if (!result) return;
           // An edit never makes front matter out of lines that were not, or the other way round.
-          expect(frontmatterEnd(result.rows.map((r) => r.text))).toBe(frontmatterEnd(doc));
+          expect(frontEnd(result.rows.map((r) => r.text))).toBe(frontEnd(doc));
           const from = result.rows.filter((r) => r.from >= 0).map((r) => r.from);
           expect(new Set(from).size).toBe(from.length);
           for (const row of result.rows) {
@@ -113,7 +108,7 @@ describe("edits on blocks", () => {
     for (const dir of ["up", "down"] as const) {
       fc.assert(
         fc.property(pageAndSelection, ({ doc, sel }) => {
-          const result = move(doc, sel, dir);
+          const result = move(model(doc), sel, dir);
           if (!result) return;
           expect(result.rows.map((r) => r.from).sort((a, b) => a - b)).toEqual(doc.map((_, i) => i));
         }),
@@ -125,8 +120,8 @@ describe("edits on blocks", () => {
   it("never makes front matter out of a page, or breaks it, when it moves a block", () => {
     fc.assert(
       fc.property(outlineAndCursor, fc.constantFrom("up", "down"), ({ doc, sel }, dir) => {
-        const result = move(doc, sel, dir);
-        if (result) expect(frontmatterEnd(result.rows.map((r) => r.text))).toBe(frontmatterEnd(doc));
+        const result = move(model(doc), sel, dir);
+        if (result) expect(frontEnd(result.rows.map((r) => r.text))).toBe(frontEnd(doc));
       }),
       runs(300),
     );
@@ -135,12 +130,12 @@ describe("edits on blocks", () => {
   it("moves a block of an outline down and back up to where it started", () => {
     fc.assert(
       fc.property(outlineAndCursor, ({ doc, sel }) => {
-        const down = move(doc, sel, "down");
+        const down = move(model(doc), sel, "down");
         if (!down) return;
         const moved = down.rows.map((r) => r.text);
         // At the bottom there is nowhere to go: the answer is the same page.
         if (moved.join("\n") === doc.join("\n")) return;
-        const back = move(moved, { anchor: mapPos(down, sel.head), head: mapPos(down, sel.head) }, "up");
+        const back = move(model(moved), { anchor: mapPos(down, sel.head), head: mapPos(down, sel.head) }, "up");
         expect(back?.rows.map((r) => r.text)).toEqual(doc);
       }),
       runs(300),
@@ -150,12 +145,12 @@ describe("edits on blocks", () => {
   it("nests an item of an outline and takes it out again", () => {
     fc.assert(
       fc.property(outlineAndCursor, ({ doc, sel }) => {
-        const nested = indent(doc, sel);
+        const nested = indent(model(doc), sel);
         if (!nested) return;
         const text = nested.rows.map((r) => r.text);
         if (text.join("\n") === doc.join("\n")) return;
         const at = mapPos(nested, sel.head);
-        const back = outdent(text, { anchor: at, head: at });
+        const back = outdent(model(text), { anchor: at, head: at });
         expect(back?.rows.map((r) => r.text)).toEqual(doc);
       }),
       runs(300),
@@ -167,7 +162,7 @@ describe("edits on blocks", () => {
       fc.property(pageAndSelection, ({ doc, sel }) => {
         let current = sel;
         for (let step = 0; step <= doc.length * 2 + 2; step++) {
-          const next = selectBlock(doc, current);
+          const next = selectBlock(model(doc), current);
           if (!next) return;
           const [a, b] = [next.anchor, next.head];
           const inside = (p: { line: number; col: number }) =>
@@ -184,7 +179,7 @@ describe("edits on blocks", () => {
   it("extends a block selection over whole lines and keeps what was selected", () => {
     fc.assert(
       fc.property(pageAndSelection, fc.constantFrom("up", "down"), ({ doc, sel }, dir) => {
-        const next = extendBlocks(doc, sel, dir);
+        const next = extendBlocks(model(doc), sel, dir);
         if (!next) return;
         for (const p of [next.anchor, next.head]) {
           expect(p.line).toBeGreaterThanOrEqual(0);

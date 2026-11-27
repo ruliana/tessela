@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { foldAround, foldables, foldsOnLoad, foldsToRemember, zoomAt } from "../src/shared/folds";
+import { foldAround, foldables as foldablesOf, foldsOnLoad, foldsToRemember, zoomAt as zoomAtModel } from "../src/shared/folds";
+import { modelOf } from "./support/page";
 
 const lines = (text: string) => text.split("\n");
+const foldables = (l: string[]) => foldablesOf(modelOf(l.join("\n")));
+const zoomAt = (l: string[], line: number) => zoomAtModel(modelOf(l.join("\n")), line);
 
 describe("foldables", () => {
   it("folds a heading with its section, a list item with what is nested in it, and a paragraph's list", () => {
     const l = lines(["# One", "Intro:", "- a", "  - b", "- c", "", "## Two", "text", "", "# Three", "x"].join("\n"));
     const f = foldables(l);
-    expect(f.map((x) => [x.key, x.line, x.last, x.depth])).toEqual([
-      ["heading:# One#0", 0, 7, 0],
-      ["para:Intro:#0", 1, 4, 1],
-      ["item:- a#0", 2, 3, 2],
-      ["heading:## Two#0", 6, 7, 1],
-      ["heading:# Three#0", 9, 10, 0],
+    expect(f.map((x) => [x.line, x.last, x.depth])).toEqual([
+      [0, 7, 0],
+      [1, 4, 1],
+      [2, 3, 2],
+      [6, 7, 1],
+      [9, 10, 0],
     ]);
   });
 
@@ -29,9 +32,24 @@ describe("foldables", () => {
     ]);
   });
 
-  it("tells equal lines apart by their order, so a changed line opens its fold", () => {
-    const f = foldables(lines("- a\n  - x\n- a\n  - y"));
-    expect(f.map((x) => x.key)).toEqual(["item:- a#0", "item:- a#1"]);
+  it("remembers a fold by the hash of its block, as a block handle does, and tells equal blocks apart by their order", () => {
+    const [first, second] = foldables(lines("- a\n  - x\n- a\n  - y"));
+    expect(first!.key).toMatch(/^[0-9a-f]{8}$/);
+    expect(second!.key).toBe(`${first!.key}.2`);
+    // Changed text, another key: the fold of the old text is not applied to it.
+    expect(foldables(lines("- b\n  - x"))[0]!.key).not.toBe(first!.key);
+  });
+
+  it("folds a fence inside a list item, not only at the top", () => {
+    const f = foldables(lines("- a\n  ```js\n  x\n  ```\n- b"));
+    expect(f.map((x) => [x.line, x.last, x.depth])).toEqual([
+      [0, 3, 0],
+      [1, 3, 1],
+    ]);
+  });
+
+  it("does not fold indented code, which has no first line to stay", () => {
+    expect(foldables(lines("text\n\n    code\n    more"))).toEqual([]);
   });
 
   it("finds the block around a line, the next one up when asked", () => {
@@ -60,9 +78,9 @@ describe("code fences", () => {
     expect(foldsOnLoad(folds, [])).toEqual(auto);
     expect(foldsToRemember(folds, (f) => f.auto)).toEqual([]);
     // The first one opened by hand, an ordinary fence folded by hand.
-    const plain = folds.find((f) => f.key === "fence:```js#0")!;
+    const plain = folds.find((f) => f.line === 2)!;
     const kept = foldsToRemember(folds, (f) => f === plain || f === auto[1]);
-    expect(kept).toEqual(["fence:```js#0", "-fence:```mermaid#0"]);
+    expect(kept).toEqual([plain.key, `-${folds.find((f) => f.line === 6)!.key}`]);
     expect(foldsOnLoad(folds, kept)).toEqual([plain, auto[1]]);
   });
 });

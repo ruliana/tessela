@@ -1,7 +1,8 @@
 // Keys that act on blocks instead of characters: Tab and Shift+Tab nest and un-nest,
 // Alt+Up/Down move a block with what it owns, Escape and Shift+Up/Down select blocks. In select
 // mode (what Escape leaves) the arrows step from block to block and Enter, Space, Left, Right and
-// any character go back to editing. The logic is in shared/blocks.ts; this connects it to the editor.
+// any character go back to editing. The logic is in shared/blocks.ts, which reads the page model
+// (`pageModel`, one for each version of the text); this connects it to the editor.
 
 import { type EditorState, Prec, type Extension, type StateEffect } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -12,8 +13,9 @@ import {
   type Sel,
   blockBelow,
   extendBlocks,
-  frontmatterEnd,
+  frontmatterEndOf,
   indent,
+  linesOf,
   mapPos,
   move,
   outdent,
@@ -21,15 +23,18 @@ import {
   selectedSpan,
   stepBlock,
 } from "../shared/blocks";
+import type { PageModel } from "../shared/pageModel";
+import { pageModel } from "./pageModelField";
 import { enterSelectMode, selectMode } from "./selectMode";
 
-function toSel(state: EditorState): { lines: string[]; sel: Sel } {
+function toSel(state: EditorState): { model: PageModel; lines: string[]; sel: Sel } {
   const { anchor, head } = state.selection.main;
   const pos = (offset: number): Pos => {
     const line = state.doc.lineAt(offset);
     return { line: line.number - 1, col: offset - line.from };
   };
-  return { lines: state.doc.toString().split("\n"), sel: { anchor: pos(anchor), head: pos(head) } };
+  const model = state.field(pageModel);
+  return { model, lines: linesOf(model), sel: { anchor: pos(anchor), head: pos(head) } };
 }
 
 function offsetOf(lines: string[], pos: Pos): number {
@@ -80,10 +85,10 @@ function apply(view: EditorView, lines: string[], sel: Sel, result: Result, effe
   view.dispatch({ changes, selection, effects, userEvent: "input" });
 }
 
-function command(op: (lines: string[], sel: Sel) => Result | null) {
+function command(op: (model: PageModel, sel: Sel) => Result | null) {
   return (view: EditorView): boolean => {
-    const { lines, sel } = toSel(view.state);
-    const result = op(lines, sel);
+    const { model, lines, sel } = toSel(view.state);
+    const result = op(model, sel);
     if (!result) return false;
     // Blocks that are selected stay selected, and stay drawn as Markdown, after they move.
     apply(view, lines, sel, result, view.state.field(selectMode) ? [enterSelectMode.of(null)] : []);
@@ -92,11 +97,11 @@ function command(op: (lines: string[], sel: Sel) => Result | null) {
 }
 
 /** `stay`: the key is taken even when there is nowhere to go, so that it does not move the cursor either. */
-function selecting(op: (lines: string[], sel: Sel) => Sel | null, stay = false) {
+function selecting(op: (model: PageModel, sel: Sel) => Sel | null, stay = false) {
   return (view: EditorView): boolean => {
     if (stay && !view.state.field(selectMode)) return false;
-    const { lines, sel } = toSel(view.state);
-    const next = op(lines, sel);
+    const { model, lines, sel } = toSel(view.state);
+    const next = op(model, sel);
     if (!next) return stay;
     view.dispatch({
       selection: { anchor: offsetOf(lines, next.anchor), head: offsetOf(lines, next.head) },
@@ -109,9 +114,9 @@ function selecting(op: (lines: string[], sel: Sel) => Sel | null, stay = false) 
 
 /** Where the selected blocks start and end, as offsets. Not in the front matter, which is drawn as a title. */
 function span(view: EditorView): { start: number; end: number } {
-  const { lines, sel } = toSel(view.state);
-  const { start, end } = selectedSpan(lines, sel);
-  const body = frontmatterEnd(lines) + 1;
+  const { model, lines, sel } = toSel(view.state);
+  const { start, end } = selectedSpan(model, sel);
+  const body = frontmatterEndOf(model) + 1;
   const first = Math.max(start.line, body);
   const to = Math.max(end.line, body);
   return { start: offsetOf(lines, { line: first, col: first === start.line ? start.col : 0 }), end: offsetOf(lines, to === end.line ? end : { line: to, col: lines[to]!.length }) };
@@ -135,8 +140,8 @@ function editing(at: (view: EditorView) => number, text = "") {
 /** Enter in select mode: a new block under the selected ones, and the cursor in it. */
 function addBlockBelow(view: EditorView): boolean {
   if (!view.state.field(selectMode)) return false;
-  const { lines, sel } = toSel(view.state);
-  const { at, insert, caret } = blockBelow(lines, sel);
+  const { model, lines, sel } = toSel(view.state);
+  const { at, insert, caret } = blockBelow(model, sel);
   const pos = offsetOf(lines, at);
   view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + caret }, scrollIntoView: true, userEvent: "input" });
   return true;
@@ -152,17 +157,17 @@ export const blockKeymap: Extension = [
     keymap.of([
       { key: "Tab", run: command(indent) },
       { key: "Shift-Tab", run: command(outdent) },
-      { key: "Alt-ArrowUp", run: command((l, s) => move(l, s, "up")) },
-      { key: "Alt-ArrowDown", run: command((l, s) => move(l, s, "down")) },
+      { key: "Alt-ArrowUp", run: command((m, s) => move(m, s, "up")) },
+      { key: "Alt-ArrowDown", run: command((m, s) => move(m, s, "down")) },
       { key: "Escape", run: selecting(selectBlock) },
-      { key: "ArrowUp", run: selecting((l, s) => stepBlock(l, s, "up"), true) },
-      { key: "ArrowDown", run: selecting((l, s) => stepBlock(l, s, "down"), true) },
+      { key: "ArrowUp", run: selecting((m, s) => stepBlock(m, s, "up"), true) },
+      { key: "ArrowDown", run: selecting((m, s) => stepBlock(m, s, "down"), true) },
       { key: "Enter", run: addBlockBelow },
       { key: " ", run: editing((v) => span(v).start) },
       { key: "ArrowLeft", run: editing((v) => span(v).start) },
       { key: "ArrowRight", run: editing((v) => span(v).end) },
-      { key: "Shift-ArrowUp", run: selecting((l, s) => extendBlocks(l, s, "up")) },
-      { key: "Shift-ArrowDown", run: selecting((l, s) => extendBlocks(l, s, "down")) },
+      { key: "Shift-ArrowUp", run: selecting((m, s) => extendBlocks(m, s, "up")) },
+      { key: "Shift-ArrowDown", run: selecting((m, s) => extendBlocks(m, s, "down")) },
     ]),
   ),
 ];

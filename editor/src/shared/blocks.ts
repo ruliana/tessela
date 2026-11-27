@@ -1,42 +1,19 @@
-// The block structure of a page as the editor sees it, and the edits that act on blocks:
-// indent, outdent, move and select (spec §3). Everything here works on an array of
-// lines, so it can be tested without an editor.
+// The edits that act on blocks: indent, outdent, move and select (spec §3). What a block is, where it
+// starts and ends and what holds what is not decided here: it is read from the page model
+// (`shared/pageModel.ts`), the one reading of the page that Escape, Tab, Alt+Up/Down, folds and zoom all
+// ask, so they cannot disagree about, say, whether a paragraph after a blank line is still part of a
+// list item. The edits themselves work on an array of lines and return the lines that result, so they can
+// be tested without an editor.
 //
-// A block is a paragraph, a heading, a code block, a quote, a table, a list or a list item.
-// A paragraph owns the list that starts on the line right beneath it, and a list item
-// owns the items nested under it, so moving a block moves what it owns.
-//
-// Where a block begins and ends is decided in one place, `parseBlocks`, which reads the page
-// with the same CommonMark parser that the editor renders it with. Escape, Tab, Alt+Up/Down
-// and the block that focus mode and the live preview keep lit all ask it, so they cannot
-// disagree about, say, whether a paragraph after a blank line is still part of a list item.
+// In the model a paragraph owns the list that starts on the line right beneath it, and a list item owns
+// the items, fences, quotes and callouts nested under it, so moving a block moves what it owns. A heading
+// owns its section: Alt+Up/Down moves the heading with everything under it, and Escape first takes the
+// heading line, then the section. A list is not a node; where a list was, a run of item siblings is.
 
-import { GFM, type MarkdownConfig, parser } from "@lezer/markdown";
+import type { Text } from "@codemirror/state";
 
-export interface Block {
-  kind:
-    | "frontmatter"
-    | "heading"
-    | "fence"
-    | "code"
-    | "para"
-    | "list"
-    | "item"
-    | "quote"
-    | "table"
-    | "rule"
-    | "html"
-    | "other";
-  /** First and last line, both included. Trailing blank lines are not part of a block. */
-  start: number;
-  end: number;
-  /** Width of the leading whitespace of the first line. */
-  indent: number;
-  /** For an item: where its text starts, so the indent of a child that nests under it. */
-  offset: number;
-  children: Block[];
-  parent: Block | null;
-}
+import type { PageModel, PageNode } from "./pageModel";
+import { parsePage } from "./pageText";
 
 export interface Pos {
   line: number;
@@ -58,8 +35,6 @@ export interface Row {
 }
 
 const ITEM = /^( *)([-*+]|\d{1,9}[.)])( +|$)/;
-const THEMATIC = /^ {0,3}([-*_])( *\1){2,} *$/;
-const HEADING = /^ {0,3}#{1,6}( |$)/;
 
 function width(line: string): number {
   return (/^ */.exec(line)?.[0] ?? "").length;
@@ -69,11 +44,19 @@ function blank(line: string | undefined): boolean {
   return line === undefined || line.trim() === "";
 }
 
-function itemMatch(line: string): RegExpExecArray | null {
-  return THEMATIC.test(line) ? null : ITEM.exec(line);
+const linesCache = new WeakMap<Text, string[]>();
+
+/** The lines of the page the model was made from (the same array for the same version of the text). */
+export function linesOf(model: PageModel): string[] {
+  let lines = linesCache.get(model.doc);
+  if (!lines) {
+    lines = model.doc.toString().split("\n");
+    linesCache.set(model.doc, lines);
+  }
+  return lines;
 }
 
-/** The last line of the front matter, or -1 when the page has none. */
+/** The last line of the front matter, or -1 when the page has none. (A line scan: the properties header and the preview ask it on every update.) */
 export function frontmatterEnd(lines: string[]): number {
   if (lines[0]?.trimEnd() !== "---") return -1;
   for (let i = 1; i < lines.length; i++) {
@@ -83,187 +66,102 @@ export function frontmatterEnd(lines: string[]): number {
   return -1;
 }
 
-function newBlock(kind: Block["kind"], start: number, end: number, line: string): Block {
-  return { kind, start, end, indent: width(line), offset: 0, children: [], parent: null };
+/** The last line of the front matter of a model, or -1 when the page has none. */
+export function frontmatterEndOf(model: PageModel): number {
+  const first = model.root.children[0];
+  return first?.kind === "frontmatter" ? first.endLine - 1 : -1;
 }
 
-/**
- * Tessela writes headings with `#`. A line of dashes or equals under a paragraph is a rule or
- * text, not an underline: otherwise `hello---` on the first line of a page, in front of the
- * front matter, turned the whole front matter into one big heading. The editor and this parser
- * read the page with the same configuration.
- */
-export const noSetext: MarkdownConfig = { remove: ["SetextHeading"] };
+// ---- nodes as lines ------------------------------------------------------------------------
+// The model counts lines from 1; the edits here count from 0, like the arrays they work on.
 
-const markdown = parser.configure([GFM, noSetext]);
-type SyntaxNode = ReturnType<typeof markdown.parse>["topNode"];
+const startOf = (n: PageNode): number => n.startLine - 1;
+/** The last line of a node with everything it owns: for a heading, its whole section. */
+const endOf = (n: PageNode): number => n.endLine - 1;
+/** The last line of the node itself: for a heading, the heading. */
+const ownEnd = (n: PageNode): number => (n.kind === "section" ? startOf(n) : endOf(n));
 
-/** The width of the text of an item: where a line must start to belong to it. */
-function textOffset(line: string): number {
-  const m = ITEM.exec(line);
-  if (!m) return 0;
-  const w = m[1]!.length;
-  // A marker with nothing after it, or with five spaces or more, has its text one space in.
-  return m[3]!.length === 0 || m[3]!.length > 4 ? w + m[2]!.length + 1 : m[0].length;
+/** What block selection and moving act on: everything but the page and its front matter. */
+function movable(n: PageNode | null | undefined): n is PageNode {
+  return !!n && n.kind !== "page" && n.kind !== "frontmatter";
 }
 
-const LEAF: Record<string, Block["kind"]> = {
-  FencedCode: "fence",
-  CodeBlock: "code",
-  Blockquote: "quote",
-  Table: "table",
-  HorizontalRule: "rule",
-  HTMLBlock: "html",
-  CommentBlock: "html",
-  ProcessingInstructionBlock: "html",
-  LinkReference: "other",
-};
-
-/**
- * The top-level blocks of a page, in order, with their items nested inside. The reading is
- * CommonMark's (with tables): what belongs to an item, where a lazy line goes, what a fence
- * swallows. On top of it, a paragraph owns the list that starts on the line right beneath it.
- */
-export function parseBlocks(lines: string[]): Block[] {
-  const clean = lines.map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
-  const fm = frontmatterEnd(clean);
-  // The front matter is not Markdown: its lines are blanked, so that line numbers stay put.
-  const text = clean.map((l, i) => (i <= fm ? "" : l));
-  const starts: number[] = [];
-  let at = 0;
-  for (const l of text) {
-    starts.push(at);
-    at += l.length + 1;
-  }
-  const lineOf = (pos: number): number => {
-    let lo = 0;
-    let hi = starts.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (starts[mid]! <= pos) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo;
-  };
-  /** The first and last line of a node, without the blank lines that trail it. */
-  const span = (node: SyntaxNode): [number, number] => {
-    const start = lineOf(node.from);
-    let end = lineOf(Math.max(node.from, node.to - 1));
-    while (end > start && blank(text[end])) end--;
-    return [start, end];
-  };
-  const make = (kind: Block["kind"], node: SyntaxNode, parent: Block | null): Block => {
-    const [start, end] = span(node);
-    const b = newBlock(kind, start, end, text[start]!);
-    b.parent = parent;
-    return b;
-  };
-  const item = (node: SyntaxNode, parent: Block): Block => {
-    const b = make("item", node, parent);
-    b.offset = textOffset(text[b.start]!);
-    for (let c = node.firstChild; c; c = c.nextSibling) {
-      if (c.name === "BulletList" || c.name === "OrderedList") {
-        for (let i = c.firstChild; i; i = i.nextSibling) if (i.name === "ListItem") b.children.push(item(i, b));
-      }
-    }
-    return b;
-  };
-  const list = (node: SyntaxNode): Block => {
-    const b = make("list", node, null);
-    for (let i = node.firstChild; i; i = i.nextSibling) if (i.name === "ListItem") b.children.push(item(i, b));
-    return b;
-  };
-
-  const root: Block[] = [];
-  if (fm >= 0) root.push(newBlock("frontmatter", 0, fm, clean[0]!));
-  for (let node = markdown.parse(text.join("\n")).topNode.firstChild; node; node = node.nextSibling) {
-    const name = node.name;
-    if (name === "BulletList" || name === "OrderedList") {
-      const l = list(node);
-      const owner = root[root.length - 1];
-      // The list right beneath a paragraph, with no blank line between, belongs to it.
-      if (owner && owner.kind === "para" && owner.children.length === 0 && l.start === owner.end + 1) {
-        owner.end = l.end;
-        owner.children = l.children;
-        for (const c of l.children) c.parent = owner;
-      } else {
-        root.push(l);
-      }
-    } else if (name === "Paragraph") {
-      root.push(make("para", node, null));
-    } else if (name.startsWith("ATXHeading")) {
-      root.push(make("heading", node, null));
-    } else {
-      root.push(make(LEAF[name] ?? "other", node, null));
-    }
-  }
-  return root;
-}
-
-/**
- * The lines (0-based) of the block being edited at `line`: its own text, without the items
- * nested in it and without blank lines. A code block is not one text, so there it is the
- * line alone. Nothing for a blank line, or where no block is.
- */
-export function editedBlockLines(lines: string[], line: number, blocks: Block[] = parseBlocks(lines)): number[] {
-  if (blank(lines[line])) return [];
-  const b = blockAt(blocks, line);
-  if (!b || b.kind === "list") return [];
-  if (b.kind === "frontmatter" || b.kind === "fence" || b.kind === "code" || b.kind === "html") return [line];
-  const own: number[] = [];
-  for (let n = b.start; n <= b.end; n++) {
-    if (blank(lines[n]) || b.children.some((c) => n >= c.start && n <= c.end)) continue;
-    own.push(n);
-  }
-  return own;
-}
-
-/** The innermost block that contains `line`. */
-export function blockAt(blocks: Block[], line: number): Block | null {
-  for (const b of blocks) {
-    if (line < b.start || line > b.end) continue;
-    return blockAt(b.children, line) ?? b;
-  }
-  return null;
-}
-
-function siblings(blocks: Block[], b: Block): Block[] {
-  return b.parent ? b.parent.children : blocks;
-}
-
-/** The blocks that can be selected or moved as a unit: items, paragraphs and so on. */
-function movable(b: Block | null): b is Block {
-  return b !== null && b.kind !== "list" && b.kind !== "frontmatter";
+/** The innermost block that holds `line`, the front matter included. A line that nothing holds, a blank line between blocks or under a heading, has none. */
+export function blockAt(model: PageModel, line: number): PageNode | null {
+  const n = model.nodeAtLine(line + 1);
+  if (n.kind === "page") return null;
+  if (n.kind === "section" && startOf(n) !== line) return null;
+  return n;
 }
 
 /** What block selection and moving act on at `line`: the innermost item or top-level block. */
-export function selectableAt(blocks: Block[], line: number): Block | null {
-  const b = blockAt(blocks, line);
-  if (b && b.kind === "list") return null;
+export function selectableAt(model: PageModel, line: number): PageNode | null {
+  const b = blockAt(model, line);
   return movable(b) ? b : null;
+}
+
+function siblingsOf(n: PageNode): readonly PageNode[] {
+  return n.parent ? n.parent.children : [n];
+}
+
+/** The block before or after `n` under the same parent, whatever it is, or null at the end. */
+function sibling(n: PageNode, dir: "up" | "down"): PageNode | null {
+  const s = siblingsOf(n);
+  const p = s[s.indexOf(n) + (dir === "down" ? 1 : -1)];
+  return movable(p) ? p : null;
+}
+
+/** The block that `n` can swap places with: an item with an item of its list, anything else with anything but an item. */
+function previous(n: PageNode): PageNode | null {
+  const p = sibling(n, "up");
+  return p && (p.kind === "item") === (n.kind === "item") ? p : null;
+}
+
+function next(n: PageNode): PageNode | null {
+  const p = sibling(n, "down");
+  return p && (p.kind === "item") === (n.kind === "item") ? p : null;
+}
+
+/** Whether items under `parent` are a list of their own: at the top of a page or a section. (An item that holds items has its children for them, a paragraph the list it owns.) */
+function listsIn(parent: PageNode | null): boolean {
+  return parent === null || parent.kind === "page" || parent.kind === "section";
+}
+
+/** The run of items that starts at `n` (going down) or ends at it (going up): what a list was. */
+function itemRun(n: PageNode, dir: "up" | "down"): PageNode[] {
+  const s = siblingsOf(n);
+  const run: PageNode[] = [];
+  for (let i = s.indexOf(n); s[i]?.kind === "item"; i += dir === "down" ? 1 : -1) run.push(s[i]!);
+  return dir === "down" ? run : run.reverse();
+}
+
+/** Whether the items from `first` to `last` are a whole list: the run of items they are in begins at the one and ends at the other. */
+function wholeList(first: PageNode, last: PageNode): boolean {
+  return first.kind === "item" && last.kind === "item" && listsIn(first.parent) && sibling(first, "up")?.kind !== "item" && sibling(last, "down")?.kind !== "item";
 }
 
 /**
  * Shift+Up / Shift+Down take a whole list in one step, as a paragraph or a heading is taken, when the
- * selection comes to it from outside. (From an item, the next block is the next item.)
+ * selection comes to it from outside. (From an item, the next block is the next item; from a whole
+ * list, whatever is beside it.) The answer is the blocks to take in, or null when there is nothing there.
  */
-function neighbour(blocks: Block[], b: Block, dir: "up" | "down"): Block | null {
-  const list = siblings(blocks, b);
-  const n = list[list.indexOf(b) + (dir === "down" ? 1 : -1)] ?? null;
-  return n && n.kind === "list" ? n : movable(n) ? n : null;
+function neighbour(n: PageNode, dir: "up" | "down", list = false): PageNode[] | null {
+  const m = sibling(n, dir);
+  if (!m) return null;
+  if (m.kind === "item") return n.kind === "item" || !listsIn(m.parent) ? [m] : itemRun(m, dir);
+  return n.kind === "item" && !list ? null : [m];
 }
 
-function previous(blocks: Block[], b: Block): Block | null {
-  const list = siblings(blocks, b);
-  const i = list.indexOf(b);
-  const p = list[i - 1] ?? null;
-  return movable(p) ? p : null;
+/** Whether `n` sits in a quote, a callout or a footnote: its lines start with something other than the item's own indent. */
+function inContainer(n: PageNode): boolean {
+  for (const a of n.ancestors()) if (a.kind === "quote" || a.kind === "callout" || a.kind === "footnote") return true;
+  return false;
 }
 
-function next(blocks: Block[], b: Block): Block | null {
-  const list = siblings(blocks, b);
-  const n = list[list.indexOf(b) + 1] ?? null;
-  return movable(n) ? n : null;
+/** Whether the line is a heading's own line. */
+function isHeadingLine(model: PageModel, line: number): boolean {
+  const n = model.nodeAtLine(line + 1);
+  return n.kind === "section" && startOf(n) === line;
 }
 
 function rows(lines: string[]): Row[] {
@@ -310,29 +208,33 @@ function ordered(sel: Sel): [Pos, Pos] {
   return a.line < h.line || (a.line === h.line && a.col <= h.col) ? [a, h] : [h, a];
 }
 
-/** The top-most blocks that cover the lines, so a block and its children are not edited twice. */
-function topmost(blocks: Block[], from: number, to: number): Block[] {
-  const found: Block[] = [];
+/**
+ * The top-most blocks that cover the lines, so a block and its children are not edited twice. With
+ * `sections`, a heading counts as the section it owns; without, as its own line, and what is under it
+ * is looked at on its own.
+ */
+function topmost(model: PageModel, from: number, to: number, sections: boolean): PageNode[] {
+  const found: PageNode[] = [];
   let line = from;
   while (line <= to) {
-    const b = selectableAt(blocks, line);
+    const b = selectableAt(model, line);
     if (!b) {
       line++;
       continue;
     }
     // Climb to the highest block that starts inside the selection.
     let top = b;
-    while (top.parent && movable(top.parent) && top.parent.start >= from) top = top.parent;
+    while (top.parent && movable(top.parent) && (sections || top.parent.kind !== "section") && startOf(top.parent) >= from) top = top.parent;
     if (!found.includes(top)) found.push(top);
-    line = top.end + 1;
+    line = (top.kind === "section" && !sections ? startOf(top) : endOf(top)) + 1;
   }
   return found;
 }
 
-function inEditableText(blocks: Block[], from: number, to: number): boolean {
+function inEditableText(model: PageModel, from: number, to: number): boolean {
   for (let line = from; line <= to; line++) {
-    const b = blockAt(blocks, line);
-    if (b && (b.kind === "frontmatter" || b.kind === "fence" || b.kind === "code")) return false;
+    const b = blockAt(model, line);
+    if (b && (b.kind === "frontmatter" || b.kind === "code" || b.kind === "math")) return false;
   }
   return true;
 }
@@ -342,8 +244,17 @@ function hasTab(lines: string[], from: number, to: number): boolean {
   return false;
 }
 
-function marker(lines: string[], b: Block): string {
-  return itemMatch(lines[b.start]!)?.[0] ?? "";
+/** Where the text of an item starts: the indent of a child that nests under it. */
+function textOffset(line: string): number {
+  const m = ITEM.exec(line);
+  if (!m) return 0;
+  const w = m[1]!.length;
+  // A marker with nothing after it, or with five spaces or more, has its text one space in.
+  return m[3]!.length === 0 || m[3]!.length > 4 ? w + m[2]!.length + 1 : m[0].length;
+}
+
+function marker(lines: string[], n: PageNode): string {
+  return ITEM.exec(lines[startOf(n)]!)?.[0] ?? "";
 }
 
 /**
@@ -351,42 +262,43 @@ function marker(lines: string[], b: Block): string {
  * under it) beneath the item before it, and on an empty line it starts a list item.
  * Returns null when the selection is not ordinary text, so Tab can act as usual there.
  */
-export function indent(lines: string[], sel: Sel): Result | null {
+export function indent(model: PageModel, sel: Sel): Result | null {
+  const lines = linesOf(model);
   const [from, to] = selectedLines(sel);
-  const blocks = parseBlocks(lines);
-  if (!inEditableText(blocks, from, to) || hasTab(lines, from, to)) return null;
+  if (!model.complete || !inEditableText(model, from, to) || hasTab(lines, from, to)) return null;
   const out = rows(lines);
 
   if (from === to && blank(lines[from])) {
-    const above = from > 0 && !blank(lines[from - 1]) ? selectableAt(blocks, from - 1) : null;
-    const pad = above && above.kind === "item" ? above.offset : 0;
+    const above = from > 0 && !blank(lines[from - 1]) ? selectableAt(model, from - 1) : null;
+    const pad = above && above.kind === "item" && !inContainer(above) ? textOffset(lines[startOf(above)]!) : 0;
     out[from]!.text = `${" ".repeat(pad)}- `;
     out[from]!.dcol = out[from]!.text.length;
     return { rows: out };
   }
 
   // Forward, because an item that has just been nested is a child of the one before.
-  let current = lines;
-  for (const target of topmost(blocks, from, to)) {
-    const fresh = current === lines ? blocks : parseBlocks(current);
-    const b = blockAt(fresh, target.start);
-    const at = b && b.start === target.start ? b : null;
-    if (!at) continue;
+  let current = model;
+  let text = lines;
+  for (const target of topmost(model, from, to, false)) {
+    const b = selectableAt(current, startOf(target));
+    const at = b && startOf(b) === startOf(target) ? b : null;
+    if (!at || inContainer(at)) continue;
     if (at.kind === "item") {
-      const before = previous(fresh, at);
+      const before = previous(at);
       if (!before || before.kind !== "item") continue;
-      shiftLines(out, at.start, at.end, before.offset - at.indent);
-    } else if (at.kind === "para") {
+      shiftLines(out, startOf(at), endOf(at), textOffset(text[startOf(before)]!) - width(text[startOf(at)]!));
+    } else if (at.kind === "paragraph") {
       // The paragraph becomes an item, and its lines and the list it owns nest under the marker.
-      out[at.start]!.text = `- ${out[at.start]!.text.trimStart()}`;
-      out[at.start]!.dcol += 2 - width(lines[at.start]!);
-      for (let i = at.start + 1; i <= at.end; i++) {
+      out[startOf(at)]!.text = `- ${out[startOf(at)]!.text.trimStart()}`;
+      out[startOf(at)]!.dcol += 2 - width(lines[startOf(at)]!);
+      for (let i = startOf(at) + 1; i <= endOf(at); i++) {
         if (blank(out[i]!.text)) continue;
         out[i]!.text = `  ${out[i]!.text}`;
         out[i]!.dcol += 2;
       }
     }
-    current = out.map((r) => r.text);
+    text = out.map((r) => r.text);
+    current = parsePage(text.join("\n"));
   }
   return { rows: out };
 }
@@ -395,87 +307,93 @@ export function indent(lines: string[], sel: Sel): Result | null {
  * Shift+Tab. A nested item moves out one level. An item at the top level stops being a
  * list item and becomes a plain paragraph again; what was nested under it moves out with it.
  */
-export function outdent(lines: string[], sel: Sel): Result | null {
+export function outdent(model: PageModel, sel: Sel): Result | null {
+  const lines = linesOf(model);
   const [from, to] = selectedLines(sel);
-  const blocks = parseBlocks(lines);
-  if (!inEditableText(blocks, from, to) || hasTab(lines, from, to)) return null;
-  const targets = topmost(blocks, from, to).filter((b) => b.kind === "item");
+  if (!model.complete || !inEditableText(model, from, to) || hasTab(lines, from, to)) return null;
+  const targets = topmost(model, from, to, false).filter((b) => b.kind === "item" && !inContainer(b));
 
   // Bottom to top, so the lines that are added do not move the ones still to do.
   const out = rows(lines);
-  const order = [...targets].reverse();
-  const inserted: { at: number; before: boolean }[] = [];
-  for (const b of order) {
+  const inserted: number[] = [];
+  for (const b of [...targets].reverse()) {
     const parent = b.parent;
+    const indentOf = width(lines[startOf(b)]!);
     if (parent && parent.kind === "item") {
-      shiftLines(out, b.start, b.end, parent.indent - b.indent);
-    } else if (b.indent > 0) {
-      shiftLines(out, b.start, b.end, -b.indent);
+      shiftLines(out, startOf(b), endOf(b), width(lines[startOf(parent)]!) - indentOf);
+    } else if (indentOf > 0) {
+      shiftLines(out, startOf(b), endOf(b), -indentOf);
     } else {
       const m = marker(lines, b);
-      const first = out[b.start]!;
+      const first = out[startOf(b)]!;
       first.text = first.text.slice(m.length);
       first.dcol -= m.length;
-      shiftLines(out, b.start + 1, b.end, -m.length);
-      if (b.start > 0 && !blank(lines[b.start - 1]) && !HEADING.test(lines[b.start - 1]!)) {
-        inserted.push({ at: b.start, before: true });
-      }
-      if (b.end + 1 < lines.length && !blank(lines[b.end + 1]) && !HEADING.test(lines[b.end + 1]!)) {
-        inserted.push({ at: b.end + 1, before: true });
-      }
+      shiftLines(out, startOf(b) + 1, endOf(b), -m.length);
+      const above = startOf(b) - 1;
+      const below = endOf(b) + 1;
+      if (above >= 0 && !blank(lines[above]) && !isHeadingLine(model, above)) inserted.push(startOf(b));
+      if (below < lines.length && !blank(lines[below]) && !isHeadingLine(model, below)) inserted.push(below);
     }
   }
   // Add the blank lines, last position first.
-  const unique = [...new Set(inserted.map((i) => i.at))].sort((a, b) => b - a);
-  for (const at of unique) out.splice(at, 0, { text: "", from: -1, dcol: 0 });
+  for (const at of [...new Set(inserted)].sort((a, b) => b - a)) out.splice(at, 0, { text: "", from: -1, dcol: 0 });
   return { rows: out };
 }
 
 /** The lines of a block, as a range with the blank lines between two neighbours. */
-function swap(lines: string[], first: Block, second: Block): Result {
+function swap(lines: string[], first: [number, number], second: [number, number]): Result {
   const out = rows(lines);
-  const a = out.slice(first.start, first.end + 1);
-  const gap = out.slice(first.end + 1, second.start);
-  const b = out.slice(second.start, second.end + 1);
-  out.splice(first.start, second.end - first.start + 1, ...b, ...gap, ...a);
+  const a = out.slice(first[0], first[1] + 1);
+  const gap = out.slice(first[1] + 1, second[0]);
+  const b = out.slice(second[0], second[1] + 1);
+  out.splice(first[0], second[1] - first[0] + 1, ...b, ...gap, ...a);
   return { rows: out };
 }
 
-/** Alt+Up / Alt+Down: moves the block, and what it owns, past its neighbour. */
-export function move(lines: string[], sel: Sel, dir: "up" | "down"): Result | null {
+/**
+ * The lines that a block swaps places with when it moves, or null when it stays. Beside a sibling it is
+ * that sibling and what it owns, and a heading takes its section with it. A block that is the first or the
+ * last under a heading moves out of that section, past the heading line of its own section or of the next
+ * one, and a block that moves up to a section enters it: the same step, taken backwards.
+ */
+function swapTarget(n: PageNode, dir: "up" | "down"): [number, number] | null {
+  const s = dir === "up" ? previous(n) : next(n);
+  if (s) return n.kind !== "section" && s.kind === "section" ? [startOf(s), startOf(s)] : [startOf(s), endOf(s)];
+  if (n.kind === "item" || n.kind === "section") return null;
+  // Nothing beside it: the heading of its section, or the one that comes after the section.
+  for (let x = n.parent; x?.kind === "section"; x = dir === "down" ? x.parent : null) {
+    const h = dir === "up" ? x : sibling(x, "down");
+    if (h?.kind === "section") return [startOf(h), startOf(h)];
+  }
+  return null;
+}
+
+/** Alt+Up / Alt+Down: moves the block, and what it owns, past its neighbour. A heading takes its section. */
+export function move(model: PageModel, sel: Sel, dir: "up" | "down"): Result | null {
+  const lines = linesOf(model);
   const [from, to] = selectedLines(sel);
-  const blocks = parseBlocks(lines);
-  if (!inEditableText(blocks, from, to)) return null;
-  const group = selectedGroup(blocks, from, to);
+  if (!model.complete || !inEditableText(model, from, to)) return null;
+  const group = selectedGroup(model, from, to);
   if (!group) return { rows: rows(lines) };
   const first = group[0]!;
   const last = group[group.length - 1]!;
-  let result: Result;
-  if (dir === "up") {
-    const before = previous(blocks, first);
-    if (!before) return { rows: rows(lines) };
-    result = swap(lines, before, mergeGroup(first, last));
-  } else {
-    const after = next(blocks, last);
-    if (!after) return { rows: rows(lines) };
-    result = swap(lines, mergeGroup(first, last), after);
-  }
+  const span: [number, number] = [startOf(first), endOf(last)];
+  const target = swapTarget(dir === "up" ? first : last, dir);
+  if (!target) return { rows: rows(lines) };
+  const result = dir === "up" ? swap(lines, target, span) : swap(lines, span, target);
   // A rule that ends up on the first line, with another rule below it, would turn everything
   // between them into front matter. Moving does not do that: the block stays where it is.
-  return frontmatterEnd(result.rows.map((r) => r.text)) === frontmatterEnd(lines) ? result : { rows: rows(lines) };
-}
-
-function mergeGroup(first: Block, last: Block): Block {
-  return { ...first, end: last.end };
+  const moved = parsePage(result.rows.map((r) => r.text).join("\n"));
+  return frontmatterEndOf(moved) === frontmatterEndOf(model) ? result : { rows: rows(lines) };
 }
 
 /** The selected blocks when they are neighbours; otherwise the block at the first line. */
-function selectedGroup(blocks: Block[], from: number, to: number): Block[] | null {
-  const found = topmost(blocks, from, to);
+function selectedGroup(model: PageModel, from: number, to: number): PageNode[] | null {
+  const found = topmost(model, from, to, true);
   if (found.length === 0) return null;
   const first = found[0]!;
-  const level = siblings(blocks, first);
-  const consecutive = found.every((b, i) => siblings(blocks, b) === level && (i === 0 || level.indexOf(b) === level.indexOf(found[i - 1]!) + 1));
+  const level = siblingsOf(first);
+  const consecutive = found.every((b, i) => siblingsOf(b) === level && (i === 0 || level.indexOf(b) === level.indexOf(found[i - 1]!) + 1));
   return consecutive ? found : [first];
 }
 
@@ -483,53 +401,61 @@ function lineEnd(lines: string[], line: number): Pos {
   return { line, col: lines[line]!.length };
 }
 
-/** Whether the selection covers whole blocks that are neighbours, and nothing else. */
-function aligned(lines: string[], blocks: Block[], sel: Sel, lists = false): Block[] | null {
-  const [a, b] = ordered(sel);
-  if (a.col !== 0 || b.col !== lines[b.line]!.length || (a.line === b.line && a.col === b.col)) return null;
-  let first = selectableAt(blocks, a.line);
-  if (!first || first.start !== a.line) return null;
-  // With `lists`, a selection that starts at a list and goes past it holds the list, not its items.
-  if (lists && first.parent?.kind === "list" && first.parent.start === first.start && first.parent.end < b.line) first = first.parent;
-  const group = [first];
-  let current = first;
-  while (current.end < b.line) {
-    const n = lists ? neighbour(blocks, current, "down") : next(blocks, current);
-    if (!n) return null;
-    group.push(n);
-    current = n;
-  }
-  return current.end === b.line ? group : null;
+function cover(lines: string[], from: number, to: number): Sel {
+  return { anchor: { line: from, col: 0 }, head: lineEnd(lines, to) };
 }
-
-function cover(lines: string[], from: Block, to: Block): Sel {
-  return { anchor: { line: from.start, col: 0 }, head: lineEnd(lines, to.end) };
-}
-
-const HEADING_LEVEL = /^ {0,3}(#{1,6})( |$)/;
 
 /**
- * Every range Escape can widen to, as whole lines: each block (the items inside a list too), each
- * section, which is a heading and what follows it up to the next heading of the same level or
- * above, and the whole page.
+ * The blocks a selection of whole lines holds, as units (a unit is one block, or the run of items that
+ * a list was), or null when it covers anything else: part of a line, or blocks that are not neighbours.
+ * A heading is held by its own line or by the whole of its section.
  */
-function ranges(lines: string[], blocks: Block[]): [number, number][] {
+function aligned(model: PageModel, sel: Sel): PageNode[][] | null {
+  const lines = linesOf(model);
+  const [a, b] = ordered(sel);
+  if (a.col !== 0 || b.col !== lines[b.line]!.length || (a.line === b.line && a.col === b.col)) return null;
+  const first = selectableAt(model, a.line);
+  if (!first || startOf(first) !== a.line) return null;
+  let unit = [first];
+  // A selection that starts at a list and goes to its end or past it holds the list, not its items.
+  if (first.kind === "item" && listsIn(first.parent) && previous(first) === null) {
+    const run = itemRun(first, "down");
+    if (endOf(run[run.length - 1]!) <= b.line) unit = run;
+  }
+  const group = [unit];
+  for (;;) {
+    const last = unit[unit.length - 1]!;
+    if (b.line === endOf(last) || b.line === ownEnd(last)) return group;
+    if (endOf(last) > b.line) return null;
+    const n = neighbour(last, "down", wholeList(unit[0]!, last));
+    if (!n) return null;
+    group.push(n);
+    unit = n;
+  }
+}
+
+/**
+ * Every range Escape can widen to, as whole lines: each block (the items inside a list too), a heading
+ * line and then the section it owns, each run of items (what a list was), and the whole page.
+ */
+function ranges(model: PageModel, lines: string[]): [number, number][] {
   const found: [number, number][] = [[0, lines.length - 1]];
-  const walk = (list: Block[]): void => {
-    for (const b of list) {
-      found.push([b.start, b.end]);
-      walk(b.children);
+  for (const n of model.nodes) {
+    found.push([startOf(n), ownEnd(n)]);
+    if (n.kind === "section") found.push([startOf(n), endOf(n)]);
+  }
+  for (const parent of [model.root, ...model.nodes].filter(listsIn)) {
+    let run: PageNode[] = [];
+    const flush = (): void => {
+      if (run.length > 1) found.push([startOf(run[0]!), endOf(run[run.length - 1]!)]);
+      run = [];
+    };
+    for (const c of parent.children) {
+      if (c.kind === "item") run.push(c);
+      else flush();
     }
-  };
-  walk(blocks);
-  const headings = blocks.filter((b) => b.kind === "heading");
-  headings.forEach((h, i) => {
-    const level = HEADING_LEVEL.exec(lines[h.start]!)![1]!.length;
-    const next = headings.slice(i + 1).find((n) => HEADING_LEVEL.exec(lines[n.start]!)![1]!.length <= level);
-    let end = next ? next.start - 1 : lines.length - 1;
-    while (end > h.start && blank(lines[end])) end--;
-    found.push([h.start, end]);
-  });
+    flush();
+  }
   return found;
 }
 
@@ -542,13 +468,14 @@ function before(a: Pos, b: Pos): boolean {
  * paragraph, the item that holds it, the list, the section under its heading, the section that
  * holds that, and in the end the whole page. Null when the whole page is selected already.
  */
-export function selectBlock(lines: string[], sel: Sel): Sel | null {
+export function selectBlock(model: PageModel, sel: Sel): Sel | null {
+  const lines = linesOf(model);
   const [from, to] = ordered(sel);
   // A cursor in a gap between blocks has nothing to take in.
-  if (from.line === to.line && from.col === to.col && !blockAt(parseBlocks(lines), from.line)) return null;
+  if (from.line === to.line && from.col === to.col && !blockAt(model, from.line)) return null;
   let best: Sel | null = null;
   let size = Infinity;
-  for (const [start, end] of ranges(lines, parseBlocks(lines))) {
+  for (const [start, end] of ranges(model, lines)) {
     const first: Pos = { line: start, col: 0 };
     const last = lineEnd(lines, end);
     // It must hold the selection and be wider than it.
@@ -562,55 +489,47 @@ export function selectBlock(lines: string[], sel: Sel): Sel | null {
 }
 
 /** Shift+Up / Shift+Down on a block selection: takes in the next block in that direction. */
-export function extendBlocks(lines: string[], sel: Sel, dir: "up" | "down"): Sel | null {
-  const blocks = parseBlocks(lines);
-  const group = aligned(lines, blocks, sel, true);
+export function extendBlocks(model: PageModel, sel: Sel, dir: "up" | "down"): Sel | null {
+  const lines = linesOf(model);
+  const group = aligned(model, sel);
   if (!group) return null;
-  let first = group[0]!;
-  let last = group[group.length - 1]!;
-  // All the items of a list are the list, so the selection can go on to what is beside it.
-  const owner = first.parent;
-  if (owner?.kind === "list" && owner.children[0] === first && owner.children[owner.children.length - 1] === last) first = last = owner;
+  const [a, b] = ordered(sel);
+  const firstUnit = group[0]!;
+  const lastUnit = group[group.length - 1]!;
+  const first = firstUnit[0]!;
+  const last = lastUnit.at(-1)!;
   if (dir === "down") {
-    const n = neighbour(blocks, last, "down");
-    return n ? cover(lines, first, n) : null;
+    // Items that are all of a list are the list: the selection can go on to what is beside it.
+    const list = wholeList(lastUnit[0]!, last);
+    // A heading that is selected alone takes its section first.
+    if (last.kind === "section" && b.line === startOf(last) && endOf(last) > startOf(last)) return cover(lines, a.line, endOf(last));
+    const n = neighbour(last, "down", list);
+    return n ? cover(lines, a.line, endOf(n.at(-1)!)) : null;
   }
-  const p = neighbour(blocks, first, "up");
-  return p ? cover(lines, p, last) : null;
+  const n = neighbour(first, "up", wholeList(first, firstUnit.at(-1)!));
+  return n ? cover(lines, startOf(n[0]!), b.line) : null;
 }
 
 // ---- select mode ---------------------------------------------------------------
 // After Escape the selected blocks stay selected as blocks: the arrows go from block to block,
 // Enter adds a block below, and anything else goes back to editing.
 
-/** Every block that can be selected, in the order they are read: an item comes before its children. */
-function readingOrder(blocks: Block[]): Block[] {
-  const found: Block[] = [];
-  const walk = (list: Block[]): void => {
-    for (const b of list) {
-      if (movable(b)) found.push(b);
-      walk(b.children);
-    }
-  };
-  walk(blocks);
-  return found;
-}
-
 /**
  * Up / Down in select mode: selects the block that comes before or after the selected ones, as the
  * page is read. Code blocks, quotes and tables are blocks like any other. Null at the ends.
  */
-export function stepBlock(lines: string[], sel: Sel, dir: "up" | "down"): Sel | null {
+export function stepBlock(model: PageModel, sel: Sel, dir: "up" | "down"): Sel | null {
+  const lines = linesOf(model);
   const [first, last] = selectedLines(sel);
-  const all = readingOrder(parseBlocks(lines));
-  const b = dir === "down" ? all.find((c) => c.start > last) : all.findLast((c) => c.start < first);
-  return b ? cover(lines, b, b) : null;
+  const all = model.readingOrder().filter(movable);
+  const b = dir === "down" ? all.find((c) => startOf(c) > last) : all.findLast((c) => startOf(c) < first);
+  return b ? cover(lines, startOf(b), ownEnd(b)) : null;
 }
 
 /** The first and last character of the selected lines: where Space and the arrows put the cursor. */
-export function selectedSpan(lines: string[], sel: Sel): { start: Pos; end: Pos } {
+export function selectedSpan(model: PageModel, sel: Sel): { start: Pos; end: Pos } {
   const [first, last] = selectedLines(sel);
-  return { start: { line: first, col: 0 }, end: lineEnd(lines, last) };
+  return { start: { line: first, col: 0 }, end: lineEnd(linesOf(model), last) };
 }
 
 /** A text to put in the page, where, and where the cursor goes inside it. */
@@ -624,14 +543,15 @@ export interface Insertion {
  * Enter in select mode: a new block below the selected ones. Below an item it is another item
  * of the same list; below anything else it is a paragraph, with a blank line to set it apart.
  */
-export function blockBelow(lines: string[], sel: Sel): Insertion {
+export function blockBelow(model: PageModel, sel: Sel): Insertion {
+  const lines = linesOf(model);
   const [first, last] = selectedLines(sel);
   // The outermost block that ends where the selection does.
-  const owner = readingOrder(parseBlocks(lines)).find((b) => b.start >= first && b.end === last);
-  const m = owner?.kind === "item" ? ITEM.exec(lines[owner.start]!) : null;
+  const owner = model.readingOrder().find((b) => movable(b) && startOf(b) >= first && ownEnd(b) === last);
+  const m = owner?.kind === "item" ? ITEM.exec(lines[startOf(owner)]!) : null;
   if (m) {
     const marker = /^\d/.test(m[2]!) ? `${parseInt(m[2]!, 10) + 1}${m[2]!.slice(-1)}` : m[2]!;
-    const task = /^ *[-*+] +\[[ xX]\]/.test(lines[owner!.start]!) ? "[ ] " : "";
+    const task = /^ *[-*+] +\[[ xX]\]/.test(lines[startOf(owner!)]!) ? "[ ] " : "";
     const insert = `\n${m[1]}${marker} ${task}`;
     return { at: lineEnd(lines, last), insert, caret: insert.length };
   }
@@ -643,4 +563,40 @@ export function blockBelow(lines: string[], sel: Sel): Insertion {
       : { at: lineEnd(lines, last + 1), insert: "\n\n", caret: 1 };
   }
   return { at: lineEnd(lines, last), insert: "\n\n\n", caret: 2 };
+}
+
+// ---- for the live preview ------------------------------------------------------------
+// The live preview still asks for "the lines of the block being edited" the old way. It moves onto the
+// page model with the reveal policy (the rebuild's PR6), and these go then.
+
+/** A block as the live preview is handed it: the top-level nodes of the page model. */
+export type Block = PageNode;
+
+/** The top-level blocks of a page. */
+export function parseBlocks(lines: string[]): Block[] {
+  return [...parsePage(lines.join("\n")).root.children];
+}
+
+function deepest(nodes: readonly PageNode[], line: number): PageNode | null {
+  for (const n of nodes) if (line >= startOf(n) && line <= endOf(n)) return deepest(n.children, line) ?? n;
+  return null;
+}
+
+/**
+ * The lines (0-based) of the block being edited at `line`: its own text, without the items
+ * nested in it and without blank lines. A code block is not one text, so there it is the
+ * line alone. Nothing for a blank line, or where no block is.
+ */
+export function editedBlockLines(lines: string[], line: number, blocks: Block[] = parseBlocks(lines)): number[] {
+  if (blank(lines[line])) return [];
+  const b = deepest(blocks, line);
+  if (!b) return [];
+  if (b.kind === "section") return startOf(b) === line ? [line] : [];
+  if (b.kind === "frontmatter" || b.kind === "code" || b.kind === "html") return [line];
+  const own: number[] = [];
+  for (let n = startOf(b); n <= endOf(b); n++) {
+    if (blank(lines[n]) || b.children.some((c) => n >= startOf(c) && n <= endOf(c))) continue;
+    own.push(n);
+  }
+  return own;
 }
