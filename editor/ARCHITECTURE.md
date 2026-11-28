@@ -99,6 +99,16 @@ another is raw with it (the cursor in a link inside bold shows both). A line of 
 bullet or checkbox are constructs of their own: the `>` shows on the line the cursor is on, the
 bullet while the cursor is at it.
 
+**Revealing does not move the text.** A mark is hidden or raw over the same characters, and
+`livePreview.ts` gives both from the same `isEditing` answer, so the set of marks never depends on the
+cursor and only the construct that is revealed changes. The raw mark takes no room that the hidden one did
+not: a mark at the start of a line (heading `#`, quote `>`) hangs in the margin, a bullet or a checkbox is
+raw in the slot of its glyph, and inline code keeps its styling and padding. Marks inside a line (`**`, the
+brackets and address of a link, the backticks) are characters of the line and push the rest of that line, and
+nothing else; a picture or a table that opens as text changes height, as it must. The CSS for this is the
+`cm-mk` rules in `style.css`, which nothing reads; `test/revealShift.test.ts` holds the decorations to it and
+`e2e/acceptance/reveal.mjs` measures a window.
+
 The facts the rule reads are kept in one place each: the focus in `editorFocus` (`reveal.ts`),
 the mode in `selectMode`, whether the Markdown is drawn at all in the `rendered` facet that live
 preview provides. Providers call `isEditing(state, range)` and `isDrawn(state, range)`, and rebuild
@@ -188,7 +198,7 @@ changes a row.
 | 1. One page model | Met for the editor. `shared/pageModel.ts` builds the model from the syntax tree as the `pageModel` state field (`renderer/pageModelField.ts`), and the Rust index is its oracle. Block commands, selection stepping, folds and zoom (`shared/blocks.ts`, `shared/folds.ts`, `renderer/blockKeys.ts`), the live preview and the mods (`ctx.page`) read it; `parseBlocks` and `editedBlockLines` are gone. Text-only code with no editor (the properties edits) still finds the front matter with `frontmatterEnd(lines)` in `shared/syntax.ts`, and commands that have just made new text read it with `parsePage` (`shared/pageText.ts`), the same builder. |
 | 2. Typed selection | Met. `blockSelection` (`renderer/selectMode.ts`) holds a `BlockSelection` (`shared/blockSelection.ts`): anchor and head nodes of the page model, normalised to a run of siblings. The text selection is its projection, set in the same transaction (`selectionSpec`), and one filter clears the field on any other selection or edit. It is drawn from the field: a line decoration, and the class a table widget wears (`coversRange`). |
 | 3. Transactions | Met. Block edits (`shared/blocks.ts`, the outline mod) are a `BlockEdit` (`shared/blockEdit.ts`): a `ChangeSet` and the ranges that moved, in offsets. `renderer/blockKeys.ts` turns one into a transaction (`editSpec`) and follows the cursor and the selected blocks through it (`follow`); selecting and removing blocks maps positions through the change, and the folds go with a moved block (`renderer/blockMoves.ts`). |
-| 4. Views from state | Met. One reveal policy (`reveal.ts`) serves live preview, tables and the front matter header, gfm-extras and the link clicks; tables are drawn from the syntax tree; mods ask `ctx.editor.isEditing` and `ctx.editor.selectedBlocks`. The `cm-select-mode` class is left on the editor for CSS alone (it hides the caret and the selection layer); no code reads it. |
+| 4. Views from state | Met. One reveal policy (`reveal.ts`) serves live preview, tables and the front matter header, gfm-extras and the link clicks; tables are drawn from the syntax tree; mods ask `ctx.editor.isEditing` and `ctx.editor.selectedBlocks`. Revealing a mark does not move the text around it (`cm-mk` in `style.css`). The `cm-select-mode` class is left on the editor for CSS alone (it hides the caret and the selection layer); no code reads it. |
 | 5. Commands | Met: every action is `(state) => Reply` (`renderer/blockKeys.ts`) and the keymap only runs it. |
 | 6. Explicit modes | Met. The mode is whether `blockSelection` is set; each key's meaning in each mode is the table in `blockKeys.ts`, and `respond(state, key)` is the machine. Escape is resolved there (popup, widen, focus mode); the window's capture handler is gone, and only an Escape that no editor, field or dialog took leaves focus mode from the window. |
 | 7. Property tests | Met for the model, the reveal policy and select mode. `test/props.blocks.test.ts` covers edits; `test/livePreview.test.ts` checks the reveal policy on generated paragraphs and tables; `test/props.selectMode.test.ts` runs any keys on any page, with folds and a zoom, and checks that the result is editing or a valid run, that the text selection is exactly its lines, that only shown blocks are selected, and that the mode is entered and left only by the listed keys. |

@@ -552,14 +552,11 @@ fn run() -> ExitCode {
         }),
         Command::Blocks { edit, page } => run_edit(&edit, |_| {
             let path = edit::existing_path(&page)?;
-            let bundle = Bundle::load(&edit.bundle)
-                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
-            let page = bundle
-                .pages
-                .iter()
-                .find(|p| p.path == path)
+            // Only this page is read: the others cannot change its shape.
+            let page = Bundle::load_page(&edit.bundle, &path)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?
                 .ok_or_else(|| EditError::new(ErrorCode::NotFound, format!("no page {path}")))?;
-            let structure = tessela_core::Structure::of(page);
+            let structure = tessela_core::Structure::of(&page);
             Ok(Done::new(
                 &structure,
                 |s| {
