@@ -2,7 +2,7 @@
 // headings you are under, and a click on one goes there. Heading lines wrap in balanced lines.
 
 import assert from "node:assert/strict";
-import { front, suite } from "../harness.mjs";
+import { front, localDay, suite } from "../harness.mjs";
 
 const filler = (n) => Array.from({ length: n }, (_, i) => `Paragraph ${i + 1} with some words to fill a line of the page.`).join("\n\n");
 const PAGE = `# Project\n\nIntro.\n\n## Design\n\n${filler(30)}\n\n### Risks\n\n${filler(30)}\n\n## Plan\n\n${filler(30)}\n`;
@@ -51,5 +51,27 @@ suite("Sticky heading path", () => ({ "long.md": front() + PAGE }), (test) => {
     assert.equal(await s.win.$eval(".cm-line:not(.cm-heading-line)", (e) => getComputedStyle(e).textWrap), "pretty");
     assert.equal(await s.win.$$eval(".cm-heading-line", (e) => e.length) >= 1, true);
     assert.equal(await s.win.$eval(".cm-heading-line", (e) => getComputedStyle(e).textWrap), "balance");
+  });
+});
+
+// In the journals the text is at the left of its column, not centred. The bar spans the editor all the same,
+// with an opaque background, so that no text shows past it, and its crumbs start where the text starts.
+const today = localDay();
+suite("Sticky heading path in a journal", () => ({ [`journals/${today}.md`]: `---\ntype: journal\ndate: ${today}\n---\n\n# Day\n\n${filler(40)}\n` }), (test) => {
+  test("the bar is as wide as the editor, and the crumbs start where the text does", async (s) => {
+    await s.win.waitForSelector(".card .cm-line");
+    await scrollTo(s, 600);
+    await s.win.waitForSelector(".cm-stickypath-bar:not([hidden])");
+    const r = await s.win.evaluate(() => {
+      const bar = document.querySelector(".cm-stickypath-bar:not([hidden])");
+      const editor = bar.closest(".cm-editor").getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      const line = bar.closest(".cm-editor").querySelector(".cm-line").getBoundingClientRect();
+      const crumb = bar.querySelector("button").getBoundingClientRect();
+      return { left: b.left - editor.left, right: editor.right - b.right, crumb: crumb.left - line.left, opaque: getComputedStyle(bar).backgroundColor };
+    });
+    assert.ok(Math.abs(r.left) < 1 && Math.abs(r.right) < 1, `the bar is ${r.left}px in from the left, ${r.right}px from the right`);
+    assert.ok(Math.abs(r.crumb - 24) < 2, `the crumb starts ${r.crumb}px from the left of the text`);
+    assert.notEqual(r.opaque, "rgba(0, 0, 0, 0)");
   });
 });

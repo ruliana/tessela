@@ -32,6 +32,8 @@ function marksOf(model: PageModel, state: EditorState) {
 class StickyPath {
   readonly dom = document.createElement("div");
   readonly bar = document.createElement("nav");
+  /** The crumbs, in a column the width of the text, so that they start where the text starts (the bar itself is as wide as the editor). */
+  readonly column = document.createElement("div");
   crumbs: Crumb[] = [];
   /** What was drawn last, to leave the DOM alone when nothing changed. */
   drawn = "";
@@ -41,6 +43,8 @@ class StickyPath {
     // It has no height of its own, so showing it moves nothing; the bar is drawn over the text.
     this.dom.className = "cm-stickypath";
     this.bar.className = "cm-stickypath-bar";
+    this.column.className = "cm-stickypath-column";
+    this.bar.append(this.column);
     this.bar.setAttribute("aria-label", "Heading path");
     this.bar.hidden = true;
     this.dom.append(this.bar);
@@ -98,7 +102,7 @@ class StickyPath {
       b.textContent = c.text || "(untitled)";
       parts.push(b);
     });
-    this.bar.replaceChildren(...parts);
+    this.column.replaceChildren(...parts);
   }
 
   go(crumb: Crumb | undefined): void {
