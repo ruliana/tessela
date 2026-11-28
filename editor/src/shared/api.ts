@@ -138,6 +138,11 @@ export interface Api {
   addPage(path: string, title?: string): Promise<boolean>;
   /** Opens a web or mail address in the system's own program. Other addresses are ignored. */
   openExternal(url: string): Promise<void>;
+  /**
+   * The title of the web page at `url` (its `<title>`), for smart paste; null when there is none, the page is
+   * slow (a few seconds), or the address is not a public web page (localhost and private networks are not asked).
+   */
+  pageTitle(url: string): Promise<string | null>;
   /** Path of today's journal, in local time. */
   todayPath(): Promise<string>;
   /** Which mods the window should load. */

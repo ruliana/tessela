@@ -9,6 +9,7 @@ import "./acceptance/search.mjs";
 import "./acceptance/blocks.mjs";
 import "./acceptance/selectmode.mjs";
 import "./acceptance/format.mjs";
+import "./acceptance/smartpaste.mjs";
 import "./acceptance/menus.mjs";
 import "./acceptance/syntax.mjs";
 import "./acceptance/preview.mjs";
