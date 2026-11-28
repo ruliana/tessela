@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::page::Page;
+use crate::prefilter::{Prefilter, may_define_aliases};
+use crate::query::Query;
 use crate::refs::normalize_concept;
 
 #[derive(Debug)]
@@ -57,6 +59,80 @@ impl Bundle {
         Ok(Bundle {
             root,
             pages,
+            unreadable,
+        })
+    }
+
+    /// The pages a query could need, and no others: [`Query::run`] on this gives the hits it
+    /// gives on [`Bundle::load`]. Files whose bytes rule the query out are read but not parsed
+    /// (see `prefilter.rs`), a file the `page` filter rules out is not even read, and a query
+    /// with nothing to rule out (`unlinked`, or no text, concept or page) loads everything.
+    /// Pages come in path order. `unreadable` lists only the files that were read.
+    pub fn load_for(root: impl AsRef<Path>, query: &Query) -> std::io::Result<Bundle> {
+        let root = root.as_ref().to_path_buf();
+        let Some(mut filter) = Prefilter::new(query) else {
+            return Bundle::load(root);
+        };
+        if !root.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("{} is not a directory", root.display()),
+            ));
+        }
+        // With concepts asked, which names mean them depends on the `aliases` of pages that
+        // may be anywhere, so every file is read and held until those are known.
+        let needs_all = filter.needs_aliases();
+        let mut unreadable = Vec::new();
+        let mut files: Vec<(String, DirEntry, String)> = Vec::new();
+        let mut kept: Vec<Page> = Vec::new();
+        let walker = WalkDir::new(&root)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_entry(|e| !is_ignored(e));
+        for entry in walker {
+            let entry = entry.map_err(std::io::Error::other)?;
+            let name = entry.file_name().to_string_lossy();
+            if !entry.file_type().is_file() || !name.ends_with(".md") || is_reserved(&name) {
+                continue;
+            }
+            let rel = relative(&root, &entry);
+            if !needs_all && !filter.path_ok(&rel) {
+                continue;
+            }
+            match std::fs::read(entry.path()).map(String::from_utf8) {
+                Ok(Ok(text)) if needs_all => files.push((rel, entry, text)),
+                Ok(Ok(text)) => {
+                    if filter.admits(&rel, &text) {
+                        kept.push(parse(&rel, &text, &entry));
+                    }
+                }
+                Ok(Err(_)) => unreadable.push((rel, "file is not valid UTF-8".into())),
+                Err(e) => unreadable.push((rel, e.to_string())),
+            }
+        }
+        if needs_all {
+            // The pages with `aliases` stay in the answer whatever they say: `Query::run` asks
+            // them again.
+            let mut parsed: Vec<Option<Page>> = files
+                .iter()
+                .map(|(rel, entry, text)| may_define_aliases(text).then(|| parse(rel, text, entry)))
+                .collect();
+            let names: Vec<Vec<String>> = query
+                .refs
+                .iter()
+                .map(|r| names_in(parsed.iter().flatten(), &normalize_concept(r)))
+                .collect();
+            filter.with_names(&names);
+            for ((rel, entry, text), page) in files.iter().zip(&mut parsed) {
+                if page.is_none() && filter.admits(rel, text) {
+                    *page = Some(parse(rel, text, entry));
+                }
+            }
+            kept = parsed.into_iter().flatten().collect();
+        }
+        Ok(Bundle {
+            root,
+            pages: kept,
             unreadable,
         })
     }
@@ -119,14 +195,7 @@ impl Bundle {
     /// The concepts that mean `concept`: itself, and the page that lists it in its
     /// frontmatter `aliases`, so a name that is only an alias still finds the page's backlinks.
     pub fn names_for(&self, concept: &str) -> Vec<String> {
-        let mut names = vec![concept.to_string()];
-        for page in &self.pages {
-            let id = normalize_concept(&page.id);
-            if !names.contains(&id) && page.aliases().iter().any(|a| a == concept) {
-                names.push(id);
-            }
-        }
-        names
+        names_in(self.pages.iter(), concept)
     }
 
     /// IDs of all pages, lowercased, for checking whether a concept has a page.
@@ -148,4 +217,31 @@ fn is_reserved(file_name: &str) -> bool {
 
 fn is_ignored(entry: &DirEntry) -> bool {
     entry.depth() > 0 && entry.file_name().to_string_lossy().starts_with('.')
+}
+
+/// [`Bundle::names_for`] over some pages: all the ones with `aliases` have to be among them.
+fn names_in<'a>(pages: impl Iterator<Item = &'a Page>, concept: &str) -> Vec<String> {
+    let mut names = vec![concept.to_string()];
+    for page in pages {
+        let id = normalize_concept(&page.id);
+        if !names.contains(&id) && page.aliases().iter().any(|a| a == concept) {
+            names.push(id);
+        }
+    }
+    names
+}
+
+/// The path of a walked file inside the bundle, with `/` separators.
+fn relative(root: &Path, entry: &DirEntry) -> String {
+    let rel = entry.path().strip_prefix(root).unwrap_or(entry.path());
+    rel.components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn parse(rel: &str, text: &str, entry: &DirEntry) -> Page {
+    let mut page = Page::parse(rel, text);
+    page.modified = modified_ms(entry);
+    page
 }

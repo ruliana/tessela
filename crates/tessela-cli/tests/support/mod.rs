@@ -21,6 +21,17 @@ const WORDS: [&str; 24] = [
     "decision", "value", "flow", "design", "mouse",
 ];
 
+/// One topic in [`RARE_EVERY`] mentions this word, and tags it, so a text or tag query for it
+/// has a few real answers among thousands of pages that cannot match.
+pub const RARE: &str = "zebrafish";
+pub const RARE_EVERY: usize = 100;
+const RARE_AT: usize = 7;
+
+/// How many of `topics` topics mention [`RARE`].
+pub fn rare_topics(topics: usize) -> usize {
+    (0..topics).filter(|i| i % RARE_EVERY == RARE_AT).count()
+}
+
 /// A small deterministic generator (xorshift64*): the same seed gives the same bundle on
 /// every machine, with no dependency.
 struct Rng(u64);
@@ -101,6 +112,9 @@ pub fn generate(root: &Path, topics: usize) -> usize {
                 );
             }
             text += &format!("\n{}\n\n", rng.paragraph());
+        }
+        if i % RARE_EVERY == RARE_AT {
+            text += &format!("- A note on {RARE}, tagged #{RARE}\n");
         }
         write(&path, text);
     }
@@ -203,6 +217,27 @@ pub const COMMANDS: &[Case] = &[
         positional: true,
         max_ms: 900.0,
         max_parsed: None,
+    },
+    Case {
+        name: "query --words rare",
+        args: &["query", "--words", "zebrafish", "--limit", "20", "--json"],
+        positional: true,
+        max_ms: 100.0,
+        max_parsed: Some(30),
+    },
+    Case {
+        name: "query --ref rare",
+        args: &["query", "--ref", "#zebrafish", "--limit", "20", "--json"],
+        positional: true,
+        max_ms: 100.0,
+        max_parsed: Some(30),
+    },
+    Case {
+        name: "query --page",
+        args: &["query", "--page", "topics/topic-1", "--json"],
+        positional: true,
+        max_ms: 60.0,
+        max_parsed: Some(1),
     },
     Case {
         name: "query --unlinked",
