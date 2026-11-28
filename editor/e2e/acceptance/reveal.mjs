@@ -111,5 +111,6 @@ suite(
       assert.deepEqual(after.lines, base.lines);
     });
   },
-  { rendered: true },
+  // Typewriter scrolling would move every word with the keys that put the cursor in a construct; this is about the marks alone.
+  { rendered: true, settings: { editor: { typewriter: false } } },
 );
