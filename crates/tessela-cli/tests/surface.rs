@@ -222,3 +222,56 @@ fn a_second_call_parses_nothing_and_a_changed_page_is_read_again() {
     std::fs::remove_dir_all(dir.join(".tessela")).unwrap();
     assert_eq!(run(&dir, &args).stdout, changed.stdout);
 }
+
+/// `--whole` takes the page as the thought: the notes that bear on all of it, none of them its own
+/// blocks. This is what "read next" asks at the end of a page.
+#[test]
+fn the_whole_page_can_be_the_thought_and_none_of_its_blocks_are_offered() {
+    let dir = std::env::temp_dir().join(format!("tessela-surface-whole-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for i in 0..60 {
+        write(
+            &dir,
+            &format!("filler/f{i}.md"),
+            &format!("- filler{i} text\n"),
+        );
+    }
+    write(
+        &dir,
+        "essay.md",
+        "# Essay\n\n- first thing about #cache tuning\n- second thing about #cache tuning\n",
+    );
+    write(&dir, "notes.md", "- cache tuning goes in #cache\n");
+
+    // At one block, the other block of the same page is a candidate for it.
+    let block = surface(&dir, &["essay.md", "--at", "3"]);
+    assert!(of(&block, "words").contains(&("essay.md", 4)), "{block}");
+
+    let whole = surface(&dir, &["essay.md", "--whole"]);
+    assert_eq!(whole["at"]["kind"], "page");
+    assert_eq!(whole["at"]["refs"], serde_json::json!(["cache"]));
+    assert!(
+        whole["at"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("second thing"),
+        "{whole}"
+    );
+    assert_eq!(of(&whole, "related"), [("notes.md", 1)], "{whole}");
+    let own = whole["candidates"].as_array().unwrap().iter();
+    assert!(
+        own.filter(|c| c["path"] == "essay.md").count() == 0,
+        "{whole}"
+    );
+
+    // The text as the writer has it stands in for the page's.
+    let typed = surface(&dir, &["essay.md", "--whole", "--text", "all about #zebra"]);
+    assert_eq!(typed["at"]["text"], "all about #zebra");
+    assert_eq!(typed["at"]["refs"], serde_json::json!(["cache", "zebra"]));
+
+    // A line and the whole page are two ways to say what the thought is.
+    let both = run(&dir, &["essay.md", "--whole", "--at", "3"]);
+    assert!(!both.status.success());
+    let neither = run(&dir, &["essay.md"]);
+    assert!(!neither.status.success());
+}

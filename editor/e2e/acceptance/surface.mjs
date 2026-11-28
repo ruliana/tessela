@@ -21,6 +21,8 @@ const server = createServer((req, res) => {
       else if (name.startsWith("contradicts_")) answers[name] = { type: "noul", noul: 0.02 };
       else if (name.startsWith("written_")) answers[name] = { type: "choice", choice: "different", confidence: 0.9, probabilities: { same: 0.02, overlaps: 0.08, different: 0.9 } };
       else if (name.startsWith("topic_")) answers[name] = { type: "score", score: 2.9, confidence: 0.9, probabilities: {} };
+      else if (name.startsWith("next_")) answers[name] = { type: "score", score: 2.9, confidence: 0.9, probabilities: {} };
+      else if (name.startsWith("covered_")) answers[name] = { type: "noul", noul: 0.02 };
       else if (name === "holds") answers[name] = { type: "choice", choice: "neither", confidence: 0.9, probabilities: { task: 0.02, date: 0.03, neither: 0.95 } };
       else if (name === "activity") answers[name] = { type: "choice", choice: "idle", confidence: 0.9, probabilities: { drafting: 0.1, editing: 0.05, reading: 0.05, idle: 0.8 } };
       else answers[name] = { type: q.type === "noul" ? "noul" : "choice", noul: 0, choice: "x", probabilities: {} };
@@ -37,6 +39,9 @@ const files = () => ({
   "cache.md": `${front()}# Cache\n\nWe chose #rust for the cache because startup time matters.\n`,
   "other.md": `${front()}Nothing about the topic here, only #python.\n`,
 });
+
+/** A page long enough to have a next read: about sixty words, ending where the cursor is. */
+const LONG = "The #rust cache layer keeps every page it has parsed so that the next call starts from what the last one learned. ".repeat(3);
 
 const settings = (jev) => ({ editor: { typewriter: false }, jev });
 const card = ".surface-card";
@@ -136,6 +141,30 @@ suite("Surface mod, with a key", files, (test) => {
     assert.equal(await s.win.$$eval(card, (e) => e.length), 0, "the margin is left to the text");
     assert.match(await s.win.textContent("#side-bottom .surface-name"), /Cache/);
   });
+
+  test("at the end of a page, the next reads are listed under it and nothing above them moves", async (s) => {
+    requests.length = 0;
+    await s.open(fresh());
+    await s.type(LONG);
+    const first = () => s.win.evaluate(() => document.querySelector(".cm-line").getBoundingClientRect().toJSON());
+    const before = await first();
+    await s.win.waitForSelector(".read-next .read-next-title", { timeout: 15000 });
+    assert.deepEqual(await first(), before, "the text did not move");
+    assert.match(await s.win.textContent(".read-next .read-next-title"), /Cache/);
+    assert.equal(await s.win.$$eval(".read-next .read-next-title", (e) => e.filter((t) => /draft-/.test(t.textContent)).length), 0, "never the page itself");
+    const below = await s.win.evaluate(() => {
+      const lines = [...document.querySelectorAll(".cm-line")];
+      return document.querySelector(".read-next").getBoundingClientRect().top >= lines[lines.length - 1].getBoundingClientRect().bottom;
+    });
+    assert.ok(below, "under the last line");
+    const asked = requests.filter((r) => Object.keys(r.body.questions).some((q) => q.startsWith("next_")));
+    assert.equal(asked.length, 1);
+    assert.match(JSON.stringify(asked[0].body.state.page), /keeps every page it has parsed/);
+    // The page fits the window, so its end stays in view whatever the cursor does: the list stays.
+    await s.key("Control+Home");
+    await s.win.waitForTimeout(1200);
+    assert.equal(await s.win.$$eval(".read-next .read-next-title", (e) => e.length), 1);
+  });
 }, { settings: settings({ key: "test-key", baseUrl: base }) });
 
 suite("Surface mod, without a key", files, (test) => {
@@ -146,5 +175,14 @@ suite("Surface mod, without a key", files, (test) => {
     assert.equal(requests.length, 0);
     assert.equal(await s.win.$$eval(card, (e) => e.length), 0);
     assert.equal(await s.win.$$eval(".surface-panel", (e) => e.length), 0);
+  });
+
+  test("a whole page written asks nothing and lists nothing under it", async (s) => {
+    requests.length = 0;
+    await s.open(fresh());
+    await s.type(LONG);
+    await s.win.waitForTimeout(5500);
+    assert.equal(requests.length, 0);
+    assert.equal(await s.win.$$eval(".read-next", (e) => e.length), 0);
   });
 }, { settings: settings({ baseUrl: base }) });

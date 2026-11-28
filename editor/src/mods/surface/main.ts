@@ -36,6 +36,7 @@ import {
   toAsk,
   typingOf,
 } from "./plan";
+import readNext from "./readnext";
 
 /** A card needs this much width; where the text leaves less beside it, the card goes over the right column instead. */
 const MIN_ROOM = 190;
@@ -374,4 +375,7 @@ export default function (ctx: ModContext): void {
   }
 
   ctx.events.on("bundle-opened", forget);
+
+  // The end of a page has its own list, in a module of its own.
+  readNext(ctx);
 }
