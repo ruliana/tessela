@@ -394,7 +394,20 @@ enum Command {
     },
 }
 
+/// With `TESSELA_STATS` set, a call reports on stderr how many pages it parsed, so tests and
+/// benchmarks can check that a command reads only what it needs.
 fn main() -> ExitCode {
+    let code = run();
+    if std::env::var_os("TESSELA_STATS").is_some() {
+        eprintln!(
+            "tessela-stats: pages_parsed={}",
+            tessela_core::page::parsed_pages()
+        );
+    }
+    code
+}
+
+fn run() -> ExitCode {
     match Cli::parse().command {
         Command::Lint {
             common,
