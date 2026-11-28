@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
 
+use crate::cache::{Cache, Stamp};
 use crate::page::Page;
 use crate::refs::normalize_concept;
 
@@ -20,24 +21,33 @@ pub struct Bundle {
 
 impl Bundle {
     /// Loads every page of the bundle. The folder tree is walked on one thread (it is cheap);
-    /// reading and parsing the files, which is nearly all of the time, runs on every core.
-    /// A small bundle is read on the calling thread. The result is the same as
-    /// [`Bundle::load_sequential`]: pages sorted by path, files that cannot be read listed in
-    /// the same order.
+    /// each file is then looked at on every core. A page whose file has not changed since the
+    /// last call comes from the parse cache in `.tessela/cache/` (see [`crate::cache`]); the
+    /// others are read and parsed, and put in the cache. A small bundle is read on the calling
+    /// thread. The result is the same as [`Bundle::load_sequential`]: pages sorted by path,
+    /// files that cannot be read listed in the same order. `TESSELA_NO_CACHE` skips the cache.
     pub fn load(root: impl AsRef<Path>) -> std::io::Result<Bundle> {
+        let cache = Cache::open(root.as_ref());
         Self::load_with(root, |files| {
-            if files.len() < PARALLEL_FROM {
-                files.iter().map(read_page).collect()
+            let cache = cache.as_ref();
+            let loaded = if files.len() < PARALLEL_FROM {
+                files.iter().map(|f| read_page(f, cache)).collect()
             } else {
-                files.par_iter().map(read_page).collect()
+                files.par_iter().map(|f| read_page(f, cache)).collect()
+            };
+            if let Some(cache) = cache.filter(|c| c.written() > 0) {
+                cache.sweep(files.iter().map(|f| f.rel.as_str()));
             }
+            loaded
         })
     }
 
-    /// [`Bundle::load`] on the calling thread alone. It is the reference the parallel load is
-    /// tested against.
+    /// [`Bundle::load`] on the calling thread alone, and without the cache. It is the reference
+    /// the parallel, cached load is tested against.
     pub fn load_sequential(root: impl AsRef<Path>) -> std::io::Result<Bundle> {
-        Self::load_with(root, |files| files.iter().map(read_page).collect())
+        Self::load_with(root, |files| {
+            files.iter().map(|f| read_page(f, None)).collect()
+        })
     }
 
     fn load_with(
@@ -177,24 +187,29 @@ enum Loaded {
     Unreadable(String, String),
 }
 
-/// Reads and parses one file: the work `load` spreads over the cores.
-fn read_page(file: &File) -> Loaded {
+/// Reads and parses one file: the work `load` spreads over the cores. With a cache, a file
+/// that looks as it did when its page was cached is not read at all.
+fn read_page(file: &File, cache: Option<&Cache>) -> Loaded {
+    let meta = std::fs::metadata(&file.full).ok();
+    let stamp = meta.as_ref().and_then(Stamp::of);
+    if let (Some(cache), Some(stamp)) = (cache, &stamp) {
+        if let Some(mut page) = cache.read(&file.rel, stamp) {
+            page.modified = Some(stamp.millis());
+            return Loaded::Page(page);
+        }
+    }
     match std::fs::read(&file.full).map(String::from_utf8) {
         Ok(Ok(text)) => {
             let mut page = Page::parse(&file.rel, &text);
-            page.modified = modified_ms(&file.full);
+            page.modified = stamp.as_ref().map(Stamp::millis);
+            if let (Some(cache), Some(stamp)) = (cache, &stamp) {
+                cache.write(&file.rel, stamp, &page);
+            }
             Loaded::Page(page)
         }
         Ok(Err(_)) => Loaded::Unreadable(file.rel.clone(), "file is not valid UTF-8".into()),
         Err(e) => Loaded::Unreadable(file.rel.clone(), e.to_string()),
     }
-}
-
-/// When the file was last changed, in milliseconds since the Unix epoch.
-fn modified_ms(path: &Path) -> Option<u64> {
-    let time = std::fs::metadata(path).ok()?.modified().ok()?;
-    let since = time.duration_since(std::time::UNIX_EPOCH).ok()?;
-    u64::try_from(since.as_millis()).ok()
 }
 
 fn is_reserved(file_name: &str) -> bool {

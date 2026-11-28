@@ -139,6 +139,29 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     (yoe + era * 400 + i64::from(m <= 2), m, d)
 }
 
+/// Gives every file an old modification time, like notes that were written some time ago.
+/// The parse cache does not trust a file changed in the last two seconds, and a generated
+/// bundle is written just before it is read.
+pub fn backdate(root: &Path) {
+    let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+    let mut dirs = vec![root.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else {
+                std::fs::File::options()
+                    .write(true)
+                    .open(path)
+                    .unwrap()
+                    .set_modified(old)
+                    .unwrap();
+            }
+        }
+    }
+}
+
 /// A generated bundle in a scratch folder, removed when dropped.
 pub struct Bundle {
     pub root: PathBuf,
@@ -157,6 +180,7 @@ impl Bundle {
         ));
         let _ = std::fs::remove_dir_all(&root);
         let pages = generate(&root, topics);
+        backdate(&root);
         Bundle { root, pages }
     }
 }
@@ -169,17 +193,26 @@ impl Drop for Bundle {
 
 /// One command of the table. Budgets are for a bundle of [`SIZES`]`[2]` topics on a release
 /// build; `{bundle}` stays out of `args`, the runner adds `-b`/`--bundle`.
+///
+/// A command runs twice over a fresh bundle: cold, with no parse cache yet (the first call
+/// after a bundle is opened, or after `.tessela/` was deleted), and warm, with the cache the
+/// cold call wrote. Warm is what a person and the editor see.
 pub struct Case {
     pub name: &'static str,
     pub args: &'static [&'static str],
     /// How the bundle is named: the command takes a positional folder, or `--bundle`.
     pub positional: bool,
-    /// Wall-clock budget in ms, on a release build with a cold cache, at 3,000 topics.
-    /// A speed PR that makes the command faster lowers this number in the same PR.
-    pub max_ms: f64,
-    /// Pages the call may parse. `None` means all of them (today's behaviour of every
-    /// command). A PR that makes a command parse fewer pages sets the exact limit here.
-    pub max_parsed: Option<usize>,
+    /// Wall-clock budget in ms of the cold call, on a release build, at 3,000 topics.
+    pub cold_ms: f64,
+    /// Wall-clock budget in ms of a warm call. A speed PR that makes the command faster
+    /// lowers this number in the same PR.
+    pub warm_ms: f64,
+    /// Pages the cold call may parse. `None` means all of them. A PR that makes a command
+    /// parse fewer pages sets the exact limit here.
+    pub cold_parsed: Option<usize>,
+    /// Pages a warm call may parse: none for a command that loads the bundle, since every
+    /// page is in the cache.
+    pub warm_parsed: usize,
 }
 
 pub const COMMANDS: &[Case] = &[
@@ -187,57 +220,73 @@ pub const COMMANDS: &[Case] = &[
         name: "pages",
         args: &["pages", "--json"],
         positional: true,
-        max_ms: 400.0,
-        max_parsed: None,
+        cold_ms: 400.0,
+        warm_ms: 75.0,
+        cold_parsed: None,
+        warm_parsed: 0,
     },
     Case {
         name: "query --words",
         args: &["query", "--words", "rust cache", "--limit", "20", "--json"],
         positional: true,
-        max_ms: 700.0,
-        max_parsed: None,
+        cold_ms: 700.0,
+        warm_ms: 280.0,
+        cold_parsed: None,
+        warm_parsed: 0,
     },
     Case {
         name: "query --ref",
         args: &["query", "--ref", "#rust", "--limit", "20", "--json"],
         positional: true,
-        max_ms: 650.0,
-        max_parsed: None,
+        cold_ms: 650.0,
+        warm_ms: 270.0,
+        cold_parsed: None,
+        warm_parsed: 0,
     },
     Case {
         name: "query --unlinked",
         args: &["query", "--unlinked", "cache", "--limit", "20", "--json"],
         positional: true,
-        max_ms: 1_100.0,
-        max_parsed: None,
+        cold_ms: 1100.0,
+        warm_ms: 600.0,
+        cold_parsed: None,
+        warm_parsed: 0,
     },
     Case {
         name: "related",
         args: &["related", "topics/topic-1", "--json"],
         positional: false,
-        max_ms: 400.0,
-        max_parsed: None,
+        cold_ms: 400.0,
+        warm_ms: 80.0,
+        cold_parsed: None,
+        warm_parsed: 0,
     },
     Case {
         name: "blocks",
         args: &["blocks", "topics/topic-1", "--json"],
         positional: false,
-        max_ms: 20.0,
-        max_parsed: Some(1),
+        cold_ms: 20.0,
+        warm_ms: 20.0,
+        cold_parsed: Some(1),
+        warm_parsed: 1,
     },
     Case {
         name: "read",
         args: &["read", "topics/topic-1", "--json"],
         positional: false,
-        max_ms: 20.0,
-        max_parsed: Some(1),
+        cold_ms: 20.0,
+        warm_ms: 20.0,
+        cold_parsed: Some(1),
+        warm_parsed: 0,
     },
     Case {
         name: "vocab",
         args: &["vocab", "--json"],
         positional: true,
-        max_ms: 500.0,
-        max_parsed: None,
+        cold_ms: 500.0,
+        warm_ms: 150.0,
+        cold_parsed: None,
+        warm_parsed: 0,
     },
 ];
 
@@ -275,16 +324,36 @@ pub fn run(case: &Case, bundle: &Path) -> Run {
     Run { ms, parsed }
 }
 
-/// The fastest of up to `times` runs (the least disturbed by a noisy machine) and the pages
-/// parsed. A call that takes over two seconds is not repeated: its budget is far above what
-/// noise can add, and repeating it only slows the suite.
-pub fn measure(case: &Case, bundle: &Path, times: usize) -> Run {
-    let mut best = run(case, bundle);
-    for _ in 1..times {
-        if best.ms > 2_000.0 {
+/// A command measured cold and then warm.
+pub struct Measured {
+    pub cold: Run,
+    pub warm: Run,
+}
+
+/// Runs the command cold (the parse cache removed first), then warm, and keeps the fastest
+/// of up to `times` of each, which is the least disturbed by a noisy machine. A call that
+/// takes over two seconds is not repeated: its budget is far above what noise can add, and
+/// repeating it only slows the suite.
+pub fn measure(case: &Case, bundle: &Path, times: usize) -> Measured {
+    let cold_run = || {
+        let _ = std::fs::remove_dir_all(bundle.join(".tessela"));
+        run(case, bundle)
+    };
+    let mut cold = cold_run();
+    for _ in 1..times.min(2) {
+        if cold.ms > 2_000.0 {
             break;
         }
-        best.ms = best.ms.min(run(case, bundle).ms);
+        let again = cold_run();
+        cold.ms = cold.ms.min(again.ms);
     }
-    best
+    // The last cold call left the cache the warm ones use.
+    let mut warm = run(case, bundle);
+    for _ in 1..times {
+        if warm.ms > 2_000.0 {
+            break;
+        }
+        warm.ms = warm.ms.min(run(case, bundle).ms);
+    }
+    Measured { cold, warm }
 }

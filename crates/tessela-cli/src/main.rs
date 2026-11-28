@@ -396,6 +396,9 @@ enum Command {
 
 /// With `TESSELA_STATS` set, a call reports on stderr how many pages it parsed, so tests and
 /// benchmarks can check that a command reads only what it needs.
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> ExitCode {
     let code = run();
     if std::env::var_os("TESSELA_STATS").is_some() {
@@ -588,6 +591,7 @@ fn run() -> ExitCode {
         }),
         Command::Related { edit, name, limit } => run_edit(&edit, |_| {
             let bundle = Bundle::load(&edit.bundle)
+                .map(keep)
                 .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
             let related = related::related(&bundle, &name, limit);
             Ok(Done::new(
@@ -613,6 +617,7 @@ fn run() -> ExitCode {
         Command::Fence { edit, file } => run_edit(&edit, |_| {
             let input = read_input(file.as_deref())?;
             let bundle = Bundle::load(&edit.bundle)
+                .map(keep)
                 .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
             let out = fence::run(&bundle, &input)?;
             Ok(Done::new(&out, |o| o.text(), true))
@@ -819,10 +824,10 @@ fn api(json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn load(common: &Common) -> Result<Bundle, ExitCode> {
+fn load(common: &Common) -> Result<&'static Bundle, ExitCode> {
     edit::check_api(common.api)
         .and_then(|()| {
-            Bundle::load(&common.path).map_err(|e| {
+            Bundle::load(&common.path).map(keep).map_err(|e| {
                 let code = if e.kind() == ErrorKind::NotFound {
                     ErrorCode::NotFound
                 } else {
@@ -832,6 +837,12 @@ fn load(common: &Common) -> Result<Bundle, ExitCode> {
             })
         })
         .map_err(|e| fail(common.json, &e))
+}
+
+/// Keeps a loaded bundle until the process ends. The call prints its answer and exits, and
+/// freeing a few million small strings first costs 15 ms at 3,000 pages for nothing.
+fn keep(bundle: Bundle) -> &'static Bundle {
+    Box::leak(Box::new(bundle))
 }
 
 fn print_json<T: Serialize>(value: &T) {
