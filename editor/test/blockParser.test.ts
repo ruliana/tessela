@@ -6,9 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import { respond } from "../src/renderer/blockKeys";
 import { type Sel, blockAt, move } from "../src/shared/blocks";
+import { textOf } from "./support/edits";
 import type { PageNode } from "../src/shared/pageModel";
 import { modelOf } from "./support/page";
-import { picked, press, selecting } from "./support/selecting";
+import { offsetOf, picked, press, selecting } from "./support/selecting";
 
 /**
  * The blocks of `text` as one line each, `kind first-last` (0-based lines), children indented by two. The
@@ -42,7 +43,10 @@ function outline(text: string): string[] {
   return out;
 }
 
-const cursor = (line: number, col = 0): Sel => ({ anchor: { line, col }, head: { line, col } });
+const cursor = (text: string, line: number, col = 0): Sel => {
+  const at = offsetOf(text, line, col);
+  return { anchor: at, head: at };
+};
 
 /** What Escape selects with the cursor on `line`, as `first-last`, or null. */
 function escape(text: string, line: number): string | null {
@@ -437,10 +441,11 @@ describe("Escape and block selection over blank lines", () => {
 
   it("moves an item within its list and leaves the paragraph after the blank line where it is", () => {
     const lines = ["- a", "- b", "", " Para"];
-    const down = move(modelOf(lines.join("\n")), cursor(0), "down")!;
-    expect(down.rows.map((r) => r.text)).toEqual(["- b", "- a", "", " Para"]);
-    const last = move(modelOf(lines.join("\n")), cursor(1), "down")!;
-    expect(last.rows.map((r) => r.text)).toEqual(lines);
+    const text = lines.join("\n");
+    const down = move(modelOf(text), cursor(text, 0), "down")!;
+    expect(textOf(lines, down)).toEqual(["- b", "- a", "", " Para"]);
+    const last = move(modelOf(text), cursor(text, 1), "down")!;
+    expect(textOf(lines, last)).toEqual(lines);
   });
 });
 

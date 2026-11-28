@@ -1,8 +1,11 @@
-// The outline mod's logic, on lines like shared/blocks.ts, so it is tested without an editor:
-// which headings a page has, which lines a section covers, and what moving one past its neighbour
-// makes of the page. Only `#` headings at the top level count, so a `#` line in a code block, a
-// quote or a list is left alone (the page is read with the editor's own page model).
+// The outline mod's logic, so it is tested without an editor: which headings a page has, which lines
+// a section covers, and the edit (a `BlockEdit`, as in shared/blocks.ts) that moves one past its neighbour.
+// Only `#` headings at the top level count, so a `#` line in a code block, a quote or a list is left
+// alone (the page is read with the editor's own page model).
 
+import type { Text } from "@codemirror/state";
+
+import { type BlockEdit, swapRanges } from "../../shared/blockEdit";
 import { parsePage } from "../../shared/pageText";
 import { headingText } from "../../shared/links";
 
@@ -57,23 +60,14 @@ function sectionOf(lines: string[], list: Heading[], index: number): Section {
   return { start: mine.line, last, end };
 }
 
-export interface Moved {
-  /** The page's lines after the move. */
-  lines: string[];
-  /** The first and last line (of the old page) that the move rewrote. */
-  from: number;
-  to: number;
-  /** How many lines the moved heading went down (negative: up). */
-  shift: number;
-}
-
 /**
- * Moves the section whose heading is on `line` past its neighbour of the same level, above it
- * (`up`) or below it (`down`). The blank lines between sections stay where they are, so the page
- * does not gain or lose any. Nothing moves (null) when the line is not a heading or the section has
- * no neighbour of its level inside the same parent.
+ * The edit that moves the section whose heading is on `line` past its neighbour of the same level, above
+ * it (`up`) or below it (`down`): the two sections swap places, and the blank lines between sections stay
+ * where they are, so the page does not gain or lose any. Nothing moves (null) when the line is not a
+ * heading or the section has no neighbour of its level inside the same parent.
  */
-export function moveSection(lines: string[], line: number, dir: "up" | "down"): Moved | null {
+export function moveSection(doc: Text, line: number, dir: "up" | "down"): BlockEdit | null {
+  const lines = [...doc.iterLines()];
   const list = headings(lines);
   const at = list.findIndex((h) => h.line === line);
   if (at < 0) return null;
@@ -89,10 +83,6 @@ export function moveSection(lines: string[], line: number, dir: "up" | "down"): 
   const [firstAt, secondAt] = dir === "up" ? [other, at] : [at, other];
   const a = sectionOf(lines, list, firstAt);
   const b = sectionOf(lines, list, secondAt);
-  const text = (s: Section) => lines.slice(s.start, s.last + 1);
-  const gap = (s: Section) => lines.slice(s.last + 1, s.end + 1);
-  const moved = [...text(b), ...gap(a), ...text(a), ...gap(b)];
-  const next = [...lines.slice(0, a.start), ...moved, ...lines.slice(b.end + 1)];
-  const shift = dir === "up" ? -(a.last - a.start + 1 + gap(a).length) : text(b).length + gap(a).length;
-  return { lines: next, from: a.start, to: b.end, shift };
+  const range = (s: Section) => ({ from: doc.line(s.start + 1).from, to: doc.line(s.last + 1).to });
+  return swapRanges(doc, range(a), range(b));
 }

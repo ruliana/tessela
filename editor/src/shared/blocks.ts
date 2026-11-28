@@ -2,36 +2,25 @@
 // starts and ends and what holds what is not decided here: it is read from the page model
 // (`shared/pageModel.ts`), the one reading of the page that Escape, Tab, Alt+Up/Down, folds and zoom all
 // ask, so they cannot disagree about, say, whether a paragraph after a blank line is still part of a
-// list item. The edits themselves work on an array of lines and return the lines that result, so they can
-// be tested without an editor.
+// list item. An edit answers a `BlockEdit` (`shared/blockEdit.ts`): the `ChangeSet` over the page's text,
+// and where text moved to. A position is an offset into the page, in and out, so they can be tested
+// without a window and the editor needs no line numbers of its own.
 //
 // In the model a paragraph owns the list that starts on the line right beneath it, and a list item owns
 // the items, fences, quotes and callouts nested under it, so moving a block moves what it owns. A heading
 // owns its section: Alt+Up/Down moves the heading with everything under it, and Escape first takes the
 // heading line, then the section. A list is not a node; where a list was, a run of item siblings is.
 
-import type { Text } from "@codemirror/state";
+import { ChangeSet, type Text } from "@codemirror/state";
 
+import { type BlockEdit, swapRanges } from "./blockEdit";
 import type { PageModel, PageNode } from "./pageModel";
 import { parsePage } from "./pageText";
 
-export interface Pos {
-  line: number;
-  col: number;
-}
-
+/** A selection of the page, as offsets. */
 export interface Sel {
-  anchor: Pos;
-  head: Pos;
-}
-
-/** A line of the result and where it came from, so the selection can follow the text. */
-export interface Row {
-  text: string;
-  /** Index of the line in the input, or -1 for a line that was added. */
-  from: number;
-  /** How far the columns of that line moved. */
-  dcol: number;
+  anchor: number;
+  head: number;
 }
 
 const ITEM = /^( *)([-*+]|\d{1,9}[.)])( +|$)/;
@@ -44,16 +33,9 @@ function blank(line: string | undefined): boolean {
   return line === undefined || line.trim() === "";
 }
 
-const linesCache = new WeakMap<Text, string[]>();
-
-/** The lines of the page the model was made from (the same array for the same version of the text). */
-export function linesOf(model: PageModel): string[] {
-  let lines = linesCache.get(model.doc);
-  if (!lines) {
-    lines = model.doc.toString().split("\n");
-    linesCache.set(model.doc, lines);
-  }
-  return lines;
+/** The text of a line (0-based) of the page the model was made from. */
+function lineText(model: PageModel, line: number): string {
+  return model.doc.line(line + 1).text;
 }
 
 /** The last line of the front matter of a model, or -1 when the page has none. */
@@ -124,48 +106,12 @@ function isHeadingLine(model: PageModel, line: number): boolean {
   return n.kind === "section" && startOf(n) === line;
 }
 
-function rows(lines: string[]): Row[] {
-  return lines.map((text, from) => ({ text, from, dcol: 0 }));
-}
-
-/** Adds (or, when negative, removes) leading spaces on every non-blank line in the range. */
-function shiftLines(out: Row[], start: number, end: number, by: number): void {
-  for (let i = start; i <= end; i++) {
-    const row = out[i]!;
-    if (blank(row.text)) continue;
-    if (by >= 0) {
-      row.text = " ".repeat(by) + row.text;
-      row.dcol += by;
-    } else {
-      const take = Math.min(-by, width(row.text));
-      row.text = row.text.slice(take);
-      row.dcol -= take;
-    }
-  }
-}
-
-export interface Result {
-  rows: Row[];
-}
-
-/** Where a position ends up after an edit. */
-export function mapPos(result: Result, pos: Pos): Pos {
-  const index = result.rows.findIndex((r) => r.from === pos.line);
-  if (index < 0) return { line: Math.min(pos.line, result.rows.length - 1), col: 0 };
-  const row = result.rows[index]!;
-  return { line: index, col: Math.max(0, Math.min(pos.col + row.dcol, row.text.length)) };
-}
-
-/** The lines a selection touches; a selection that ends at column 0 does not touch that line. */
-function selectedLines(sel: Sel): [number, number] {
-  const [a, b] = ordered(sel);
-  const last = b.col === 0 && b.line > a.line ? b.line - 1 : b.line;
-  return [a.line, last];
-}
-
-function ordered(sel: Sel): [Pos, Pos] {
-  const { anchor: a, head: h } = sel;
-  return a.line < h.line || (a.line === h.line && a.col <= h.col) ? [a, h] : [h, a];
+/** The lines of a selection (0-based, both included); one that ends at column 0 of a later line does not touch that line. */
+function selectedLines(model: PageModel, sel: Sel): [number, number] {
+  const a = model.doc.lineAt(Math.min(sel.anchor, sel.head));
+  const b = model.doc.lineAt(Math.max(sel.anchor, sel.head));
+  const last = b.from === Math.max(sel.anchor, sel.head) && b.number > a.number ? b.number - 2 : b.number - 1;
+  return [a.number - 1, last];
 }
 
 /**
@@ -199,8 +145,8 @@ function inEditableText(model: PageModel, from: number, to: number): boolean {
   return true;
 }
 
-function hasTab(lines: string[], from: number, to: number): boolean {
-  for (let i = from; i <= to; i++) if (/^ *\t/.test(lines[i]!)) return true;
+function hasTab(model: PageModel, from: number, to: number): boolean {
+  for (let i = from; i <= to; i++) if (/^ *\t/.test(lineText(model, i))) return true;
   return false;
 }
 
@@ -213,8 +159,51 @@ function textOffset(line: string): number {
   return m[3]!.length === 0 || m[3]!.length > 4 ? w + m[2]!.length + 1 : m[0].length;
 }
 
-function marker(lines: string[], n: PageNode): string {
-  return ITEM.exec(lines[startOf(n)]!)?.[0] ?? "";
+function marker(model: PageModel, n: PageNode): string {
+  return ITEM.exec(lineText(model, startOf(n)))?.[0] ?? "";
+}
+
+/**
+ * The changes of an edit that rewrites the start of lines (indent, a list marker) and adds blank lines,
+ * worked out on the page as it was. Each line is rewritten at most once, so every change is in the
+ * coordinates of the page the edit started from. `lines` is the page as the edit has it so far, for
+ * reading it again between steps.
+ */
+class LineEdits {
+  readonly lines: string[];
+  private readonly specs: { from: number; to: number; insert: string }[] = [];
+
+  constructor(private readonly doc: Text) {
+    this.lines = [...doc.iterLines()];
+  }
+
+  /** Replaces the first `take` characters of a line with `put`. */
+  head(line: number, take: number, put: string): void {
+    const from = this.doc.line(line + 1).from;
+    this.specs.push({ from, to: from + take, insert: put });
+    this.lines[line] = put + this.lines[line]!.slice(take);
+  }
+
+  /** Adds (or, when negative, removes) leading spaces on every non-blank line in the range. */
+  shift(start: number, end: number, by: number): void {
+    for (let i = start; i <= end; i++) {
+      if (blank(this.lines[i])) continue;
+      if (by >= 0) this.head(i, 0, " ".repeat(by));
+      else this.head(i, Math.min(-by, width(this.lines[i]!)), "");
+    }
+  }
+
+  /** A blank line before `line`. */
+  blankBefore(line: number): void {
+    const from = this.doc.line(line + 1).from;
+    this.specs.push({ from, to: from, insert: "\n" });
+  }
+
+  done(): BlockEdit {
+    // In page order, an insertion before a replacement that starts at the same place.
+    const sorted = [...this.specs].sort((a, b) => a.from - b.from || a.to - b.to);
+    return { changes: ChangeSet.of(sorted, this.doc.length), moves: [] };
+  }
 }
 
 /**
@@ -222,23 +211,21 @@ function marker(lines: string[], n: PageNode): string {
  * under it) beneath the item before it, and on an empty line it starts a list item.
  * Returns null when the selection is not ordinary text, so Tab can act as usual there.
  */
-export function indent(model: PageModel, sel: Sel): Result | null {
-  const lines = linesOf(model);
-  const [from, to] = selectedLines(sel);
-  if (!model.complete || !inEditableText(model, from, to) || hasTab(lines, from, to)) return null;
-  const out = rows(lines);
+export function indent(model: PageModel, sel: Sel): BlockEdit | null {
+  const [from, to] = selectedLines(model, sel);
+  if (!model.complete || !inEditableText(model, from, to) || hasTab(model, from, to)) return null;
+  const edits = new LineEdits(model.doc);
+  const lines = edits.lines.slice();
 
   if (from === to && blank(lines[from])) {
     const above = from > 0 && !blank(lines[from - 1]) ? selectableAt(model, from - 1) : null;
     const pad = above && above.kind === "item" && !inContainer(above) ? textOffset(lines[startOf(above)]!) : 0;
-    out[from]!.text = `${" ".repeat(pad)}- `;
-    out[from]!.dcol = out[from]!.text.length;
-    return { rows: out };
+    edits.head(from, lines[from]!.length, `${" ".repeat(pad)}- `);
+    return edits.done();
   }
 
   // Forward, because an item that has just been nested is a child of the one before.
   let current = model;
-  let text = lines;
   for (const target of topmost(model, from, to, false)) {
     const b = selectableAt(current, startOf(target));
     const at = b && startOf(b) === startOf(target) ? b : null;
@@ -246,68 +233,53 @@ export function indent(model: PageModel, sel: Sel): Result | null {
     if (at.kind === "item") {
       const before = previous(at);
       if (!before || before.kind !== "item") continue;
-      shiftLines(out, startOf(at), endOf(at), textOffset(text[startOf(before)]!) - width(text[startOf(at)]!));
+      edits.shift(startOf(at), endOf(at), textOffset(edits.lines[startOf(before)]!) - width(edits.lines[startOf(at)]!));
     } else if (at.kind === "paragraph") {
       // The paragraph becomes an item, and its lines and the list it owns nest under the marker.
-      out[startOf(at)]!.text = `- ${out[startOf(at)]!.text.trimStart()}`;
-      out[startOf(at)]!.dcol += 2 - width(lines[startOf(at)]!);
-      for (let i = startOf(at) + 1; i <= endOf(at); i++) {
-        if (blank(out[i]!.text)) continue;
-        out[i]!.text = `  ${out[i]!.text}`;
-        out[i]!.dcol += 2;
-      }
+      edits.head(startOf(at), width(lines[startOf(at)]!), "- ");
+      for (let i = startOf(at) + 1; i <= endOf(at); i++) if (!blank(lines[i])) edits.head(i, 0, "  ");
     }
-    text = out.map((r) => r.text);
-    current = parsePage(text.join("\n"));
+    current = parsePage(edits.lines.join("\n"));
   }
-  return { rows: out };
+  return edits.done();
 }
 
 /**
  * Shift+Tab. A nested item moves out one level. An item at the top level stops being a
  * list item and becomes a plain paragraph again; what was nested under it moves out with it.
  */
-export function outdent(model: PageModel, sel: Sel): Result | null {
-  const lines = linesOf(model);
-  const [from, to] = selectedLines(sel);
-  if (!model.complete || !inEditableText(model, from, to) || hasTab(lines, from, to)) return null;
+export function outdent(model: PageModel, sel: Sel): BlockEdit | null {
+  const [from, to] = selectedLines(model, sel);
+  if (!model.complete || !inEditableText(model, from, to) || hasTab(model, from, to)) return null;
   const targets = topmost(model, from, to, false).filter((b) => b.kind === "item" && !inContainer(b));
 
-  // Bottom to top, so the lines that are added do not move the ones still to do.
-  const out = rows(lines);
-  const inserted: number[] = [];
-  for (const b of [...targets].reverse()) {
+  const edits = new LineEdits(model.doc);
+  const lines = edits.lines.slice();
+  const inserted = new Set<number>();
+  for (const b of targets) {
     const parent = b.parent;
     const indentOf = width(lines[startOf(b)]!);
     if (parent && parent.kind === "item") {
-      shiftLines(out, startOf(b), endOf(b), width(lines[startOf(parent)]!) - indentOf);
+      edits.shift(startOf(b), endOf(b), width(lines[startOf(parent)]!) - indentOf);
     } else if (indentOf > 0) {
-      shiftLines(out, startOf(b), endOf(b), -indentOf);
+      edits.shift(startOf(b), endOf(b), -indentOf);
     } else {
-      const m = marker(lines, b);
-      const first = out[startOf(b)]!;
-      first.text = first.text.slice(m.length);
-      first.dcol -= m.length;
-      shiftLines(out, startOf(b) + 1, endOf(b), -m.length);
+      const m = marker(model, b);
+      edits.head(startOf(b), m.length, "");
+      edits.shift(startOf(b) + 1, endOf(b), -m.length);
       const above = startOf(b) - 1;
       const below = endOf(b) + 1;
-      if (above >= 0 && !blank(lines[above]) && !isHeadingLine(model, above)) inserted.push(startOf(b));
-      if (below < lines.length && !blank(lines[below]) && !isHeadingLine(model, below)) inserted.push(below);
+      if (above >= 0 && !blank(lines[above]) && !isHeadingLine(model, above)) inserted.add(startOf(b));
+      if (below < lines.length && !blank(lines[below]) && !isHeadingLine(model, below)) inserted.add(below);
     }
   }
-  // Add the blank lines, last position first.
-  for (const at of [...new Set(inserted)].sort((a, b) => b - a)) out.splice(at, 0, { text: "", from: -1, dcol: 0 });
-  return { rows: out };
+  for (const at of inserted) edits.blankBefore(at);
+  return edits.done();
 }
 
-/** The lines of a block, as a range with the blank lines between two neighbours. */
-function swap(lines: string[], first: [number, number], second: [number, number]): Result {
-  const out = rows(lines);
-  const a = out.slice(first[0], first[1] + 1);
-  const gap = out.slice(first[1] + 1, second[0]);
-  const b = out.slice(second[0], second[1] + 1);
-  out.splice(first[0], second[1] - first[0] + 1, ...b, ...gap, ...a);
-  return { rows: out };
+/** The range of the text that lines `first` to `last` (0-based) take, from the start of the first to the end of the last. */
+function lineRange(doc: Text, first: number, last: number): { from: number; to: number } {
+  return { from: doc.line(first + 1).from, to: doc.line(last + 1).to };
 }
 
 /**
@@ -328,23 +300,28 @@ function swapTarget(n: PageNode, dir: "up" | "down"): [number, number] | null {
   return null;
 }
 
+/** Nothing changes, and nothing moves. */
+function stays(model: PageModel): BlockEdit {
+  return { changes: ChangeSet.empty(model.doc.length), moves: [] };
+}
+
 /** Alt+Up / Alt+Down: moves the block, and what it owns, past its neighbour. A heading takes its section. */
-export function move(model: PageModel, sel: Sel, dir: "up" | "down"): Result | null {
-  const lines = linesOf(model);
-  const [from, to] = selectedLines(sel);
+export function move(model: PageModel, sel: Sel, dir: "up" | "down"): BlockEdit | null {
+  const [from, to] = selectedLines(model, sel);
   if (!model.complete || !inEditableText(model, from, to)) return null;
   const group = selectedGroup(model, from, to);
-  if (!group) return { rows: rows(lines) };
+  if (!group) return stays(model);
   const first = group[0]!;
   const last = group[group.length - 1]!;
   const span: [number, number] = [startOf(first), endOf(last)];
   const target = swapTarget(dir === "up" ? first : last, dir);
-  if (!target) return { rows: rows(lines) };
-  const result = dir === "up" ? swap(lines, target, span) : swap(lines, span, target);
+  if (!target) return stays(model);
+  const [a, b] = dir === "up" ? [target, span] : [span, target];
+  const edit = swapRanges(model.doc, lineRange(model.doc, ...a), lineRange(model.doc, ...b));
   // A rule that ends up on the first line, with another rule below it, would turn everything
   // between them into front matter. Moving does not do that: the block stays where it is.
-  const moved = parsePage(result.rows.map((r) => r.text).join("\n"));
-  return frontmatterEndOf(moved) === frontmatterEndOf(model) ? result : { rows: rows(lines) };
+  const moved = parsePage(edit.changes.apply(model.doc).toString());
+  return frontmatterEndOf(moved) === frontmatterEndOf(model) ? edit : stays(model);
 }
 
 /** The selected blocks when they are neighbours; otherwise the block at the first line. */
@@ -357,13 +334,9 @@ function selectedGroup(model: PageModel, from: number, to: number): PageNode[] |
   return consecutive ? found : [first];
 }
 
-function lineEnd(lines: string[], line: number): Pos {
-  return { line, col: lines[line]!.length };
-}
-
-/** A text to put in the page, where, and where the cursor goes inside it. */
+/** A text to put in the page, where (an offset), and where the cursor goes inside it. */
 export interface Insertion {
-  at: Pos;
+  at: number;
   insert: string;
   caret: number;
 }
@@ -373,23 +346,24 @@ export interface Insertion {
  * of the same list; below anything else it is a paragraph, with a blank line to set it apart.
  */
 export function blockBelow(model: PageModel, sel: Sel): Insertion {
-  const lines = linesOf(model);
-  const [first, last] = selectedLines(sel);
+  const doc = model.doc;
+  const [first, last] = selectedLines(model, sel);
+  const lineEnd = (line: number): number => doc.line(line + 1).to;
   // The outermost block that ends where the selection does.
   const owner = model.readingOrder().find((b) => movable(b) && startOf(b) >= first && ownEnd(b) === last);
-  const m = owner?.kind === "item" ? ITEM.exec(lines[startOf(owner)]!) : null;
+  const m = owner?.kind === "item" ? ITEM.exec(lineText(model, startOf(owner))) : null;
   if (m) {
     const marker = /^\d/.test(m[2]!) ? `${parseInt(m[2]!, 10) + 1}${m[2]!.slice(-1)}` : m[2]!;
-    const task = /^ *[-*+] +\[[ xX]\]/.test(lines[startOf(owner!)]!) ? "[ ] " : "";
+    const task = /^ *[-*+] +\[[ xX]\]/.test(lineText(model, startOf(owner!))) ? "[ ] " : "";
     const insert = `\n${m[1]}${marker} ${task}`;
-    return { at: lineEnd(lines, last), insert, caret: insert.length };
+    return { at: lineEnd(last), insert, caret: insert.length };
   }
-  if (last + 1 >= lines.length) return { at: lineEnd(lines, last), insert: "\n\n", caret: 2 };
-  if (blank(lines[last + 1])) {
+  if (last + 1 >= doc.lines) return { at: lineEnd(last), insert: "\n\n", caret: 2 };
+  if (blank(lineText(model, last + 1))) {
     // The gap is already there: the paragraph goes after it, with the same gap below.
-    return last + 2 >= lines.length
-      ? { at: lineEnd(lines, last + 1), insert: "\n", caret: 1 }
-      : { at: lineEnd(lines, last + 1), insert: "\n\n", caret: 1 };
+    return last + 2 >= doc.lines
+      ? { at: lineEnd(last + 1), insert: "\n", caret: 1 }
+      : { at: lineEnd(last + 1), insert: "\n\n", caret: 1 };
   }
-  return { at: lineEnd(lines, last), insert: "\n\n\n", caret: 2 };
+  return { at: lineEnd(last), insert: "\n\n\n", caret: 2 };
 }

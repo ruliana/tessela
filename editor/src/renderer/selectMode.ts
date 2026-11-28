@@ -25,18 +25,19 @@ import {
   selectedLines,
 } from "../shared/blockSelection";
 import type { PageModel, PageNode } from "../shared/pageModel";
+import { foldsFollowMoves } from "./blockMoves";
 import { pageModel } from "./pageModelField";
 
 /**
  * Selects blocks: the effect that goes with the text selection in the transaction that does it (use
  * `selectionSpec`). A node is one of the page model of the state the transaction starts from, a number
- * is a line (1-based) of the document the transaction makes, where the block that starts on it is meant.
+ * is an offset into the document the transaction makes: the block that starts on its line is meant.
  */
 export const setBlockSelection = StateEffect.define<{ anchor: PageNode | number; head: PageNode | number; heading?: boolean }>();
 
 /** A node of the model of the new document: the same node, or the one at the same place when the text came out the same. */
 function resolve(model: PageModel, target: PageNode | number): PageNode | null {
-  if (typeof target === "number") return nodeStartingAt(model, target);
+  if (typeof target === "number") return nodeStartingAt(model, model.doc.lineAt(target).number);
   if (target.model === model) return target;
   return model.nodes.find((n) => n.from === target.from && n.kind === target.kind) ?? null;
 }
@@ -125,9 +126,9 @@ export function selectionSpec(state: EditorState, sel: BlockSelection): Transact
 
 /**
  * The same for blocks of a document that a change makes (`doc`, whose page model is `model`): the blocks
- * that start on the lines (1-based) of the targets, or null when there are none there.
+ * that start on the lines of the targets, offsets into `doc`, or null when there are none there.
  */
-export function selectLinesSpec(
+export function selectAtSpec(
   doc: Text,
   model: PageModel,
   targets: { anchor: number; head: number; heading?: boolean },
@@ -156,5 +157,5 @@ export const blockSelectionDrawing = EditorView.decorations.compute([blockSelect
   return Decoration.set(marks);
 });
 
-/** The state of select mode and how it is drawn: part of every editor (its keys are in blockKeys.ts). */
-export const selectModeState = [pageModel, blockSelection, blockSelectionDrawing];
+/** The state of select mode and how it is drawn, and the folds that go with the blocks that an edit moves: part of every editor (its keys are in blockKeys.ts). */
+export const selectModeState = [pageModel, blockSelection, blockSelectionDrawing, foldsFollowMoves];

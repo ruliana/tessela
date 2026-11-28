@@ -25,22 +25,13 @@ import {
   removalRange,
   widenBlock,
 } from "../shared/blockSelection";
-import {
-  type Pos,
-  type Result,
-  type Sel,
-  blockBelow,
-  indent,
-  linesOf,
-  mapPos,
-  move,
-  outdent,
-} from "../shared/blocks";
+import { type BlockEdit, blockMoves, follow } from "../shared/blockEdit";
+import { type Sel, blockBelow, indent, move, outdent } from "../shared/blocks";
 import { toggleTask } from "../shared/format";
 import type { PageModel, PageNode } from "../shared/pageModel";
 import { parsePage } from "../shared/pageText";
 import { pageModel } from "./pageModelField";
-import { blockSelection, isSelecting, selectLinesSpec, selectModeState, selectionSpec, visibleIn } from "./selectMode";
+import { blockSelection, isSelecting, selectAtSpec, selectModeState, selectionSpec, visibleIn } from "./selectMode";
 
 /** Asked when Escape has nothing left to widen: leaves focus mode and says it did. */
 export const leaveFocus = Facet.define<() => boolean>();
@@ -54,94 +45,51 @@ export const LEAVE: unique symbol = Symbol("leave");
 export type Reply = TransactionSpec | typeof STAY | typeof LEAVE | null;
 export type Action = (state: EditorState) => Reply;
 
-// ---- the page as the edits read it -----------------------------------------------------------
+// ---- edits as transactions ---------------------------------------------------------------------
 
-function toSel(state: EditorState): { model: PageModel; lines: string[]; sel: Sel } {
-  const { anchor, head } = state.selection.main;
-  const pos = (offset: number): Pos => {
-    const line = state.doc.lineAt(offset);
-    return { line: line.number - 1, col: offset - line.from };
-  };
-  const model = state.field(pageModel);
-  return { model, lines: linesOf(model), sel: { anchor: pos(anchor), head: pos(head) } };
+/** The transaction part of an edit: its changes, and where text moved, so that what lives beside the text (folds) goes along. */
+export function editSpec(edit: BlockEdit): TransactionSpec {
+  return edit.moves.length > 0 && !edit.changes.empty ? { changes: edit.changes, annotations: blockMoves.of(edit.moves) } : { changes: edit.changes };
 }
 
-function offsetOf(lines: string[], pos: Pos): number {
-  let offset = 0;
-  for (let i = 0; i < pos.line; i++) offset += lines[i]!.length + 1;
-  return offset + pos.col;
-}
-
-/** The change that turns `lines` into the lines of `result`, replacing only the lines that differ, so the undo history and the cursor stay sensible. */
-function rowsChange(lines: string[], docLength: number, result: Result): { from: number; to: number; insert: string } | null {
-  const next = result.rows.map((r) => r.text);
-  let head = 0;
-  while (head < lines.length && head < next.length && lines[head] === next[head]) head++;
-  let tail = 0;
-  while (
-    tail < lines.length - head &&
-    tail < next.length - head &&
-    lines[lines.length - 1 - tail] === next[next.length - 1 - tail]
-  ) {
-    tail++;
-  }
-  if (head + tail >= lines.length && head + tail >= next.length) return null;
-  const oldEnd = lines.length - tail;
-  const newEnd = next.length - tail;
-  const lineStart = (line: number) => offsetOf(lines, { line, col: 0 });
-  const added = next.slice(head, newEnd).join("\n");
-  if (oldEnd > head) {
-    // Some lines are replaced, or removed when nothing takes their place.
-    const from = lineStart(head);
-    const to = lineStart(oldEnd - 1) + lines[oldEnd - 1]!.length;
-    if (newEnd > head) return { from, to, insert: added };
-    if (oldEnd < lines.length) return { from, to: to + 1, insert: "" };
-    return { from: Math.max(0, from - 1), to, insert: "" };
-  }
-  if (head < lines.length) return { from: lineStart(head), to: lineStart(head), insert: `${added}\n` };
-  return { from: docLength, to: docLength, insert: `\n${added}` };
-}
+/** The offset of the first character of the line a node starts on. */
+const startOffset = (state: EditorState, n: { startLine: number }): number => state.doc.line(n.startLine).from;
 
 /**
- * Selects, after a change, the blocks that start on the lines `targets` says in the text the change makes.
- * The page is read again for that, with the reader the editor's model is made by. When no block is there
- * the selection is just where `fallback` puts the cursor, and the mode ends.
+ * Selects, after a change, the blocks that start on the lines of the positions `targets` says (offsets of the
+ * text the change makes). The page is read again for that, with the reader the editor's model is made by.
+ * When no block is there the selection is just where `fallback` puts the cursor, and the mode ends.
  */
 function afterChange(
   state: EditorState,
-  changes: ChangeSet,
+  edit: BlockEdit,
   targets: { anchor: number; head: number; heading?: boolean } | null,
   fallback: number,
 ): TransactionSpec {
-  const doc = changes.apply(state.doc);
-  const spec = targets ? selectLinesSpec(doc, parsePage(doc.toString()), targets) : null;
-  return { changes, userEvent: "input", ...(spec ?? { selection: { anchor: Math.min(fallback, doc.length) }, scrollIntoView: true }) };
+  const doc = edit.changes.apply(state.doc);
+  const spec = targets ? selectAtSpec(doc, parsePage(doc.toString()), targets) : null;
+  return { ...editSpec(edit), userEvent: "input", ...(spec ?? { selection: { anchor: Math.min(fallback, doc.length) }, scrollIntoView: true }) };
 }
 
 // ---- the table's actions -----------------------------------------------------------------------
 
 /** Tab, Shift+Tab, Alt+Up/Down: an edit of the blocks at the cursor, or of the selected ones (which stay selected). */
-function blockEdit(op: (model: PageModel, sel: Sel) => Result | null): Action {
+function blockEdit(op: (model: PageModel, sel: Sel) => BlockEdit | null): Action {
   return (state) => {
-    const { model, lines, sel } = toSel(state);
-    const result = op(model, sel);
-    if (!result) return null;
-    const change = rowsChange(lines, state.doc.length, result);
-    const changes = ChangeSet.of(change ? [change] : [], state.doc.length);
+    const model = state.field(pageModel);
+    const { anchor, head } = state.selection.main;
+    const edit = op(model, { anchor, head });
+    if (!edit) return null;
     const blocks = state.field(blockSelection, false);
     // Nothing changed (the first block cannot move up, or the two blocks that swapped read the same): the selection stays as it is.
-    if (blocks && !change) return STAY;
     if (blocks) {
-      // The same blocks, wherever their lines went.
-      const at = (n: { startLine: number }) => mapPos(result, { line: n.startLine - 1, col: 0 }).line + 1;
-      return afterChange(state, changes, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, state.selection.main.head);
+      if (edit.changes.empty) return STAY;
+      // The same blocks, wherever their text went.
+      const at = (n: { startLine: number }) => follow(edit, startOffset(state, n));
+      return afterChange(state, edit, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, head);
     }
-    const next = result.rows.map((r) => r.text);
-    const selection = {
-      anchor: offsetOf(next, mapPos(result, sel.anchor)),
-      head: offsetOf(next, mapPos(result, sel.head)),
-    };
-    return change ? { changes: change, selection, userEvent: "input" } : { selection };
+    const selection = { anchor: follow(edit, anchor), head: follow(edit, head) };
+    return edit.changes.empty ? { selection } : { ...editSpec(edit), selection, userEvent: "input" };
   };
 }
 
@@ -187,10 +135,9 @@ function edge(end: boolean): Action {
 /** Enter in select mode: a new block below the selected ones, and the cursor in it. */
 const addBlockBelow: Action = (state) => {
   if (!isSelecting(state)) return null;
-  const { model, lines, sel } = toSel(state);
-  const { at, insert, caret } = blockBelow(model, sel);
-  const pos = offsetOf(lines, at);
-  return { changes: { from: pos, insert }, selection: { anchor: pos + caret }, scrollIntoView: true, userEvent: "input" };
+  const { anchor, head } = state.selection.main;
+  const { at, insert, caret } = blockBelow(state.field(pageModel), { anchor, head });
+  return { changes: { from: at, insert }, selection: { anchor: at + caret }, scrollIntoView: true, userEvent: "input" };
 };
 
 /** What removing the selected blocks does: the change, and the blocks to select in the page that is left (the next one, or the one before at the end). */
@@ -200,15 +147,15 @@ function removing(state: EditorState, blocks: BlockSelection): TransactionSpec {
   const [first, last] = selectedLines(blocks);
   const range = removalRange(state.doc, first, last);
   const changes = ChangeSet.of([{ from: range.from, to: range.to }], state.doc.length);
-  const doc = changes.apply(state.doc);
   const next = stepBlock(model, blocks, "down", visible);
-  const before = next ? null : stepBlock(model, blocks, "up", visible);
-  // Lines before the cut stay where they were, and the ones after move up by what was cut.
-  const line = next ? doc.lineAt(changes.mapPos(state.doc.line(next.anchor.startLine).from, 1)).number : (before?.anchor.startLine ?? 0);
-  const target = next ?? before;
+  const target = next ?? stepBlock(model, blocks, "up", visible);
   const spec = target
-    ? afterChange(state, changes, { anchor: line, head: line, heading: target.heading }, range.from)
-    : { changes, selection: { anchor: Math.min(range.from, doc.length) }, userEvent: "delete" };
+    ? (() => {
+        // The block that is left to select: where its first line goes, which is where it was when it lies before the cut.
+        const at = changes.mapPos(startOffset(state, target.anchor), 1);
+        return afterChange(state, { changes, moves: [] }, { anchor: at, head: at, heading: target.heading }, range.from);
+      })()
+    : { changes, selection: { anchor: Math.min(range.from, changes.newLength) } };
   return { ...spec, userEvent: "delete" };
 }
 
@@ -231,13 +178,14 @@ const duplicate: Action = (state) => {
   const blocks = state.field(blockSelection, false);
   if (!blocks) return null;
   const [first, last] = selectedLines(blocks);
-  const text = state.sliceDoc(state.doc.line(first + 1).from, state.doc.line(last + 1).to);
+  const from = state.doc.line(first + 1).from;
+  const end = state.doc.line(last + 1).to;
   // Items go on the next line, as one more item; anything else is set apart by a blank line.
   const sep = membersOf(blocks).every((n) => n.kind === "item") ? "\n" : "\n\n";
-  const changes = ChangeSet.of([{ from: state.doc.line(last + 1).to, insert: sep + text }], state.doc.length);
-  const start = last + 1 + sep.length;
-  const at = (n: { startLine: number }) => start + n.startLine - 1 - first;
-  return afterChange(state, changes, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, state.selection.main.head);
+  const changes = ChangeSet.of([{ from: end, insert: sep + state.sliceDoc(from, end) }], state.doc.length);
+  // The copy starts after the separator, and each block of it is as far into it as the original is into its text.
+  const at = (n: { startLine: number }) => end + sep.length + startOffset(state, n) - from;
+  return afterChange(state, { changes, moves: [] }, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, state.selection.main.head);
 };
 
 /** Ctrl+Enter in select mode: ticks or unticks the selected items (a plain item becomes a task). */
@@ -252,7 +200,9 @@ const tick: Action = (state) => {
   });
   if (edits.length === 0) return STAY;
   const changes = ChangeSet.of(edits, state.doc.length);
-  return afterChange(state, changes, { anchor: blocks.anchor.startLine, head: blocks.head.startLine, heading: blocks.heading }, state.selection.main.head);
+  // Only the text of the lines changes: the blocks start where they started.
+  const at = (n: { startLine: number }) => changes.mapPos(startOffset(state, n), -1);
+  return afterChange(state, { changes, moves: [] }, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, state.selection.main.head);
 };
 
 /** A character typed in select mode goes to the start of the blocks, and never replaces them. */
