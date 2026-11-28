@@ -820,9 +820,21 @@ fn api(json: bool) -> ExitCode {
 }
 
 fn load(common: &Common) -> Result<Bundle, ExitCode> {
+    load_with(common, |path| Bundle::load(path))
+}
+
+/// Loads only the pages `query` could find something in; see [`Bundle::load_for`].
+fn load_for(common: &Common, query: &Query) -> Result<Bundle, ExitCode> {
+    load_with(common, |path| Bundle::load_for(path, query))
+}
+
+fn load_with(
+    common: &Common,
+    load: impl FnOnce(&std::path::Path) -> std::io::Result<Bundle>,
+) -> Result<Bundle, ExitCode> {
     edit::check_api(common.api)
         .and_then(|()| {
-            Bundle::load(&common.path).map_err(|e| {
+            load(&common.path).map_err(|e| {
                 let code = if e.kind() == ErrorKind::NotFound {
                     ErrorCode::NotFound
                 } else {
@@ -969,7 +981,7 @@ fn pages(common: Common) -> ExitCode {
 }
 
 fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
-    let bundle = match load(&common) {
+    let bundle = match load_for(&common, &query) {
         Ok(b) => b,
         Err(code) => return code,
     };

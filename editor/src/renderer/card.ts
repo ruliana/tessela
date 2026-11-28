@@ -46,6 +46,8 @@ export interface CardDeps {
   onLeaveFocus?: () => boolean;
   /** Blocks of this page were selected, or no longer are. */
   onSelectMode?: (path: string, on: boolean) => void;
+  /** Whether typewriter scrolling is on. */
+  typewriter?: () => boolean;
   /** A save changed the page's title. */
   onTitleEdited?: (path: string, from: string, to: string) => void;
   /** What the menu in the head of the card offers; no menu while this is empty or absent. */
@@ -160,6 +162,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     livePreview: deps.livePreview(),
     onTogglePreview: deps.onTogglePreview,
     ...(deps.onLeaveFocus ? { onLeaveFocus: deps.onLeaveFocus } : {}),
+    ...(deps.typewriter ? { typewriter: deps.typewriter } : {}),
     ...(deps.onSelectMode ? { onSelectMode: (on: boolean) => deps.onSelectMode?.(path, on) } : {}),
     ...(deps.extensions ? { extensions: () => deps.extensions?.(path) ?? [] } : {}),
     ...(deps.properties ? { properties: deps.properties, pagePath: () => path } : {}),

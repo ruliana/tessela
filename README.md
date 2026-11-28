@@ -201,6 +201,8 @@ code (your own or audited) and load before the first page opens.
 - The same file sets the sidebar's Recent list: `{"recent": {"shown": 6, "dates": false}}` is how many
   pages it shows (1 to 30, default 6) and whether journal days are among them (default: left out, the
   calendar has them). A new setting takes effect when the window loads again.
+- `{"editor": {"typewriter": false}}` turns off typewriter scrolling (the line you write on stays a third
+  of the way down the window; on by default).
 - The whole API is in the [mod-writing skill](skills/tessela-mods/SKILL.md).
 
 ```js

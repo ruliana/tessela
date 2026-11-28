@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { ModEntry, ModsInfo, RecentSettings } from "../shared/api";
+import type { EditorSettings, ModEntry, ModsInfo, RecentSettings } from "../shared/api";
 import { recentCount } from "../shared/nav";
 
 /** The config folder: `$TESSELA_CONFIG`, else the app's own data folder. */
@@ -51,6 +51,18 @@ export function recentIn(folder: string): RecentSettings {
   return { shown: recentCount(saved.shown), dates: saved.dates === true };
 }
 
+/** The editor's settings in the config folder's settings.json: `typewriter` is on unless it is `false`. */
+export function editorIn(folder: string): EditorSettings {
+  let saved: { typewriter?: unknown } = {};
+  try {
+    const editor = (JSON.parse(readFileSync(path.join(folder, "settings.json"), "utf8")) as { editor?: unknown }).editor;
+    if (typeof editor === "object" && editor !== null) saved = editor;
+  } catch {
+    // Missing or unreadable: the defaults.
+  }
+  return { typewriter: saved.typewriter !== false };
+}
+
 /**
  * The mods: the app's own (`bundled`, a folder of mod folders) and every folder in the config
  * folder's mods/ that has a main.js, by name. A mod of the config folder replaces the app's with the
@@ -59,13 +71,14 @@ export function recentIn(folder: string): RecentSettings {
  */
 export function listMods(folder: string, disabled: boolean, bundled?: string): ModsInfo {
   const recent = recentIn(folder);
-  if (disabled) return { folder, disabled, ids: [], mods: [], recent };
+  const editor = editorIn(folder);
+  if (disabled) return { folder, disabled, ids: [], mods: [], recent, editor };
   const own = new Set(modsIn(path.join(folder, "mods")));
   const off = new Set(offIn(folder));
   const mods: ModEntry[] = [...new Set([...(bundled ? modsIn(bundled) : []), ...own])]
     .sort()
     .map((id) => ({ id, source: own.has(id) ? "config" : "app", off: off.has(id) }));
-  return { folder, disabled, ids: mods.filter((m) => !m.off).map((m) => m.id), mods, recent };
+  return { folder, disabled, ids: mods.filter((m) => !m.off).map((m) => m.id), mods, recent, editor };
 }
 
 /**
