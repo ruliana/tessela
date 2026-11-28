@@ -16,7 +16,14 @@ name: Release editor
 # GITHUB_TOKEN triggers no other workflow.
 
 on:
+  # With a tag, a manual run builds that tag and attaches to its release again (to retry a
+  # failed build). Without one it only builds the installers as workflow artifacts.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and attach to (leave empty to only build)
+        required: false
+        type: string
   push:
     tags: ["v*"]
   workflow_call:
