@@ -32,6 +32,7 @@ pub fn answer(name: &str, g: &mut SchemaGenerator) -> Option<Schema> {
         "rename" | "move" => g.subschema_for::<Moved>(),
         "changes" => g.subschema_for::<crate::changes::Output>(),
         "related" => g.subschema_for::<tessela_core::related::Related>(),
+        "surface" => g.subschema_for::<tessela_core::surface::Surface>(),
         "attach" => g.subschema_for::<Attached>(),
         "fence" => g.subschema_for::<crate::fence::Output>(),
         "remove" => g.subschema_for::<Removed>(),

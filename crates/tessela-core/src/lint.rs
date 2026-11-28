@@ -318,9 +318,13 @@ pub struct Term {
 }
 
 pub fn read_vocabulary(bundle: &Bundle) -> HashMap<String, Term> {
+    terms_of(bundle.page("vocabulary"))
+}
+
+/// The terms of a `vocabulary.md` page; none for no page.
+pub(crate) fn terms_of(page: Option<&Page>) -> HashMap<String, Term> {
     let mut terms = HashMap::new();
-    let Some(Value::Mapping(entries)) = bundle.page("vocabulary").and_then(|p| p.get("terms"))
-    else {
+    let Some(Value::Mapping(entries)) = page.and_then(|p| p.get("terms")) else {
         return terms;
     };
     for (name, spec) in entries {

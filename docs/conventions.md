@@ -44,6 +44,12 @@ my-notes/
   build of the tool, damaged ones, and those for a file changed in the last two seconds are
   ignored and rebuilt; `TESSELA_NO_CACHE=1` makes a call neither read nor write it. The folder
   carries its own `.gitignore`.
+- `.tessela/cache/summary.dat` holds the summary `tessela surface` looks things up in: for
+  every page its title and aliases, which concepts each block mentions, the uncommon words
+  it uses and the days written in its open tasks, turned inside out so that a call reads
+  almost no page. Like the page entries it is checked against each file's size and
+  modification time, and never changes an answer: pages that differ from it are read again,
+  and with many of them (over 64) it is made anew.
 
 ### Home pages
 
@@ -476,6 +482,26 @@ Every command takes `--api N` for the version the caller was written for.
   pages that lead to the page (§1), the root's first: a shortest path of links from the root
   `home.md` through home pages (`chain_by: "links"`), or else the home pages of the folders
   around it (`"folders"`). Computed on demand, nothing is written.
+- `tessela surface PAGE --at LINE [--text TEXT] [--limit N]`: what the notes have to say about
+  the thought being written, for a client that shows the right note at the right moment (a
+  live loop calls it at each pause, so it is built to answer in about 15 ms at 3,000 pages).
+  The thought is the block at `LINE` (the innermost one; a blank line takes the block above,
+  or the heading when there is none) with its parent items and headings, answered as `at`
+  (`kind`, `line`, `end_line`, `text`, `heading_path`, `refs` with the inherited ones, `handle`).
+  `--text` (or `-` for stdin) gives the block as the writer has it when the file is behind;
+  a page that does not exist yet then works too. `candidates` (about 20, best first, `total`
+  before `--limit`) each have `source`, a `reason` for a person, a `score` (0 to 1, only
+  comparable within a source), `kind` (`block`, `heading` or `page`), `page`, `path`, `title`,
+  `line`, `end_line`, `handle`, `heading_path`, an `excerpt`, the `link` that would point at
+  its page, and `task`. The sources are `backlink` (pages that mention this page or one of its
+  aliases, a home page's first, then the newest), `related` (blocks that mention concepts the
+  thought mentions, the rarer the concept the stronger), `unlinked` (pages whose title, alias
+  or `vocabulary.md` term is written in the thought without a link, with the `mention`:
+  `text`, `from` and `to` in `at.text`), `words` (the block that uses the most of the thought's
+  uncommon words, one per page) and `agenda` (open tasks due within three days of a date the
+  thought writes). The thought itself, the blocks that contain it or that it contains, and the
+  page as a candidate for itself are never listed. It does not decide whether to show
+  anything: that is for the client.
 - **Templates.** A page `templates/NAME.md` with `type: template` describes the pages of
   type `NAME`: the front matter keys they should have and their starting text, headings
   included. `add NAME-OF-PAGE --type NAME` (and `read` of a page that does not exist yet)

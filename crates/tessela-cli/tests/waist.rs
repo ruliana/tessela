@@ -333,6 +333,10 @@ fn the_schema_describes_what_the_commands_print() {
     );
     check("related", json(&["related", "tessela", "-b", d, "--json"]));
     check("blocks", json(&["blocks", "ideas.md", "-b", d, "--json"]));
+    check(
+        "surface",
+        json(&["surface", "ideas.md", "--at", "5", "-b", d, "--json"]),
+    );
     check("schema", doc.clone());
 
     // `changes` needs a git repository with something changed in it.

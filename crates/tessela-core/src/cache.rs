@@ -44,7 +44,7 @@ const HEADER: usize = 4 + 8 + 8;
 const FINGERPRINT: &str = env!("TESSELA_CORE_FINGERPRINT");
 
 /// What a page's cache entry is checked against: the Markdown file as the system describes it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Stamp {
     size: u64,
     secs: u64,
@@ -66,7 +66,8 @@ impl Stamp {
         self.secs * 1_000 + u64::from(self.nanos) / 1_000_000
     }
 
-    fn settled(&self, now: Duration) -> bool {
+    /// Whether the file has stayed as it is long enough to trust this stamp (see the module docs).
+    pub fn settled(&self, now: Duration) -> bool {
         Duration::new(self.secs, self.nanos) + SETTLE <= now
     }
 }
@@ -98,7 +99,7 @@ impl Cache {
     /// has it. `modified` is left for the caller to set, like the parser leaves it.
     pub fn read(&self, rel: &str, stamp: &Stamp) -> Option<Page> {
         let bytes = std::fs::read(self.entry(rel)).ok()?;
-        let payload = open_entry(&bytes)?;
+        let payload = unframe(MAGIC, &bytes)?;
         let (head, rest) = postcard::take_from_bytes::<Head>(payload).ok()?;
         if head.rel != rel || head.stamp() != *stamp {
             return None;
@@ -136,14 +137,25 @@ impl Cache {
         else {
             return;
         };
-        let mut file = Vec::with_capacity(HEADER + payload.len());
-        file.extend_from_slice(MAGIC);
-        file.extend_from_slice(&fingerprint().to_le_bytes());
-        file.extend_from_slice(&checksum(&payload).to_le_bytes());
-        file.extend_from_slice(&payload);
-        if self.store(rel, &file) {
+        if self.store_as(&entry_name(rel), &frame(MAGIC, &payload)) {
             self.written.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    /// The time the load started, for [`Stamp::settled`].
+    pub fn now(&self) -> Duration {
+        self.now
+    }
+
+    /// A file of this folder that is not a page's entry, such as the summary: its bytes, whole
+    /// or `None`. `name` must not end in `.bin`, which `sweep` keeps for entries only.
+    pub fn get_named(&self, name: &str) -> Option<Vec<u8>> {
+        std::fs::read(self.dir.join(name)).ok()
+    }
+
+    /// Writes a file of this folder that is not a page's entry, atomically. Whether it worked.
+    pub fn put_named(&self, name: &str, bytes: &[u8]) -> bool {
+        self.store_as(name, bytes)
     }
 
     /// How many entries this call wrote.
@@ -183,13 +195,13 @@ impl Cache {
         self.dir.join(entry_name(rel))
     }
 
-    /// Writes `bytes` as the entry for `rel`, atomically. Whether it worked.
-    fn store(&self, rel: &str, bytes: &[u8]) -> bool {
+    /// Writes `bytes` as the file `name` of this folder, atomically. Whether it worked.
+    fn store_as(&self, name: &str, bytes: &[u8]) -> bool {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let target = self.entry(rel);
+        let target = self.dir.join(name);
         let tmp = self.dir.join(format!(
             "{}.{}.{}.tmp",
-            entry_name(rel).trim_end_matches(".bin"),
+            name.rsplit_once('.').map_or(name, |(stem, _)| stem),
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
@@ -244,9 +256,20 @@ fn checksum(payload: &[u8]) -> u64 {
     )
 }
 
+/// A cache file: the magic that says what it holds, the build's fingerprint, the payload's
+/// checksum, and the payload.
+pub(crate) fn frame(magic: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+    let mut file = Vec::with_capacity(HEADER + payload.len());
+    file.extend_from_slice(magic);
+    file.extend_from_slice(&fingerprint().to_le_bytes());
+    file.extend_from_slice(&checksum(payload).to_le_bytes());
+    file.extend_from_slice(payload);
+    file
+}
+
 /// The payload of a cache file, when it is a whole one written by this build.
-fn open_entry(bytes: &[u8]) -> Option<&[u8]> {
-    if bytes.len() < HEADER || &bytes[..4] != MAGIC {
+pub(crate) fn unframe<'a>(magic: &[u8; 4], bytes: &'a [u8]) -> Option<&'a [u8]> {
+    if bytes.len() < HEADER || &bytes[..4] != magic {
         return None;
     }
     let fp = u64::from_le_bytes(bytes[4..12].try_into().ok()?);
