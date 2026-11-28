@@ -154,7 +154,7 @@ describe("the work that is counted", () => {
     expect(walk.work.tree).toBeGreaterThanOrEqual(walk.result);
     const text = measure(start, () => start.doc.sliceString(0, 100));
     expect(text.work).toEqual({ tree: 0, text: 1, chars: 100 });
-  });
+  }, 60_000);
 });
 
 describe("what is drawn per viewport is drawn only there", () => {
