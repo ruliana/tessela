@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { pageModel } from "../src/renderer/pageModelField";
 import { type PageModel, type PageNode, findAgain, isWhiteSpace } from "../src/shared/pageModel";
 import { parsePage } from "../src/shared/pageText";
-import { modelOf, outline, stateOf } from "./support/page";
+import { modelOf, outline, settled, stateOf } from "./support/page";
 import { page, pageWithExtras } from "./support/pages";
 import { lines as wildLines, runs } from "./support/props";
 
@@ -330,12 +330,23 @@ describe("a model built after an edit is the one built from the text", () => {
         const from = a % (text.length + 1);
         const { after } = edit(text, from, Math.min(text.length, from + len), parts.join(""));
         const fresh = modelOf(after.doc.toString());
-        const got = after.field(pageModel);
+        const got = settled(after);
         expect(outline(got), after.doc.toString()).toBe(outline(fresh));
         expect(got.nodes.map((n) => n.key)).toEqual(fresh.nodes.map((n) => n.key));
       }),
       runs(300),
     );
+  });
+
+  it("also when the parser had no time to reach the end: the model is partial, and whole once it has", () => {
+    // The parser gets a short budget for each version. A page this long is not parsed within it
+    // on any machine, as a slow runner would not parse a short one.
+    const long = Array.from({ length: 30_000 }, (_, i) => `- item ${i} with **bold** and a [link](/x.md)\n  more`).join("\n");
+    const { after } = edit(long, 0, 0, "- new\n");
+    expect(after.field(pageModel).complete).toBe(false);
+    const got = settled(after);
+    expect(got.complete).toBe(true);
+    expect(outline(got)).toBe(outline(modelOf(after.doc.toString())));
   });
 });
 
