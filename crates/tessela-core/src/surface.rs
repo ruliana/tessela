@@ -126,8 +126,10 @@ pub struct Surface {
 pub struct Request<'a> {
     /// The page, with its `.md`: `project/tessela.md`.
     pub page: &'a str,
-    /// The line (1-based) the writer is on.
+    /// The line (1-based) the writer is on. Not read when `whole` is set.
     pub line: usize,
+    /// Take the whole page as the thought, and offer nothing of the page itself.
+    pub whole: bool,
     /// The text of the block as the writer has it, when the file is behind.
     pub text: Option<&'a str>,
     pub limit: usize,
@@ -188,7 +190,11 @@ fn run(root: &Path, req: &Request, use_cache: bool) -> Result<Surface, Error> {
     if page.is_none() && req.text.is_none() {
         return Err(Error::NotFound(format!("no page {}", req.page)));
     }
-    let focus = focus_of(page, req.page, req.line, req.text);
+    let focus = if req.whole {
+        whole_focus(page, req.page, req.text)
+    } else {
+        focus_of(page, req.page, req.line, req.text)
+    };
     let mut names = vec![normalize_concept(
         req.page.strip_suffix(".md").unwrap_or(req.page),
     )];
@@ -199,6 +205,7 @@ fn run(root: &Path, req: &Request, use_cache: bool) -> Result<Surface, Error> {
         focus: &focus,
         page_id: corpus.id_of(req.page),
         names,
+        whole: req.whole,
         units: corpus.unit_count(),
         pages: corpus.page_count(),
     };
@@ -245,6 +252,8 @@ struct Ctx<'a> {
     page_id: Option<PageId>,
     /// The concepts that name the page: its own, and its aliases.
     names: Vec<String>,
+    /// The thought is the whole page: none of its units is a candidate.
+    whole: bool,
     units: usize,
     pages: usize,
 }
@@ -254,7 +263,8 @@ impl Ctx<'_> {
     /// not candidates for it.
     fn excluded(&self, u: &Unit) -> bool {
         Some(u.page) == self.page_id
-            && (u.kind == UnitKind::Page
+            && (self.whole
+                || u.kind == UnitKind::Page
                 || (u.line as usize <= self.focus.end_line
                     && self.focus.line <= u.end_line as usize))
     }
@@ -302,6 +312,47 @@ fn list(items: &[String]) -> String {
         [] => String::new(),
         [one] => one.clone(),
         [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+/// The page as the thought: its text (or the text given in its place) and every concept it
+/// mentions, in any block or heading.
+fn whole_focus(page: Option<&Page>, path: &str, text: Option<&str>) -> Focus {
+    let dir = path.rsplit_once('/').map_or("", |(dir, _)| dir);
+    let mut refs = Vec::new();
+    let mut end_line = 1;
+    let mut parts: Vec<(usize, &str)> = Vec::new();
+    if let Some(page) = page {
+        extend_unique(&mut refs, &page.refs);
+        for h in &page.headings {
+            extend_unique(&mut refs, &h.refs);
+            end_line = end_line.max(h.end_line);
+            parts.push((h.line, &h.text));
+        }
+        for b in &page.blocks {
+            extend_unique(&mut refs, &b.refs);
+            end_line = end_line.max(b.end_line);
+            if b.kind != BlockKind::Code {
+                parts.push((b.line, &b.text));
+            }
+        }
+    }
+    parts.sort_by_key(|(line, _)| *line);
+    let text = match text {
+        Some(t) => {
+            extend_unique(&mut refs, &extract_refs(t, dir));
+            t.to_string()
+        }
+        None => parts.iter().map(|(_, t)| *t).collect::<Vec<_>>().join("\n"),
+    };
+    Focus {
+        kind: FocusKind::Page,
+        line: 1,
+        end_line,
+        text,
+        heading_path: Vec::new(),
+        refs,
+        handle: None,
     }
 }
 

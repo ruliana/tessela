@@ -381,8 +381,12 @@ enum Command {
         page: String,
         /// The line the writer is on (1-based): its block, with its parents and headings, is
         /// the thought
-        #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
-        at: u64,
+        #[arg(long, value_parser = clap::value_parser!(u64).range(1..), required_unless_present = "whole")]
+        at: Option<u64>,
+        /// The whole page is the thought (what to read next, at its end), and no block of it is
+        /// offered
+        #[arg(long, conflicts_with = "at")]
+        whole: bool,
         /// The text of that block as the writer has it, when the file is behind; `-` reads it
         /// from stdin
         #[arg(long)]
@@ -635,6 +639,7 @@ fn run() -> ExitCode {
             edit,
             page,
             at,
+            whole,
             text,
             limit,
         } => run_edit(&edit, |_| {
@@ -645,7 +650,8 @@ fn run() -> ExitCode {
             };
             let request = surface::Request {
                 page: &path,
-                line: usize::try_from(at).unwrap_or(usize::MAX),
+                line: usize::try_from(at.unwrap_or(1)).unwrap_or(usize::MAX),
+                whole,
                 text: text.as_deref(),
                 limit,
             };

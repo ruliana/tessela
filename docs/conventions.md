@@ -482,7 +482,7 @@ Every command takes `--api N` for the version the caller was written for.
   pages that lead to the page (§1), the root's first: a shortest path of links from the root
   `home.md` through home pages (`chain_by: "links"`), or else the home pages of the folders
   around it (`"folders"`). Computed on demand, nothing is written.
-- `tessela surface PAGE --at LINE [--text TEXT] [--limit N]`: what the notes have to say about
+- `tessela surface PAGE (--at LINE | --whole) [--text TEXT] [--limit N]`: what the notes have to say about
   the thought being written, for a client that shows the right note at the right moment (a
   live loop calls it at each pause, so it is built to answer in about 15 ms at 3,000 pages).
   The thought is the block at `LINE` (the innermost one; a blank line takes the block above,
@@ -501,7 +501,9 @@ Every command takes `--api N` for the version the caller was written for.
   uncommon words, one per page) and `agenda` (open tasks due within three days of a date the
   thought writes). The thought itself, the blocks that contain it or that it contains, and the
   page as a candidate for itself are never listed. It does not decide whether to show
-  anything: that is for the client.
+  anything: that is for the client. `--whole` (instead of `--at`) takes the page as the thought:
+  `at.kind` is `page`, `at.text` is the page's text (or `--text`), `at.refs` every concept it
+  mentions, and no block or heading of the page is a candidate. It is what "read next" asks.
 - **Templates.** A page `templates/NAME.md` with `type: template` describes the pages of
   type `NAME`: the front matter keys they should have and their starting text, headings
   included. `add NAME-OF-PAGE --type NAME` (and `read` of a page that does not exist yet)
@@ -600,6 +602,16 @@ dismisses it for good. A key typed cancels the call in flight, and an answer for
 nobody has typed for six seconds, the results go to the right column ("Worth a look") in place of the
 margin. Jev's answers are kept for the session by the paragraph's text and the note's handle; nothing is
 written to the notes. Without a key the mod does nothing at all.
+
+**Read next.** In the same mod, when the cursor is in the last line of a page, or the last line is in view
+(a page of at least 40 words), it waits (0.7 s after the view arrives, 4 s after an edit), asks
+`tessela surface --whole` for the notes that bear on the page, keeps one for each page, and asks Jev two
+questions about each: is it the natural note to read next (a score, "not worth it" to "the natural one") and
+does this page already say everything it says. A note ranks by the first times the chance that it is not
+the second; the best two or three that rank at "a good note to read next" or above are listed under the
+last line, a block after the text, so nothing above it moves. Nothing is listed when none is good enough. It
+leaves the page when the cursor and the view leave its end; answers are kept by what the page says and the
+note's handle. Without a key it does nothing.
 
 ### Editing keys
 
