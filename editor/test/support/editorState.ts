@@ -10,7 +10,7 @@ import { ensureSyntaxTree } from "@codemirror/language";
 import * as cmState from "@codemirror/state";
 import { EditorState, type Extension } from "@codemirror/state";
 import * as cmView from "@codemirror/view";
-import { type DecorationSet, EditorView, drawSelection } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, drawSelection } from "@codemirror/view";
 
 import { chevronDecorations } from "../../src/mods/fold/folding";
 import { textDecorations } from "../../src/mods/gfm-extras/main";
@@ -23,8 +23,10 @@ import { focusMarks, inlineDecorations, livePreview } from "../../src/renderer/l
 import type { ModContext, PageExtension } from "../../src/renderer/mods";
 import { pasting } from "../../src/renderer/paste";
 import { pageLanguage, pageModel } from "../../src/renderer/pageModelField";
+import { outsideSentence, sentenceMarks } from "../../src/renderer/sentenceFocus";
 import { focusEffect, isEditing, isRendered, revealChanged, revealPolicy } from "../../src/renderer/reveal";
 import { coversRange, hiddenLines, selectedBlocks } from "../../src/renderer/selectMode";
+import { typewriter } from "../../src/renderer/typewriter";
 import { previewOptions } from "./reveal";
 
 export interface Viewport {
@@ -35,12 +37,13 @@ export interface Viewport {
 /** One thing the window draws with a view plugin: from the state and the part of the page on screen, decorations. */
 export interface Provider {
   name: string;
-  /** `viewport`: the work should be in what is on the screen. `page`: it reads the whole page. */
-  scope: "viewport" | "page";
+  /** `viewport`: the work should be in what is on the screen. `block`: it is in the block of the cursor. `page`: it reads the whole page. */
+  scope: "viewport" | "block" | "page";
   draw(state: EditorState, viewport: Viewport): DecorationSet;
 }
 
 const reveal = { rendered: isRendered, isEditing };
+const dim = Decoration.mark({ class: "cm-focus-out" });
 
 /** What a mod is handed that it can use without a window: the editor's own parts. The rest does nothing. */
 function contextFor(id: string, added: (Extension | PageExtension)[]): ModContext {
@@ -106,6 +109,8 @@ export function typingEditor(doc: string): { state: EditorState; providers: Prov
     revealPolicy(),
     queryableMarks(marks),
     focusMarks(),
+    sentenceMarks(),
+    typewriter(() => true),
     livePreview(previewOptions),
     blockKeymap,
     formatting,
@@ -122,6 +127,9 @@ export function typingEditor(doc: string): { state: EditorState; providers: Prov
     { name: "live preview: inline marks", scope: "viewport", draw: (s, v) => inlineDecorations(s, [v], previewOptions) },
     { name: "tags, links and dates", scope: "viewport", draw: (s, v) => markDecorations(s, [v], marks) },
     { name: "fold chevrons", scope: "viewport", draw: chevronDecorations },
+    // Sentence focus marks what is outside the sentence of the cursor, in its block. (Typewriter scrolling
+    // is a view plugin too, but it only asks the window to scroll: it has nothing to draw.)
+    { name: "sentence focus", scope: "block", draw: (s) => Decoration.set(outsideSentence(s).map((r) => dim.range(r.from, r.to))) },
     { name: "gfm-extras: callouts, footnotes, inline math", scope: "viewport", draw: (s, v) => textDecorations(s, reveal, [v]) },
   ];
   return { state, providers };

@@ -59,7 +59,7 @@ function typeAt(pos: number): Cost {
     for (const p of providers) {
       const t = performance.now();
       p.draw(state, viewportAt(state, at + 1));
-      spent[p.scope] += performance.now() - t;
+      spent[p.scope === "page" ? "page" : "viewport"] += performance.now() - t;
     }
     if (i < 6) continue;
     costs.transaction.push(afterTransaction - before);
