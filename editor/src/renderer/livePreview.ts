@@ -646,7 +646,7 @@ export function livePreview(opts: PreviewOptions): Extension {
 const currentBlock = Decoration.line({ class: "cm-focus-cur" });
 
 /** The kinds that are not one text: only the line the cursor is on counts as the current block. */
-const LINE_BLOCKS = new Set(["frontmatter", "code", "html", "math"]);
+export const LINE_BLOCKS = new Set(["frontmatter", "code", "html", "math"]);
 
 /**
  * The lines (1-based) of the blocks that hold the selection: the lines of the selection, and the own

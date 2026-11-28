@@ -104,6 +104,12 @@ export interface RecentSettings {
   dates: boolean;
 }
 
+/** How the editor behaves, from the config folder's settings.json (`{"editor": {"typewriter": true}}`). */
+export interface EditorSettings {
+  /** The line being written stays a third of the way down the window. On unless set to `false`. */
+  typewriter: boolean;
+}
+
 /** The mods installed in the app and in the config folder (mods/<id>/main.js). */
 export interface ModsInfo {
   /** The config folder: mods live in its `mods/` folder. */
@@ -116,6 +122,8 @@ export interface ModsInfo {
   mods: ModEntry[];
   /** The Recent list's settings, from the config folder's settings.json (`{"recent": {"shown": 6, "dates": false}}`). */
   recent: RecentSettings;
+  /** The editor's settings, from the same file. */
+  editor: EditorSettings;
 }
 
 export interface Api {

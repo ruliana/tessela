@@ -44,7 +44,7 @@ describe("ModRegistry", () => {
 });
 
 describe("modRows", () => {
-  const info = (extra: object = {}) => ({ folder: "/cfg", recent: { shown: 6, dates: false }, disabled: false, ids: ["a", "b"], mods: [{ id: "a", source: "app" as const, off: false }, { id: "b", source: "config" as const, off: false }, { id: "c", source: "config" as const, off: true }], ...extra });
+  const info = (extra: object = {}) => ({ folder: "/cfg", recent: { shown: 6, dates: false }, editor: { typewriter: true }, disabled: false, ids: ["a", "b"], mods: [{ id: "a", source: "app" as const, off: false }, { id: "b", source: "config" as const, off: false }, { id: "c", source: "config" as const, off: true }], ...extra });
 
   it("says for each mod where it comes from and whether it loaded, failed or is off, with its errors", () => {
     const rows = modRows(info(), ["a"], [{ mod: "b", message: "nope" }, { mod: "a", message: "Sync: boom" }]);
@@ -99,6 +99,28 @@ describe("the Recent list's settings", () => {
     for (const [text, expected] of cases) {
       writeFileSync(path.join(folder, "settings.json"), text);
       expect(recentIn(folder)).toEqual(expected);
+    }
+  });
+});
+
+describe("the editor's settings", () => {
+  it("have typewriter scrolling on unless settings.json says `false`", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { editorIn } = await import("../src/main/mods");
+    const folder = mkdtempSync(path.join(tmpdir(), "tessela-editor-"));
+    expect(editorIn(folder)).toEqual({ typewriter: true });
+    const cases: [string, boolean][] = [
+      ['{"editor": {"typewriter": false}}', false],
+      ['{"editor": {"typewriter": true}}', true],
+      ['{"editor": {"typewriter": 0}}', true],
+      ['{"editor": 4}', true],
+      ["not json", true],
+    ];
+    for (const [text, expected] of cases) {
+      writeFileSync(path.join(folder, "settings.json"), text);
+      expect(editorIn(folder)).toEqual({ typewriter: expected });
     }
   });
 });
