@@ -1,6 +1,15 @@
+import { Text } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
-import { headingAt, headings, matching, moveSection } from "../src/mods/outline/plan";
+import { headingAt, headings, matching, moveSection as moveIn } from "../src/mods/outline/plan";
+import { textOf, whereIs } from "./support/edits";
+import { offsetOf } from "./support/selecting";
+
+/** The page after moving the section of a heading, as lines, and the change it made. */
+function moveSection(lines: string[], line: number, dir: "up" | "down") {
+  const edit = moveIn(Text.of(lines), line, dir);
+  return edit && { edit, lines: textOf(lines, edit) };
+}
 
 const PAGE = ["# Plan", "", "Intro.", "", "## Goals", "", "Goal text.", "", "## Risks", "", "Risk text.", "", "# Notes", "", "Note text."];
 
@@ -27,7 +36,8 @@ describe("moving a section", () => {
   it("swaps it with the next one of its level, keeping the blank lines where they were", () => {
     const moved = moveSection(PAGE, 4, "down")!;
     expect(moved.lines).toEqual(["# Plan", "", "Intro.", "", "## Risks", "", "Risk text.", "", "## Goals", "", "Goal text.", "", "# Notes", "", "Note text."]);
-    expect(moved.shift).toBe(4);
+    // The heading's line goes four lines down, and the cursor on it with it.
+    expect(whereIs(PAGE, moved.edit, offsetOf(PAGE.join("\n"), 4, 3))).toEqual({ line: 8, col: 3 });
     expect(moveSection(moved.lines, 8, "up")!.lines).toEqual(PAGE);
   });
 

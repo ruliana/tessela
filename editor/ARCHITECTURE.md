@@ -64,12 +64,22 @@ it, kept in step by the same transaction.
 ### 3. Every change is a transaction that maps positions
 
 A command produces a CodeMirror transaction: changes, selection and effects
-together. Extensions never recompute positions by hand. Code that takes a
-`string[]` of lines and returns a new one, and then diffs the two to find the
-change, is the thing to move away from. The line-array helpers in `shared/blocks.ts`
-are good logic; they become helpers behind transactions. Whether the final step
-(block edits as ChangeSets) is done as a separate rebuild is decided after the
-typed selection lands.
+together. Extensions never recompute positions by hand. A block edit (Tab, Shift+Tab,
+Alt+Up/Down, and the outline mod's section move) works out a `BlockEdit`
+(`shared/blockEdit.ts`) from the page model: a `ChangeSet` over the text it was worked
+out on, and, when text moves, the ranges that went somewhere else. It does not build a
+new array of lines and diff it. What the editor keeps about the text follows from that
+edit, not from line numbers the edit counted for itself:
+
+- the cursor and the selected blocks are carried by `follow(edit, pos)` (mapping through
+  the changes, or along with the range that moved);
+- folds travel with the blocks that move (`renderer/blockMoves.ts` reads the `blockMoves`
+  annotation of the transaction, and leaves the history what it needs to put them back on
+  undo and redo);
+- one edit is one transaction, so one undo.
+
+Code that has just made new text and must read it (the front matter guard after a move,
+the blocks to select after a change) reads it with `parsePage`, the same builder.
 
 ### 4. Views are pure functions of state, with one reveal policy
 
@@ -155,7 +165,7 @@ Decided by Ronie on 2026-11-27.
 | Sections in commands | A heading is a section for Alt+Up/Down (it takes what is under it) and for Shift+Down from a paragraph; Escape takes the heading line, then the section. The first block under a heading moves up past the heading line (out of the section) and the last moves down past the next heading (into that section), so a move is undone by the opposite move. A run of items at the top of a page or section is what a list was for Escape and Shift+Up/Down; nested items are children of their item. |
 | Fold keys | A fold is remembered by the node's `key` (the hash of its text, as in a block handle), not by its first line; editing the text of a folded block opens it, as before. |
 | Select mode, as built | A heading selected by Escape or by stepping is its own line (`heading` on the selection), and its section once Escape or Shift+Down takes it in. The page, for Escape and Backspace, is its blocks: the front matter is drawn as a title and is never selected, cut or typed over. Shift+Up/Down move the head from a fixed anchor, so they also give a block back, and a run of items at the top of a page or a section is taken in or given back whole when it is entered from outside. After Backspace or Delete the next block in reading order is selected, or the previous one at the end of what is shown; of the two gaps around the removed blocks the larger stays, and at an end of the page none. Tab, Shift+Tab and Alt+Up/Down in select mode find the same blocks again by the lines they started on (an edit that changes nothing leaves the selection alone). Ctrl+Enter ticks the selected items themselves, not the ones nested in them. The folds are CodeMirror's; anything else that hides lines (the fold mod's zoom) says so through `ctx.editor.hidden`, and a block that starts on a hidden line is neither stepped to nor widened to. The fold keys act on `ctx.editor.selectedBlocks` when there are some. |
-| ChangeSets | Block edits as ChangeSets is decided after the typed selection lands. |
+| ChangeSets | Done (2026-11-28). A block edit is a `BlockEdit`: a `ChangeSet` over the page and the ranges that moved. A swap of two blocks is two replacements plus the moves that say where each went; the cursor, the selected blocks and the folds follow through `follow` and the `blockMoves` annotation, and undo restores the folds. Positions in and out of the edits are offsets, with no line and column pairs. The outline mod's section move uses the same edit. |
 
 ## Rebuild order
 
@@ -164,7 +174,7 @@ Decided by Ronie on 2026-11-27.
    extensions it depends on.
 3. Typed block selection and the select-mode state machine (principles 2 and 6).
 4. One reveal policy exposed to mods (principle 4).
-5. Block edits as ChangeSets (principle 3), if still wanted.
+5. Block edits as ChangeSets (principle 3). Done.
 
 Each step is its own PR, and parts that do not touch the same files run in parallel.
 
@@ -177,9 +187,9 @@ changes a row.
 | --- | --- |
 | 1. One page model | Met for the editor. `shared/pageModel.ts` builds the model from the syntax tree as the `pageModel` state field (`renderer/pageModelField.ts`), and the Rust index is its oracle. Block commands, selection stepping, folds and zoom (`shared/blocks.ts`, `shared/folds.ts`, `renderer/blockKeys.ts`), the live preview and the mods (`ctx.page`) read it; `parseBlocks` and `editedBlockLines` are gone. Text-only code with no editor (the properties edits) still finds the front matter with `frontmatterEnd(lines)` in `shared/syntax.ts`, and commands that have just made new text read it with `parsePage` (`shared/pageText.ts`), the same builder. |
 | 2. Typed selection | Met. `blockSelection` (`renderer/selectMode.ts`) holds a `BlockSelection` (`shared/blockSelection.ts`): anchor and head nodes of the page model, normalised to a run of siblings. The text selection is its projection, set in the same transaction (`selectionSpec`), and one filter clears the field on any other selection or edit. It is drawn from the field: a line decoration, and the class a table widget wears (`coversRange`). |
-| 3. Transactions | Partly. Typing and CodeMirror commands are; block commands work on line arrays and diff them in `apply()` (`blockKeys.ts`). |
+| 3. Transactions | Met. Block edits (`shared/blocks.ts`, the outline mod) are a `BlockEdit` (`shared/blockEdit.ts`): a `ChangeSet` and the ranges that moved, in offsets. `renderer/blockKeys.ts` turns one into a transaction (`editSpec`) and follows the cursor and the selected blocks through it (`follow`); selecting and removing blocks maps positions through the change, and the folds go with a moved block (`renderer/blockMoves.ts`). |
 | 4. Views from state | Met. One reveal policy (`reveal.ts`) serves live preview, tables and the front matter header, gfm-extras and the link clicks; tables are drawn from the syntax tree; mods ask `ctx.editor.isEditing` and `ctx.editor.selectedBlocks`. The `cm-select-mode` class is left on the editor for CSS alone (it hides the caret and the selection layer); no code reads it. |
-| 5. Commands | Met for the keys: every action is `(state) => Reply` (`renderer/blockKeys.ts`) and the keymap only runs it. What is left of principle 3 is that Tab, Shift+Tab and Alt+Up/Down still work on line arrays and are diffed into one change (`rowsChange`). |
+| 5. Commands | Met: every action is `(state) => Reply` (`renderer/blockKeys.ts`) and the keymap only runs it. |
 | 6. Explicit modes | Met. The mode is whether `blockSelection` is set; each key's meaning in each mode is the table in `blockKeys.ts`, and `respond(state, key)` is the machine. Escape is resolved there (popup, widen, focus mode); the window's capture handler is gone, and only an Escape that no editor, field or dialog took leaves focus mode from the window. |
 | 7. Property tests | Met for the model, the reveal policy and select mode. `test/props.blocks.test.ts` covers edits; `test/livePreview.test.ts` checks the reveal policy on generated paragraphs and tables; `test/props.selectMode.test.ts` runs any keys on any page, with folds and a zoom, and checks that the result is editing or a valid run, that the text selection is exactly its lines, that only shown blocks are selected, and that the mode is entered and left only by the listed keys. |
 

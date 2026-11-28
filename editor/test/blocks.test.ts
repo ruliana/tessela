@@ -1,21 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  type Result,
-  type Sel,
-  blockBelow,
-  indent,
-  mapPos,
-  move,
-  outdent,
-} from "../src/shared/blocks";
+import { type BlockEdit, follow } from "../src/shared/blockEdit";
+import { type Sel, blockBelow, indent, move, outdent } from "../src/shared/blocks";
 import type { PageModel } from "../src/shared/pageModel";
+import { textOf } from "./support/edits";
 import { modelOf, outline } from "./support/page";
+import { offsetOf } from "./support/selecting";
 
 /** The page model of lines, made the way the editor makes it. */
 const m = (lines: string[]) => modelOf(lines.join("\n"));
 
-/** `text` with `|` at the cursor, or `<` and `>` around a selection. Returns lines and selection. */
+/** `text` with `|` at the cursor, or `<` and `>` around a selection. Returns lines and selection (offsets). */
 function setup(marked: string): { lines: string[]; sel: Sel } {
   const raw = marked.split("\n");
   const find = (ch: string) => {
@@ -30,27 +25,29 @@ function setup(marked: string): { lines: string[]; sel: Sel } {
   const end = find(">");
   const strip = (s: string) => s.replace(/[|<>]/g, "");
   const lines = raw.map(strip);
+  const text = lines.join("\n");
+  const offset = (p: { line: number; col: number }) => offsetOf(text, p.line, p.col);
   if (start && end) {
     // `>` is on a line after `<` has been removed from its own line only.
     const col = end.line === start.line ? end.col - 1 : end.col;
-    return { lines, sel: { anchor: start, head: { line: end.line, col } } };
+    return { lines, sel: { anchor: offset(start), head: offset({ line: end.line, col }) } };
   }
-  const pos = cursor ?? { line: 0, col: 0 };
+  const pos = offset(cursor ?? { line: 0, col: 0 });
   return { lines, sel: { anchor: pos, head: pos } };
 }
 
-function show(lines: string[], result: Result, sel: Sel): string {
-  const out = result.rows.map((r) => r.text);
-  const head = mapPos(result, sel.head);
-  out[head.line] = `${out[head.line]!.slice(0, head.col)}|${out[head.line]!.slice(head.col)}`;
-  return out.join("\n");
+/** The page after the edit, with `|` where the head of the selection has gone. */
+function show(lines: string[], edit: BlockEdit, sel: Sel): string {
+  const text = textOf(lines, edit).join("\n");
+  const head = follow(edit, sel.head);
+  return `${text.slice(0, head)}|${text.slice(head)}`;
 }
 
-function run(marked: string, op: (model: PageModel, sel: Sel) => Result | null): string {
+function run(marked: string, op: (model: PageModel, sel: Sel) => BlockEdit | null): string {
   const { lines, sel } = setup(marked);
-  const result = op(m(lines), sel);
-  if (!result) return "(not handled)";
-  return show(lines, result, sel);
+  const edit = op(m(lines), sel);
+  if (!edit) return "(not handled)";
+  return show(lines, edit, sel);
 }
 
 const tab = (m: string) => run(m, indent);
@@ -191,33 +188,32 @@ describe("move", () => {
 
 describe("select mode", () => {
   const page = ["Intro", "", "```js", "let a", "", "let b", "```", "", "- one", "  - child", "- two", "", "> quote"];
-  const sel = (line: number, end = line): Sel => ({ anchor: { line, col: 0 }, head: { line: end, col: page[end]!.length } });
-  const lines = (s: Sel | null) => (s ? [s.anchor.line, s.head.line] : null);
+  const text = page.join("\n");
+  const sel = (line: number, end = line): Sel => ({ anchor: offsetOf(text, line), head: offsetOf(text, end, page[end]!.length) });
+  const at = (line: number, col: number) => offsetOf(text, line, col);
 
   it("adds an item below an item, after the items nested in it", () => {
     const below = blockBelow(m(page), sel(8, 9));
-    expect(below).toEqual({ at: { line: 9, col: 9 }, insert: "\n- ", caret: 3 });
+    expect(below).toEqual({ at: at(9, 9), insert: "\n- ", caret: 3 });
     expect(blockBelow(m(page), sel(9)).insert).toBe("\n  - ");
-    expect(blockBelow(m(["1. a", "- [x] b"]), sel(0)).insert).toBe("\n2. ");
-    expect(blockBelow(m(["- [x] b"]), sel(0)).insert).toBe("\n- [ ] ");
+    expect(blockBelow(m(["1. a", "- [x] b"]), { anchor: 0, head: 0 }).insert).toBe("\n2. ");
+    expect(blockBelow(m(["- [x] b"]), { anchor: 0, head: 0 }).insert).toBe("\n- [ ] ");
   });
 
   it("adds a paragraph below any other block, with the gap kept", () => {
-    expect(blockBelow(m(page), sel(2, 6))).toEqual({ at: { line: 7, col: 0 }, insert: "\n\n", caret: 1 });
-    expect(blockBelow(m(page), sel(12))).toEqual({ at: { line: 12, col: 7 }, insert: "\n\n", caret: 2 });
-    expect(blockBelow(m(["# H", "text"]), sel(0)).insert).toBe("\n\n\n");
+    expect(blockBelow(m(page), sel(2, 6))).toEqual({ at: at(7, 0), insert: "\n\n", caret: 1 });
+    expect(blockBelow(m(page), sel(12))).toEqual({ at: at(12, 7), insert: "\n\n", caret: 2 });
+    expect(blockBelow(m(["# H", "text"]), { anchor: 0, head: 0 }).insert).toBe("\n\n\n");
   });
 });
 
 // What the old reading of the page got wrong, and the page model gets right: blocks inside blocks.
 describe("blocks inside items, callouts and math", () => {
-  const sel = (line: number, end = line, page: string[] = []): Sel => ({ anchor: { line, col: 0 }, head: { line: end, col: page[end]?.length ?? 0 } });
-  const span = (s: Sel | null) => (s ? [s.anchor.line, s.head.line] : null);
-
-  /** Runs `op` with the cursor at the start of `line`, and shows the resulting lines. */
-  const at = (page: string[], line: number, op: (model: PageModel, sel: Sel) => Result | null): string[] | null => {
-    const result = op(m(page), { anchor: { line, col: 2 }, head: { line, col: 2 } });
-    return result ? result.rows.map((r) => r.text) : null;
+  /** Runs `op` with the cursor two columns into `line`, and shows the resulting lines. */
+  const at = (page: string[], line: number, op: (model: PageModel, sel: Sel) => BlockEdit | null): string[] | null => {
+    const cursor = offsetOf(page.join("\n"), line, 2);
+    const edit = op(m(page), { anchor: cursor, head: cursor });
+    return edit ? textOf(page, edit) : null;
   };
 
   it("does not nest an item of a quote with Tab, which would put spaces in front of the `>`", () => {

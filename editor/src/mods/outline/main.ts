@@ -10,6 +10,7 @@ import type { EditorView } from "@codemirror/view";
 
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
+import { blockMoves, follow } from "../../shared/blockEdit";
 import { cliOf } from "../kit";
 import { type Heading, headingAt, headings, matching, moveSection } from "./plan";
 
@@ -53,20 +54,14 @@ export default function (ctx: ModContext): void {
 
   /** Moves the section whose heading is on `heading` (a line number); false when nothing moves. */
   function move(view: EditorView, heading: number, dir: "up" | "down"): boolean {
-    const doc = view.state.doc;
-    const moved = moveSection(linesOf(view), heading, dir);
-    if (!moved) return false;
-    const from = doc.line(moved.from + 1).from;
-    const to = doc.line(moved.to + 1).to;
-    const insert = moved.lines.slice(moved.from, moved.to + 1).join("\n");
+    const edit = moveSection(view.state.doc, heading, dir);
+    if (!edit) return false;
     // The cursor is in the section that moved (the key needs the heading line, the palette any line of it) and goes with it.
-    const { head } = view.state.selection.main;
-    const at = doc.lineAt(head);
-    const line = Math.min(Math.max(at.number - 1 + moved.shift, moved.from), moved.to);
-    const start = moved.lines.slice(moved.from, line).reduce((sum, l) => sum + l.length + 1, from);
+    const { anchor, head } = view.state.selection.main;
     view.dispatch({
-      changes: { from, to, insert },
-      selection: { anchor: start + Math.min(head - at.from, moved.lines[line]!.length) },
+      changes: edit.changes,
+      annotations: blockMoves.of(edit.moves),
+      selection: { anchor: follow(edit, anchor), head: follow(edit, head) },
       scrollIntoView: true,
       userEvent: "move.section",
     });
