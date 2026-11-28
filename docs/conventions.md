@@ -582,8 +582,10 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 
 ### Typewriter scrolling
 
-While you type or move with the keys, the window scrolls so that the line you are on stays a third
-of the way down it; a click or a drag never moves the text. It is on by default and the config
+While you type or move with the keys, the window scrolls so that the line you are on stays at the golden
+ratio from the bottom (about 62% of the way down). In select mode the selected blocks come into view from
+their start instead: on that line, or higher when their end would fall out of the window. A click or a
+drag never moves the text. It is on by default and the config
 folder's `settings.json` turns it off: `{"editor": {"typewriter": false}}` (read when the window loads).
 
 ### Surfacing notes while you write (Jev)

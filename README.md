@@ -201,8 +201,8 @@ code (your own or audited) and load before the first page opens.
 - The same file sets the sidebar's Recent list: `{"recent": {"shown": 6, "dates": false}}` is how many
   pages it shows (1 to 30, default 6) and whether journal days are among them (default: left out, the
   calendar has them). A new setting takes effect when the window loads again.
-- `{"editor": {"typewriter": false}}` turns off typewriter scrolling (the line you write on stays a third
-  of the way down the window; on by default).
+- `{"editor": {"typewriter": false}}` turns off typewriter scrolling (the line you write on stays at the golden
+  ratio from the bottom of the window; on by default).
 - `{"jev": {"key": "..."}}` turns on the features that use [Jev](https://docs.typesafe.ai) (TypeSafe AI's decision
   model), today the surface mod: at a pause in your typing, the one note that bears on the paragraph appears in
   the margin, only when it is worth the interruption (Esc dismisses it, Ctrl/Cmd+Alt+Enter peeks at it,

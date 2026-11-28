@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { outsideSentence } from "../src/renderer/sentenceFocus";
 import { wantsTypewriter } from "../src/renderer/typewriter";
 import { sentenceAt } from "../src/shared/sentences";
-import { TYPEWRITER_FRACTION, typewriterDelta } from "../src/shared/typewriter";
+import { SELECTION_MARGIN, TYPEWRITER_FRACTION, selectionDelta, typewriterDelta } from "../src/shared/typewriter";
 import { revealState } from "./support/reveal";
 
 describe("typewriter scrolling", () => {
@@ -25,10 +25,43 @@ describe("typewriter scrolling", () => {
     );
   });
 
+  it("keeps the line at the golden ratio from the bottom of the window", () => {
+    const phi = (1 + Math.sqrt(5)) / 2;
+    // 38.2% of the window is below the line, 61.8% above it.
+    expect((1 - TYPEWRITER_FRACTION) / TYPEWRITER_FRACTION).toBeCloseTo(1 / phi, 6);
+    expect(TYPEWRITER_FRACTION).toBeCloseTo(0.618, 3);
+  });
+
   it("does not move the text for a sub-pixel difference", () => {
-    expect(typewriterDelta(100.4, 0, 300)).toBe(0);
-    expect(typewriterDelta(130, 0, 300)).toBe(30);
-    expect(typewriterDelta(70, 0, 300)).toBe(-30);
+    const line = 300 * TYPEWRITER_FRACTION;
+    expect(typewriterDelta(line + 0.4, 0, 300)).toBe(0);
+    expect(typewriterDelta(line + 30, 0, 300)).toBeCloseTo(30);
+    expect(typewriterDelta(line - 30, 0, 300)).toBeCloseTo(-30);
+  });
+
+  it("scrolls a selection so that all of it shows when it fits, and its start when it does not", () => {
+    const top = fc.double({ min: -5000, max: 5000, noNaN: true });
+    const size = fc.double({ min: 1, max: 4000, noNaN: true });
+    fc.assert(
+      fc.property(top, size, top, height, (selTop, selHeight, viewTop, h) => {
+        const delta = selectionDelta(selTop, selTop + selHeight, viewTop, h);
+        const at = selTop - delta - viewTop; // where the selection's start ends up in the window
+        if (selHeight <= h - 2 * SELECTION_MARGIN) {
+          expect(at).toBeGreaterThanOrEqual(SELECTION_MARGIN - 1);
+          expect(at + selHeight).toBeLessThanOrEqual(h - SELECTION_MARGIN + 1);
+          // On the typewriter line unless that would push the end out of the window.
+          expect(at).toBeLessThanOrEqual(h * TYPEWRITER_FRACTION + 1);
+        } else {
+          expect(Math.abs(at - SELECTION_MARGIN)).toBeLessThanOrEqual(1); // too tall: its start shows
+        }
+        expect(selectionDelta(selTop - delta, selTop - delta + selHeight, viewTop, h)).toBe(0);
+      }),
+    );
+  });
+
+  it("keeps a short selection on the typewriter line and moves a long one up from it", () => {
+    expect(selectionDelta(300, 320, 0, 600)).toBeCloseTo(300 - 600 * TYPEWRITER_FRACTION); // fits under the line
+    expect(selectionDelta(400, 700, 0, 600)).toBeCloseTo(400 - (600 - SELECTION_MARGIN - 300)); // would leave the window
   });
 
   it("follows typing and the keys, not a click or a jump that scrolls by its own effect", () => {
