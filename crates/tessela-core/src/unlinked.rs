@@ -6,10 +6,11 @@
 //! turn it into a reference, so a client can offer "Link" and write it as a patch.
 //! Code, existing links, tags and web addresses are not searched.
 
+use std::cell::OnceCell;
 use std::path::Path;
 
+use aho_corasick::{AhoCorasick, MatchKind};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
-use regex::RegexBuilder;
 use serde::Serialize;
 
 use crate::blocks::Block;
@@ -39,8 +40,8 @@ pub struct Mention {
 pub struct Spec {
     /// The concept ID.
     pub concept: String,
-    /// The names to look for, longest first.
-    names: Vec<String>,
+    /// All the names at once, longest first. Absent when there is no name worth looking for.
+    names: Option<AhoCorasick>,
     /// How a page links to it: `/machine-learning.md`.
     target: String,
 }
@@ -75,6 +76,14 @@ impl Spec {
             }
         }
         names.sort_by_key(|n| std::cmp::Reverse(n.chars().count()));
+        // Standard matching with overlaps reports every occurrence of every name; which of
+        // them to keep is decided in `find_words`, since that needs the words around them.
+        let names = (!names.is_empty()).then(|| {
+            AhoCorasick::builder()
+                .match_kind(MatchKind::Standard)
+                .build(names.iter().map(|n| fold(n).0))
+                .expect("a few short names always build")
+        });
         Spec {
             target: format!("/{concept}.md"),
             concept,
@@ -87,25 +96,30 @@ impl Spec {
         normalize_concept(&page.id) == self.concept
     }
 
-    /// The mentions in a block. `file` is the page's text, to place them in it.
-    pub fn mentions(&self, page: &Page, block: &Block, file: Option<&str>) -> Vec<Mention> {
-        if self.is_page(page) || self.names.is_empty() {
+    /// The mentions in a block. `file` is the page's text, to place them in it; it is only
+    /// read when there is something to place.
+    pub fn mentions(&self, page: &Page, block: &Block, file: &PageFile) -> Vec<Mention> {
+        let Some(names) = &self.names else {
+            return Vec::new();
+        };
+        if self.is_page(page) {
+            return Vec::new();
+        }
+        // Most blocks name nothing. Whatever a mention is, its words are in the raw text
+        // as they are, so one scan of it tells whether the Markdown is worth reading.
+        let (raw, _) = fold(&block.text);
+        if !names.is_match(&raw) {
             return Vec::new();
         }
         let mut found: Vec<(usize, usize)> = Vec::new();
         for (start, masked) in plain_text(&block.text) {
-            for name in &self.names {
-                for (from, to) in find_words(&masked, name) {
-                    let (from, to) = (start + from, start + to);
-                    // Longer names come first and win where they overlap.
-                    if !found.iter().any(|&(a, b)| from < b && a < to) {
-                        found.push((from, to));
-                    }
-                }
-            }
+            found.extend(
+                find_words(names, &masked)
+                    .into_iter()
+                    .map(|(from, to)| (start + from, start + to)),
+            );
         }
         found.sort();
-        let lines: Vec<&str> = file.map(|f| f.lines().collect()).unwrap_or_default();
         found
             .into_iter()
             .map(|(from, to)| {
@@ -113,14 +127,13 @@ impl Spec {
                 let before = &block.text[..from];
                 let row = before.matches('\n').count();
                 let in_row = from - before.rfind('\n').map_or(0, |i| i + 1);
-                let text_line = block.text.lines().nth(row).unwrap_or("");
+                let text_line = block.text.lines().nth(row).unwrap_or("").trim_end();
                 // The block's text lost the list marker and indent: the file line ends
                 // with the text line, so the difference is how far in it starts.
-                let column = lines
-                    .get(block.line - 1 + row)
-                    .map(|l| l.trim_end())
-                    .filter(|l| l.ends_with(text_line.trim_end()))
-                    .map(|l| l.len() - text_line.trim_end().len() + in_row);
+                let column = file
+                    .line(block.line - 1 + row)
+                    .filter(|l| l.ends_with(text_line))
+                    .map(|l| l.len() - text_line.len() + in_row);
                 Mention {
                     link: format!("[{text}]({})", self.target),
                     text,
@@ -129,6 +142,40 @@ impl Spec {
                 }
             })
             .collect()
+    }
+}
+
+/// A page's file, read when the first mention in it needs placing.
+pub struct PageFile<'a> {
+    root: &'a Path,
+    page: &'a Page,
+    /// The text and where each of its lines starts.
+    text: OnceCell<Option<(String, Vec<usize>)>>,
+}
+
+impl<'a> PageFile<'a> {
+    pub fn new(root: &'a Path, page: &'a Page) -> PageFile<'a> {
+        PageFile {
+            root,
+            page,
+            text: OnceCell::new(),
+        }
+    }
+
+    /// The line with this index (0-based) without its end, if the file could be read.
+    fn line(&self, index: usize) -> Option<&str> {
+        let (text, starts) = self
+            .text
+            .get_or_init(|| {
+                let text = read_file(self.root, self.page)?;
+                let mut starts = vec![0];
+                starts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
+                Some((text, starts))
+            })
+            .as_ref()?;
+        let from = *starts.get(index)?;
+        let to = starts.get(index + 1).copied().unwrap_or(text.len());
+        Some(text[from..to].trim_end())
     }
 }
 
@@ -174,40 +221,105 @@ fn blank_out(text: &str) -> String {
     String::from_utf8(bytes).expect("blanking keeps UTF-8")
 }
 
-/// Where `name` is written in `text` as whole words, ignoring case.
-fn find_words(text: &str, name: &str) -> Vec<(usize, usize)> {
-    let Ok(re) = RegexBuilder::new(&regex::escape(name))
-        .case_insensitive(true)
-        .build()
-    else {
-        return Vec::new();
-    };
+/// Where any of the names is written in `text` as whole words, ignoring case, in one scan.
+/// Where two overlap, the longer name wins (the earlier one among equals), and the words
+/// of a name rejected for the letters around it do not hide one that overlaps it.
+fn find_words(names: &AhoCorasick, text: &str) -> Vec<(usize, usize)> {
+    let (folded, offsets) = fold(text);
+    let at = |i: usize| offsets.as_ref().map_or(i, |o| o[i]);
     let word = |c: char| c.is_alphanumeric() || c == '_';
-    re.find_iter(text)
-        .filter(|m| {
-            !text[..m.start()].chars().next_back().is_some_and(word)
-                && !text[m.end()..].chars().next().is_some_and(word)
+    // Pattern numbers run from the longest name to the shortest.
+    let mut candidates: Vec<(usize, usize, usize)> = names
+        .find_overlapping_iter(&folded)
+        .map(|m| (m.pattern().as_usize(), at(m.start()), at(m.end())))
+        .filter(|&(_, from, to)| {
+            !text[..from].chars().next_back().is_some_and(word)
+                && !text[to..].chars().next().is_some_and(word)
         })
-        .map(|m| (m.start(), m.end()))
-        .collect()
+        .collect();
+    candidates.sort_unstable();
+    let mut found: Vec<(usize, usize)> = Vec::new();
+    for (_, from, to) in candidates {
+        if !found.iter().any(|&(a, b)| from < b && a < to) {
+            found.push((from, to));
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+/// The text with every letter in lower case, and where each byte of the result was in the
+/// text (absent when the two are the same length, which is every ASCII text).
+fn fold(text: &str) -> (String, Option<Vec<usize>>) {
+    if text.is_ascii() {
+        return (text.to_ascii_lowercase(), None);
+    }
+    let mut folded = String::with_capacity(text.len());
+    let mut offsets = Vec::with_capacity(text.len() + 1);
+    for (i, c) in text.char_indices() {
+        // A letter that lowers to several (`İ`) is left alone, so that no name needs them.
+        let mut lower = c.to_lowercase();
+        let c = match (lower.next(), lower.next()) {
+            (Some(l), None) => l,
+            _ => c,
+        };
+        offsets.extend(std::iter::repeat_n(i, c.len_utf8()));
+        folded.push(c);
+    }
+    offsets.push(text.len());
+    (folded, Some(offsets))
 }
 
 /// A page's text as it is on disk, for placing mentions in it.
-pub fn read_file(root: &Path, page: &Page) -> Option<String> {
+fn read_file(root: &Path, page: &Page) -> Option<String> {
     std::fs::read_to_string(root.join(&page.path)).ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    use regex::RegexBuilder;
+
+    fn automaton(names: &[&str]) -> AhoCorasick {
+        let mut names: Vec<&str> = names.to_vec();
+        names.sort_by_key(|n| std::cmp::Reverse(n.chars().count()));
+        AhoCorasick::builder()
+            .match_kind(MatchKind::Standard)
+            .build(names.iter().map(|n| fold(n).0))
+            .unwrap()
+    }
+
+    fn words(text: &str, names: &[&str]) -> Vec<(usize, usize)> {
+        find_words(&automaton(names), text)
+    }
 
     #[test]
     fn words_are_found_whole_and_without_case() {
         assert_eq!(
-            find_words("Rust and rusty, RUST!", "rust"),
+            words("Rust and rusty, RUST!", &["rust"]),
             [(0, 4), (16, 20)]
         );
-        assert_eq!(find_words("c++ and c", "c++"), [(0, 3)]);
+        assert_eq!(words("c++ and c", &["c++"]), [(0, 3)]);
+        // Case is folded for every script, and offsets are in the text as it is.
+        assert_eq!(
+            words("ZÜRICH \u{212A}ilo", &["zürich", "kilo"]),
+            [(0, 7), (8, 14)]
+        );
+    }
+
+    #[test]
+    fn longer_names_win_where_they_overlap() {
+        assert_eq!(
+            words("machine learning", &["machine", "machine learning"]),
+            [(0, 16)]
+        );
+    }
+
+    #[test]
+    fn a_rejected_occurrence_does_not_hide_one_that_overlaps_it() {
+        // `a-a` at 1 is inside the word `xa`; the one at 3 is a whole word.
+        assert_eq!(words("xa-a-a", &["a-a"]), [(3, 6)]);
     }
 
     #[test]
@@ -215,6 +327,52 @@ mod tests {
         let parts =
             plain_text("see `rust`, [rust](/x.md), #rust and https://rust-lang.org but rust");
         let all: String = parts.iter().map(|(_, t)| t.as_str()).collect();
-        assert_eq!(find_words(&all, "rust").len(), 1, "{all:?}");
+        assert_eq!(words(&all, &["rust"]).len(), 1, "{all:?}");
+    }
+
+    /// The obvious way: one regex per name, every occurrence tried, longest names first.
+    fn oracle(text: &str, names: &[String]) -> Vec<(usize, usize)> {
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut names: Vec<&String> = names.iter().collect();
+        names.sort_by_key(|n| std::cmp::Reverse(n.chars().count()));
+        let mut found: Vec<(usize, usize)> = Vec::new();
+        for name in names {
+            let re = RegexBuilder::new(&regex::escape(name))
+                .case_insensitive(true)
+                .build()
+                .unwrap();
+            let mut from = 0;
+            while let Some(m) = re.find_at(text, from) {
+                from = m.start() + text[m.start()..].chars().next().unwrap().len_utf8();
+                let (a, b) = (m.start(), m.end());
+                if !text[..a].chars().next_back().is_some_and(word)
+                    && !text[b..].chars().next().is_some_and(word)
+                    && !found.iter().any(|&(x, y)| a < y && x < b)
+                {
+                    found.push((a, b));
+                }
+            }
+        }
+        found.sort();
+        found
+    }
+
+    proptest! {
+        /// One scan finds what a search per name finds, on texts built from a few letters,
+        /// separators and letters that change size when lowered, so that names overlap.
+        #[test]
+        fn one_scan_finds_what_a_search_per_name_finds(
+            text in "[abAB\u{e9}\u{c9}\u{212A}k_ +-]{0,40}",
+            names in prop::collection::vec("[abAB\u{e9}\u{c9}k+-][abAB\u{e9}k +-]{0,3}", 1..4),
+        ) {
+            let names: Vec<String> = names
+                .into_iter()
+                .map(|n| n.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|n| n.chars().count() >= MIN_NAME_CHARS)
+                .collect();
+            prop_assume!(!names.is_empty());
+            let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+            prop_assert_eq!(words(&text, &refs), oracle(&text, &names));
+        }
     }
 }

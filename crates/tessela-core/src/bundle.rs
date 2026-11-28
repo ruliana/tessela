@@ -61,6 +61,57 @@ impl Bundle {
         })
     }
 
+    /// The page at `path` (relative to `root`, with `/`), parsed on its own: no walk, no other
+    /// file read. `None` for what `load` would not list: no such file, `index.md` and `log.md`,
+    /// anything under a hidden name, a symlink, or a file that cannot be read as UTF-8.
+    /// For a command about one page; one that needs the others still uses `load`.
+    pub fn load_page(root: impl AsRef<Path>, path: &str) -> std::io::Result<Option<Page>> {
+        let root = root.as_ref();
+        if !root.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("{} is not a directory", root.display()),
+            ));
+        }
+        let parts: Vec<&str> = path.split('/').collect();
+        let name = parts.last().copied().unwrap_or_default();
+        if !name.ends_with(".md")
+            || is_reserved(name)
+            || parts.iter().any(|p| p.is_empty() || p.starts_with('.'))
+        {
+            return Ok(None);
+        }
+        // `load` walks real folders and real files only; a link is not part of the bundle.
+        let mut file = root.to_path_buf();
+        let mut meta = None;
+        for (i, part) in parts.iter().enumerate() {
+            file.push(part);
+            match std::fs::symlink_metadata(&file) {
+                Ok(m) => meta = Some(m),
+                Err(_) => return Ok(None),
+            }
+            let ok = meta.as_ref().is_some_and(|m| {
+                if i + 1 == parts.len() {
+                    m.is_file()
+                } else {
+                    m.is_dir()
+                }
+            });
+            if !ok {
+                return Ok(None);
+            }
+        }
+        let Ok(Ok(text)) = std::fs::read(&file).map(String::from_utf8) else {
+            return Ok(None);
+        };
+        let mut page = Page::parse(path, &text);
+        page.modified = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|d| u64::try_from(d.as_millis()).ok());
+        Ok(Some(page))
+    }
+
     pub fn page(&self, id: &str) -> Option<&Page> {
         self.pages.iter().find(|p| p.id.eq_ignore_ascii_case(id))
     }

@@ -7,3 +7,12 @@ version = "0.4.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/ruliana/tessela"
+
+# Tests run the real `tessela` binary on big generated bundles (crates/tessela-cli/tests/
+# budgets.rs), and an unoptimised parser makes that 20 times slower. Optimising the parser
+# and its dependencies keeps `cargo test` fast without touching the CLI crate's debug info.
+[profile.dev.package.tessela-core]
+opt-level = 3
+
+[profile.dev.package."*"]
+opt-level = 3

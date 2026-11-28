@@ -394,7 +394,20 @@ enum Command {
     },
 }
 
+/// With `TESSELA_STATS` set, a call reports on stderr how many pages it parsed, so tests and
+/// benchmarks can check that a command reads only what it needs.
 fn main() -> ExitCode {
+    let code = run();
+    if std::env::var_os("TESSELA_STATS").is_some() {
+        eprintln!(
+            "tessela-stats: pages_parsed={}",
+            tessela_core::page::parsed_pages()
+        );
+    }
+    code
+}
+
+fn run() -> ExitCode {
     match Cli::parse().command {
         Command::Lint {
             common,
@@ -539,14 +552,11 @@ fn main() -> ExitCode {
         }),
         Command::Blocks { edit, page } => run_edit(&edit, |_| {
             let path = edit::existing_path(&page)?;
-            let bundle = Bundle::load(&edit.bundle)
-                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
-            let page = bundle
-                .pages
-                .iter()
-                .find(|p| p.path == path)
+            // Only this page is read: the others cannot change its shape.
+            let page = Bundle::load_page(&edit.bundle, &path)
+                .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?
                 .ok_or_else(|| EditError::new(ErrorCode::NotFound, format!("no page {path}")))?;
-            let structure = tessela_core::Structure::of(page);
+            let structure = tessela_core::Structure::of(&page);
             Ok(Done::new(
                 &structure,
                 |s| {

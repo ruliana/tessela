@@ -40,6 +40,7 @@ import { pasting } from "./paste";
 import { focusMarks, livePreview } from "./livePreview";
 import { isDrawn, revealPolicy } from "./reveal";
 import { slashSource } from "./slash";
+import { stickyHeadings } from "./headingPath";
 import { pageLanguage, pageModel } from "./pageModelField";
 import { bodyStart } from "../shared/properties";
 
@@ -285,6 +286,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         // footnotes, math) in one parser, and code in the languages that fenced blocks name.
         pageLanguage(languages),
         pageModel,
+        stickyHeadings,
         revealPolicy(),
         syntaxHighlighting(highlight),
         autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
