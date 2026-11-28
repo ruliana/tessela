@@ -65,6 +65,17 @@ fn the_parse_counter_counts_every_page_a_cold_call_reads() {
 }
 
 #[test]
+fn a_query_for_a_rare_word_or_tag_parses_only_the_pages_that_have_it() {
+    let bundle = support::Bundle::generate(500);
+    let rare = support::rare_topics(500);
+    assert!(rare > 0);
+    for name in ["query --words rare", "query --ref rare"] {
+        let case = COMMANDS.iter().find(|c| c.name == name).unwrap();
+        assert_eq!(support::run(case, &bundle.root).parsed, rare, "{name}");
+    }
+}
+
+#[test]
 fn the_generated_bundle_is_the_same_every_time_and_its_links_resolve() {
     let (a, b) = (support::Bundle::generate(40), support::Bundle::generate(40));
     let files = |root: &std::path::Path| {

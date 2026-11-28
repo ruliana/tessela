@@ -1740,6 +1740,7 @@ dependencies = [
  "aho-corasick",
  "blake3",
  "diffy",
+ "memchr",
  "proptest",
  "pulldown-cmark",
  "rayon",
