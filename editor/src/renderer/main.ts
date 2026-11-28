@@ -144,6 +144,8 @@ function applyLayout(): void {
   shellEl.dataset.focus = focusMode ? "1" : "0";
   shellEl.dataset.focusUnit = focusUnit;
   focusButton?.setAttribute("aria-pressed", String(focusMode));
+  // The editors keep the marks of the sentence only while it is what focus mode dims.
+  for (const c of cards) c.refresh();
 }
 
 function togglePanel(which: "sidebar" | "backlinks"): void {
@@ -875,6 +877,7 @@ function cardDeps() {
     onOpened: (path: string) => registry.emit("page-opened", { path }),
     onLeaveFocus: leaveFocusMode,
     typewriter: () => modsInfo?.editor.typewriter !== false,
+    sentenceFocus: () => focusMode && focusUnit === "sentence",
     onSelectMode: (path: string, on: boolean) => registry.emit(on ? "select-mode-entered" : "select-mode-left", { path }),
     onTitleEdited: (path: string, from: string, to: string) => registry.emit("title-edited", { path, from, to }),
     pageMenu: (path: string) =>

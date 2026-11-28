@@ -46,6 +46,8 @@ export interface CardDeps {
   onLeaveFocus?: () => boolean;
   /** Blocks of this page were selected, or no longer are. */
   onSelectMode?: (path: string, on: boolean) => void;
+  /** Whether focus mode dims all but the current sentence. */
+  sentenceFocus?: () => boolean;
   /** Whether typewriter scrolling is on. */
   typewriter?: () => boolean;
   /** A save changed the page's title. */
@@ -163,6 +165,7 @@ export function createCard(path: string, deps: CardDeps, opts: { compact?: boole
     onTogglePreview: deps.onTogglePreview,
     ...(deps.onLeaveFocus ? { onLeaveFocus: deps.onLeaveFocus } : {}),
     ...(deps.typewriter ? { typewriter: deps.typewriter } : {}),
+    ...(deps.sentenceFocus ? { sentenceFocus: deps.sentenceFocus } : {}),
     ...(deps.onSelectMode ? { onSelectMode: (on: boolean) => deps.onSelectMode?.(path, on) } : {}),
     ...(deps.extensions ? { extensions: () => deps.extensions?.(path) ?? [] } : {}),
     ...(deps.properties ? { properties: deps.properties, pagePath: () => path } : {}),

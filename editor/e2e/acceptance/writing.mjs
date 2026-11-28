@@ -83,3 +83,47 @@ suite("Typewriter scrolling switched off", bundle, (test) => {
     assert.equal(after, before, "typing does not move the window");
   });
 }, { settings: { editor: { typewriter: false } } });
+
+// Words that are finished stay where they are while the next ones are typed. A row that is full to
+// within a pixel flips between "fits" and "wraps" if anything splits its text into different pieces
+// as the cursor moves (the dimming of sentence focus did), and a word jumps across the window.
+suite("Typing does not move the words before the cursor", () => ({
+  "wrap.md": `${front()}- Focus mode is pretty good.\n  - \n`,
+}), (test) => {
+  test("a paragraph typed one key at a time", async (s) => {
+    await s.open("wrap");
+    const words = () =>
+      s.win.evaluate(() => {
+        const line = [...document.querySelectorAll(".cm-line")].filter((l) => l.textContent.includes("Focus mode") === false && l.textContent.trim() !== "").pop();
+        // From the left of the line, since a scrollbar that appears as the page grows moves the whole column.
+        const left = line.getBoundingClientRect().left;
+        const out = [];
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          for (const m of n.data.matchAll(/\S+/g)) {
+            const r = document.createRange();
+            r.setStart(n, m.index);
+            r.setEnd(n, m.index + m[0].length);
+            const b = r.getBoundingClientRect();
+            out.push(`${m[0]}@${Math.round((b.left - left) * 10) / 10},${Math.round(b.top - line.getBoundingClientRect().top)}`);
+          }
+        }
+        return out;
+      });
+    await s.key("ArrowUp");
+    await s.key("End");
+    await s.key("ArrowDown");
+    await s.key("End");
+    const text = "The find and replace box has a extremely tiny text, is super ugly, and make the text jump. We need something minimalistic, and barely intrusive. It should keep out of the way of whatever you are writing at the time.";
+    let before = [];
+    let typed = "";
+    for (const ch of text) {
+      await s.type(ch);
+      typed += ch;
+      const now = await words();
+      const finished = before.slice(0, -1);
+      assert.deepEqual(now.slice(0, finished.length), finished, `after "${typed.slice(-12)}" a word before the cursor moved`);
+      before = now;
+    }
+  });
+}, { rendered: true, settings: { editor: { typewriter: false } } });
