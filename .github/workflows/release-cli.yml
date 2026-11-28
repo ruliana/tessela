@@ -74,6 +74,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -84,5 +87,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           # The editor workflow may have created the release already.
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes
+          # Notes come from docs/releases/X.Y.Z.md when it exists, else from the merged PRs.
+          notes=(--generate-notes); [ -f "docs/releases/${TAG#v}.md" ] && notes=(--notes-file "docs/releases/${TAG#v}.md")
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag "${notes[@]}"
           gh release upload "$TAG" dist/* --clobber

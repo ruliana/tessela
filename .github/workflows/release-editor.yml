@@ -99,7 +99,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Notes come from docs/releases/X.Y.Z.md when it exists, else from the merged PRs.
+          notes=(--generate-notes); [ -f "docs/releases/${TAG#v}.md" ] && notes=(--notes-file "docs/releases/${TAG#v}.md")
           gh release view "$TAG" >/dev/null 2>&1 \
-            || gh release create "$TAG" --generate-notes \
+            || gh release create "$TAG" "${notes[@]}" \
             || gh release view "$TAG" >/dev/null   # the other workflow created it first
           gh release upload "$TAG" installers/* --clobber
