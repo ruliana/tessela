@@ -115,3 +115,36 @@ fn an_unknown_page_is_a_not_found_error() {
     assert_eq!(code, Some(2));
     assert_eq!(json["error"]["code"], "not-found");
 }
+
+/// `blocks` is about one page: it reads that file and nothing else, so a folder it cannot open
+/// elsewhere in the bundle does not matter. (Skipped where permissions do not bind, as root.)
+#[cfg(unix)]
+#[test]
+fn blocks_reads_only_the_page_it_is_asked_for() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = bundle("one");
+    let locked = dir.join("locked");
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::write(locked.join("other.md"), "# other\n").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::read_dir(&locked).is_ok();
+    let (code, json) = run(&["blocks", "page", "-b", dir.to_str().unwrap(), "--json"]);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    if readable {
+        return;
+    }
+    assert_eq!(code, Some(0), "{json}");
+    assert_eq!(json["page"], "page");
+}
+
+#[test]
+fn blocks_of_a_page_that_is_not_in_the_bundle_is_not_found() {
+    let dir = bundle("missing");
+    std::fs::write(dir.join("index.md"), "# index\n").unwrap();
+    for name in ["nope", "index", "page.md.md"] {
+        let (code, json) = run(&["blocks", name, "-b", dir.to_str().unwrap(), "--json"]);
+        assert_eq!(code, Some(2), "{name}");
+        assert_eq!(json["error"]["code"], "not-found", "{name}");
+    }
+}
