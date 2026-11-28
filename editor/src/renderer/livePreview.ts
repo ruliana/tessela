@@ -75,6 +75,16 @@ class ImageWidget extends WidgetType {
 }
 
 const hide = Decoration.replace({});
+/** A mark that is shown as typed, over the characters that `hide` takes away when the construct is drawn. */
+const rawMark = Decoration.mark({ class: "cm-mk" });
+/** A mark of a list item, in the slot of the glyph that stands for it when it is drawn. */
+const rawSlot = (cls: string) => Decoration.mark({ class: `cm-mk cm-mk-slot ${cls}` });
+/**
+ * A mark at the start of a line, shown as typed in the margin. It takes no room: the text after it is
+ * where it is when the mark is hidden. `n` is the length of the mark in characters, and `after` the
+ * length of the marks of the same kind that follow it on the line (a quote in a quote).
+ */
+const rawHang = (kind: string, n: number, after: number) => Decoration.mark({ class: `cm-mk cm-mk-hang ${kind}`, attributes: { style: `--n:${n};--after:${after}` } });
 const missing = Decoration.mark({ class: "cm-lp-missing" });
 const bullet = Decoration.replace({ widget: new Glyph("•", "cm-lp-bullet") });
 const unchecked = Decoration.replace({ widget: new Glyph("☐", "cm-lp-check") });
@@ -101,13 +111,18 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
   const ranges: Range<Decoration>[] = [];
   const lineOf = (pos: number) => state.doc.lineAt(pos);
   const typed = (from: number, to: number) => isEditing(state, { from, to });
-  /** Hides `from` to `to`, and the space after it when `space` is set. */
-  const hideMark = (from: number, to: number, space = false) => {
+  /**
+   * The mark `from` to `to` (and the space after it when `space` is set): hidden where its construct is
+   * drawn, and as typed where it is not. Both are over the same characters, and the typed one takes
+   * no room that the hidden one did not (style.css), so the text around it stays where it is. `raw` is
+   * given the length of the mark with its space.
+   */
+  const mark = (from: number, to: number, shown: boolean, raw: Decoration | ((n: number) => Decoration) = rawMark, space = false) => {
     if (space && state.sliceDoc(to, to + 1) === " ") to++;
-    if (to > from) ranges.push(hide.range(from, to));
+    if (to > from) ranges.push((shown ? (typeof raw === "function" ? raw(to - from) : raw) : hide).range(from, to));
   };
-  /** Whether the construct that a mark belongs to is drawn. */
-  const drawn = (parent: SyntaxNode | null) => parent !== null && !typed(parent.from, parent.to);
+  /** Whether the construct that a mark belongs to is typed. */
+  const inside = (parent: SyntaxNode | null) => parent !== null && typed(parent.from, parent.to);
 
   for (const { from, to } of visible) {
     syntaxTree(state).iterate({
@@ -119,28 +134,38 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
         if (name === "HorizontalRule") {
           if (!typed(ref.from, ref.to)) ranges.push(rule.range(ref.from, ref.to));
         } else if (name === "InlineCode") {
-          if (!typed(ref.from, ref.to)) ranges.push(inlineCode.range(ref.from, ref.to));
+          // Code is styled as code, with its padding, typed or not: the backticks are the only change.
+          ranges.push(inlineCode.range(ref.from, ref.to));
         } else if (name === "CodeMark") {
-          if (ref.node.parent?.name === "InlineCode" && drawn(ref.node.parent)) hideMark(ref.from, ref.to);
+          if (ref.node.parent?.name === "InlineCode") mark(ref.from, ref.to, inside(ref.node.parent));
         } else if (name === "QuoteMark") {
-          // Every line of a quote has the bar; the `>` is shown on the line the cursor is on.
+          // Every line of a quote has the bar; the `>` is shown, in the margin, on the line the cursor is on.
           const line = lineOf(ref.from);
           ranges.push(quoteLine.range(line.from));
-          if (!typed(line.from, line.to)) hideMark(ref.from, ref.to, true);
+          const end = ref.to + (state.sliceDoc(ref.to, ref.to + 1) === " " ? 1 : 0);
+          const after = /^(?:> ?)*/.exec(state.sliceDoc(end, line.to))?.[0].length ?? 0;
+          mark(ref.from, ref.to, typed(line.from, line.to), (n) => rawHang("cm-mk-quote", n, after), true);
         } else if (name === "ListMark") {
           // Ordered lists keep their numbers. A bullet is typed when the cursor is at it.
-          if (ref.node.parent?.parent?.name === "BulletList" && !typed(ref.from, ref.to + 1)) {
-            ranges.push(bullet.range(ref.from, ref.to));
+          if (ref.node.parent?.parent?.name === "BulletList") {
+            if (typed(ref.from, ref.to + 1)) ranges.push(rawSlot("cm-mk-bullet").range(ref.from, ref.to));
+            else ranges.push(bullet.range(ref.from, ref.to));
           }
         } else if (name === "TaskMarker") {
           const done = /\[[xX]\]/.test(state.sliceDoc(ref.from, ref.to));
-          if (!typed(ref.from, ref.to + 1)) ranges.push((done ? checked : unchecked).range(ref.from, ref.to));
+          if (typed(ref.from, ref.to + 1)) ranges.push(rawSlot("cm-mk-box").range(ref.from, ref.to));
+          else ranges.push((done ? checked : unchecked).range(ref.from, ref.to));
           const task = ref.node.parent;
           if (done && task && task.to > ref.to) ranges.push(doneTask.range(ref.to, task.to));
         } else if (name === "HeaderMark") {
-          if (HEADING.test(ref.node.parent?.name ?? "") && drawn(ref.node.parent)) hideMark(ref.from, ref.to, true);
+          const heading = ref.node.parent;
+          if (heading && HEADING.test(heading.name)) {
+            // The marks in front hang in the margin; a closing run of # is an inline mark like any other.
+            const opening = ref.from === heading.from;
+            mark(ref.from, ref.to, inside(heading), opening ? (n) => rawHang("cm-mk-heading", n, 0) : rawMark, true);
+          }
         } else if (name === "EmphasisMark" || name === "StrikethroughMark") {
-          if (drawn(ref.node.parent)) hideMark(ref.from, ref.to);
+          if (ref.node.parent) mark(ref.from, ref.to, inside(ref.node.parent));
         } else if (name === "Image") {
           if (typed(ref.from, ref.to)) return false;
           const url = ref.node.getChild("URL");
@@ -161,7 +186,7 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
         } else if (name === "LinkMark" || name === "URL" || name === "LinkTitle") {
           // Only links written inline, [text](target): a reference [text][ref] stays as typed.
           const parent = ref.node.parent;
-          if ((parent?.name === "Link" || parent?.name === "Image") && parent.getChild("URL") && drawn(parent)) hideMark(ref.from, ref.to);
+          if ((parent?.name === "Link" || parent?.name === "Image") && parent.getChild("URL")) mark(ref.from, ref.to, inside(parent));
         }
       },
     });

@@ -10,6 +10,9 @@
 //   - In select mode nothing is shown as typed: blocks are selected, not edited.
 //   - An editor without the keyboard focus draws everything.
 //
+// Showing a mark must not move the text: live preview gives a hidden mark and a typed one over the same
+// characters, and the typed one takes no room the hidden one did not (see ARCHITECTURE.md, principle 4).
+//
 // "Under the cursor" means a selection range touches the construct, its ends included: a cursor
 // right after `**bold**` is still in it.
 //
