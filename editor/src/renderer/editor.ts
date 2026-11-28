@@ -9,7 +9,6 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { languages } from "@codemirror/language-data";
-import { search, searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { Annotation, Compartment, EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import {
@@ -35,6 +34,7 @@ import { smartLink } from "../shared/smartLink";
 import { blockKeymap, leaveFocus } from "./blockKeys";
 import { isSelecting } from "./selectMode";
 import { inCode, queryableMarks, refreshDecorations } from "./decorations";
+import { findBox } from "./findPanel";
 import { formatting } from "./formatKeys";
 import { pasting } from "./paste";
 import { focusMarks, livePreview } from "./livePreview";
@@ -305,8 +305,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         pasting(),
         // What mods add comes before the defaults below, so their keys win over them.
         ...(opts.extensions?.() ?? []),
-        search({ top: true }),
-        Prec.highest(keymap.of(searchKeymap)),
+        findBox(),
         Prec.highest(
           keymap.of([
             { key: "Mod-l", run: smartLinkCommand },
