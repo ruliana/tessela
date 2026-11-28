@@ -212,6 +212,12 @@ changes a row.
   reveal rules in the one policy.
 - Keep the node and unit names aligned with `docs/conventions.md` §3. If a word
   means two things, fix the doc.
+- Typing speed is a test (`test/keystroke.test.ts`): a key typed in a generated page of 5,000 lines,
+  with every extension and mod that decorates, must stay within the budgets at the top of that file
+  (the goal is 8 ms in all; a PR that makes typing faster lowers the numbers). A view plugin that
+  draws should take the viewport (`inlineDecorations`, `markDecorations`, `chevronDecorations`) and be
+  listed in `test/support/editorState.ts` with its scope; the test then checks that it draws only there.
+  Print the table with `TESSELA_STATS=1 npm test -- keystroke`.
 - Commands: `npm run typecheck`, `npm test`, and `npm run e2e:acceptance` (needs a
   built `tessela` binary and `xvfb-run` on a headless machine). CI runs all three
   plus the packaged smoke test.
