@@ -16,6 +16,7 @@ const api: Api = {
   writePage: (path, text, expected) => ipcRenderer.invoke("writePage", path, text, expected),
   addPage: (path, title) => ipcRenderer.invoke("addPage", path, title),
   openExternal: (url) => ipcRenderer.invoke("openExternal", url),
+  pageTitle: (url) => ipcRenderer.invoke("pageTitle", url),
   todayPath: () => ipcRenderer.invoke("todayPath"),
   mods: () => ipcRenderer.invoke("mods"),
   reload: () => ipcRenderer.invoke("reload"),

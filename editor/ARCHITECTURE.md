@@ -39,6 +39,8 @@ selection units, folds, zoom, live preview, tables, commands and mods.
   extension plus a node kind, never a new regex scanner.
 - No feature parses the page on its own: no `doc.toString().split("\n")`, no line
   regexes for structure, no private inline parser.
+- Clipboard HTML is not a page. `shared/htmlToMarkdown.ts` turns it into Markdown text before it
+  is inserted, and the page model then reads that text like anything typed; it never reads the page.
 - Across edits a node is found again by mapping its position through the change.
   Across sessions its identity is the content hash used for block handles
   (conventions §3).
@@ -77,6 +79,10 @@ edit, not from line numbers the edit counted for itself:
   annotation of the transaction, and leaves the history what it needs to put them back on
   undo and redo);
 - one edit is one transaction, so one undo.
+
+Work that finishes later (a pasted address upgraded to a link with its page title) tracks its
+range in a state field (`renderer/pasteTitle.ts`), mapped through every change, and lands as one
+transaction of its own, or not at all when the text it was to change is gone.
 
 Code that has just made new text and must read it (the front matter guard after a move,
 the blocks to select after a change) reads it with `parsePage`, the same builder.

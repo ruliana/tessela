@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { bracketSearch, choicesFor, linkPages, pasteLink, titleOf } from "../src/shared/linkFlows";
+import { bracketSearch, choicesFor, linkPages, titleOf } from "../src/shared/linkFlows";
 import { PAGES, SCENARIOS, WAYS, measure, slips, table, type Way } from "./support/bench";
 
 const way = (id: string): Way => WAYS.find((w) => w.id === id)!;
@@ -87,13 +87,6 @@ describe("web addresses", () => {
   it("paste over the selected words is shorter than wrapping the paste in `[](` and `)`", () => {
     expect(measure(way("paste"), scenario("webAddress")).keys).toBe("Anthropic".length + 2);
     expect(baseline("webAddress").keys).toBe("[Anthropic](".length + 2);
-  });
-
-  it("leaves other pastes alone", () => {
-    expect(pasteLink("Anthropic", "not an address")).toBeNull();
-    expect(pasteLink("", "https://example.com")).toBeNull();
-    expect(pasteLink("two\nlines", "https://example.com")).toBeNull();
-    expect(pasteLink("here", " https://example.com ")).toBe("[here](https://example.com)");
   });
 });
 

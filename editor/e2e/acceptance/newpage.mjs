@@ -70,6 +70,8 @@ suite("New page mod: a type for each page", files, (test) => {
     assert.match(text, /title: "Sprint review"/);
     assert.match(text, /attendees: \[\]/);
     assert.match(text, /# Agenda\n\n- \n\n# Decisions/);
+    // The card is there before its text is read from the file; wait for the text.
+    await s.win.waitForFunction(() => /# Decisions/.test(document.querySelector(".card .cm-content")?.textContent ?? ""));
     assert.match(await s.doc(), /# Decisions/);
   });
 

@@ -190,12 +190,6 @@ suite("Paste a URL over a selection", null, (test) => {
     assert.equal(await s.body(), "the docs");
   });
 
-  test("a URL pasted with nothing selected is plain text", async (s) => {
-    await s.openWith("paste-plain", "");
-    await paste(s, "https://example.com");
-    assert.equal(await s.body(), "https://example.com");
-  });
-
   test("a URL pasted over several lines replaces them, it is not a link", async (s) => {
     await s.openWith("paste-lines", "");
     await s.enter("one\ntwo");

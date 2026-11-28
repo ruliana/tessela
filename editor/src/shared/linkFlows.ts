@@ -97,15 +97,6 @@ export function bracketSearch(before: string, after: string): BracketSearch | nu
   return { start: m.index, query, closing: rest?.[0].length ?? 0 };
 }
 
-const WEB_ADDRESS = /^(?:https?:\/\/|mailto:)\S+$/i;
-
-/** Pasting an address over selected text makes the selection the link text. */
-export function pasteLink(selected: string, clipboard: string): string | null {
-  const dest = clipboard.trim();
-  if (selected.trim() === "" || /[\n\r]/.test(selected) || !WEB_ADDRESS.test(dest)) return null;
-  return markdownLink(selected, dest);
-}
-
 /** What the pickers search: every page by its title, and the concepts that are mentioned but have no page yet. */
 export function linkPages(pages: PageEntry[], vocab: VocabEntry[]): LinkPage[] {
   const out: LinkPage[] = pages.map((p) => ({ path: p.path, title: p.title ?? titleOf("", p.path) }));

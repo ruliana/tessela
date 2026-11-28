@@ -6,7 +6,7 @@ import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { EditorSelection, EditorState, Prec, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 
-import { type TextEdit, isWebUrl, pasteLink, surround, toggleMark, toggleTask } from "../shared/format";
+import { type TextEdit, surround, toggleMark, toggleTask } from "../shared/format";
 
 function dispatchEdit(view: EditorView, e: TextEdit): void {
   view.dispatch({
@@ -60,25 +60,4 @@ export const formatting: Extension = [
     dispatchEdit(view, surround(view.state.doc.toString(), from, to, text));
     return true;
   }),
-  // Before the Markdown language's own paste handler, which would link several lines.
-  Prec.highest(
-    EditorView.domEventHandlers({
-      paste(event, view) {
-        const { from, to } = view.state.selection.main;
-        const selected = view.state.sliceDoc(from, to);
-        const pasted = event.clipboardData?.getData("text/plain") ?? "";
-        // The Markdown language also links a pasted URL, over several lines too; here a URL
-        // over several lines just replaces them, like any other paste.
-        const text = pasteLink(selected, pasted) ?? (selected.includes("\n") && isWebUrl(pasted) ? pasted.trim() : null);
-        if (!text) return false;
-        event.preventDefault();
-        view.dispatch({
-          changes: { from, to, insert: text },
-          selection: { anchor: from + text.length },
-          userEvent: "input.paste",
-        });
-        return true;
-      },
-    }),
-  ),
 ];
