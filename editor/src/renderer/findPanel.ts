@@ -153,7 +153,7 @@ class FindPanel implements Panel {
   }
 }
 
-/** Ctrl+H: the find box with the replace row open. */
+/** Ctrl+H (and Ctrl+Shift+H, since Cmd+H hides the app on macOS; Ctrl+Alt+F is the favorites mod's): the find box with the replace row open. */
 function openReplace(view: EditorView): boolean {
   if (view.state.readOnly) return false;
   openSearchPanel(view);
@@ -165,6 +165,6 @@ function openReplace(view: EditorView): boolean {
 export function findBox(): Extension {
   return [
     search({ top: true, createPanel: (view) => new FindPanel(view) }),
-    Prec.highest(keymap.of([...searchKeymap, { key: "Mod-h", run: openReplace, scope: "editor search-panel" }, { key: "Mod-Alt-f", run: openReplace, scope: "editor search-panel" }])),
+    Prec.highest(keymap.of([...searchKeymap, { key: "Mod-h", run: openReplace, scope: "editor search-panel" }, { key: "Mod-Shift-h", run: openReplace, scope: "editor search-panel" }])),
   ];
 }
