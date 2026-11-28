@@ -134,7 +134,18 @@ describe(`typing in a page of ${LINES} lines`, () => {
 describe("the work that is counted", () => {
   it("is the same on every run, and is what the code does with the tree and the text", () => {
     const pos = start.doc.line(8).to;
-    expect(workAt(pos)).toEqual(workAt(pos));
+    const quiet = workAt(pos);
+    expect(workAt(pos)).toEqual(quiet);
+    // A machine so busy that every look at the clock finds 100 ms gone: the parser's slice of time is
+    // used up at once, and a key must still cost the same work.
+    const real = Date.now;
+    let t = real.call(Date);
+    Date.now = () => (t += 100);
+    try {
+      expect(workAt(pos)).toEqual(quiet);
+    } finally {
+      Date.now = real;
+    }
     const walk = measure(start, () => {
       let nodes = 0;
       syntaxTree(start).iterate({ enter: () => void nodes++ });
