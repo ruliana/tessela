@@ -5,12 +5,12 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::refs::{markdown_options, ref_spans};
 
 /// Whether a list item is a checkbox, and ticked: `- [ ]` is open, `- [x]` is done.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskState {
     Open,
@@ -18,7 +18,7 @@ pub enum TaskState {
 }
 
 /// What a block is made of. The same words are used by the editor's page model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum BlockKind {
     /// A paragraph.
@@ -36,7 +36,7 @@ pub enum BlockKind {
     Html,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     /// Page ID plus a hash of the block text; see spec §3, "Block handles".
     pub handle: String,
@@ -61,7 +61,7 @@ pub struct Block {
     pub task: Option<TaskState>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Heading {
     /// Page ID plus a hash of the heading text, like a block handle (spec §3).
     pub handle: String,

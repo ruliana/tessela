@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
 
+use crate::cache::{Cache, Stamp};
 use crate::page::Page;
 use crate::prefilter::{Prefilter, may_define_aliases};
 use crate::query::Query;
@@ -22,24 +23,31 @@ pub struct Bundle {
 
 impl Bundle {
     /// Loads every page of the bundle. The folder tree is walked on one thread (it is cheap);
-    /// reading and parsing the files, which is nearly all of the time, runs on every core.
-    /// A small bundle is read on the calling thread. The result is the same as
-    /// [`Bundle::load_sequential`]: pages sorted by path, files that cannot be read listed in
-    /// the same order.
+    /// each file is then looked at on every core. A page whose file has not changed since the
+    /// last call comes from the parse cache in `.tessela/cache/` (see [`crate::cache`]); the
+    /// others are read and parsed, and put in the cache. A small bundle is read on the calling
+    /// thread. The result is the same as [`Bundle::load_sequential`]: pages sorted by path,
+    /// files that cannot be read listed in the same order. `TESSELA_NO_CACHE` skips the cache.
     pub fn load(root: impl AsRef<Path>) -> std::io::Result<Bundle> {
+        let cache = Cache::open(root.as_ref());
         Self::load_with(root, |files| {
-            if files.len() < PARALLEL_FROM {
-                files.iter().map(read_page).collect()
+            let cache = cache.as_ref();
+            let loaded = if files.len() < PARALLEL_FROM {
+                files.iter().map(|f| read_page(f, cache)).collect()
             } else {
-                files.par_iter().map(read_page).collect()
-            }
+                files.par_iter().map(|f| read_page(f, cache)).collect()
+            };
+            sweep(cache, files);
+            loaded
         })
     }
 
-    /// [`Bundle::load`] on the calling thread alone. It is the reference the parallel load is
-    /// tested against.
+    /// [`Bundle::load`] on the calling thread alone, and without the cache. It is the reference
+    /// the parallel, cached load is tested against.
     pub fn load_sequential(root: impl AsRef<Path>) -> std::io::Result<Bundle> {
-        Self::load_with(root, |files| files.iter().map(read_page).collect())
+        Self::load_with(root, |files| {
+            files.iter().map(|f| read_page(f, None)).collect()
+        })
     }
 
     fn load_with(
@@ -86,16 +94,21 @@ impl Bundle {
                 format!("{} is not a directory", root.display()),
             ));
         }
-        let mut files = walk(&root)?;
+        let cache = Cache::open(&root);
+        let cache = cache.as_ref();
+        let files = walk(&root)?;
         let mut pages = Vec::new();
         let mut unreadable = Vec::new();
         if !filter.needs_aliases() {
-            files.retain(|f| filter.path_ok(&f.rel));
-            let loaded = spread(&files, |f| match read_text(f) {
-                Ok(text) => filter
-                    .admits(&f.rel, &text)
-                    .then(|| Loaded::Page(page_of(f, &text))),
-                Err(reason) => Some(Loaded::Unreadable(f.rel.clone(), reason)),
+            let wanted: Vec<&File> = files.iter().filter(|f| filter.path_ok(&f.rel)).collect();
+            let loaded = spread(&wanted, |f| {
+                let stamp = stamp_of(f);
+                match read_text(f) {
+                    Ok(text) => filter
+                        .admits(&f.rel, &text)
+                        .then(|| Loaded::Page(page_of(f, &text, stamp.as_ref(), cache))),
+                    Err(reason) => Some(Loaded::Unreadable(f.rel.clone(), reason)),
+                }
             });
             for loaded in loaded.into_iter().flatten() {
                 match loaded {
@@ -107,10 +120,13 @@ impl Bundle {
             // Which names mean the asked concepts depends on the `aliases` of pages that may
             // be anywhere, so every file is read and held until those are known. The pages
             // with `aliases` stay in the answer whatever they say: `Query::run` asks them again.
-            let read = spread(&files, |f| (f, read_text(f)));
-            let mut aliased = spread(&read, |(file, text)| {
+            let read = spread(&files, |f| {
+                let stamp = stamp_of(f);
+                (f, stamp, read_text(f))
+            });
+            let mut aliased = spread(&read, |(file, stamp, text)| {
                 let text = text.as_ref().ok()?;
-                may_define_aliases(text).then(|| page_of(file, text))
+                may_define_aliases(text).then(|| page_of(file, text, stamp.as_ref(), cache))
             });
             let names: Vec<Vec<String>> = query
                 .refs
@@ -119,12 +135,13 @@ impl Bundle {
                 .collect();
             filter.with_names(&names);
             let others = spread(&(0..read.len()).collect::<Vec<_>>(), |&i| {
-                let (file, text) = &read[i];
+                let (file, stamp, text) = &read[i];
                 let text = text.as_ref().ok()?;
                 (aliased[i].is_none() && filter.admits(&file.rel, text))
-                    .then(|| page_of(file, text))
+                    .then(|| page_of(file, text, stamp.as_ref(), cache))
             });
-            for ((file, text), (aliased, other)) in read.iter().zip(aliased.iter_mut().zip(others))
+            for ((file, _, text), (aliased, other)) in
+                read.iter().zip(aliased.iter_mut().zip(others))
             {
                 match text {
                     Ok(_) => pages.extend(aliased.take().or(other)),
@@ -132,6 +149,7 @@ impl Bundle {
                 }
             }
         }
+        sweep(cache, &files);
         Ok(Bundle {
             root,
             pages,
@@ -221,19 +239,17 @@ enum Loaded {
     Unreadable(String, String),
 }
 
-/// Reads and parses one file: the work `load` spreads over the cores.
-fn read_page(file: &File) -> Loaded {
+/// Reads and parses one file: the work `load` spreads over the cores. With a cache, a file
+/// that looks as it did when its page was cached is not read at all.
+fn read_page(file: &File, cache: Option<&Cache>) -> Loaded {
+    let stamp = stamp_of(file);
+    if let Some(page) = cached(file, cache, stamp.as_ref()) {
+        return Loaded::Page(page);
+    }
     match read_text(file) {
-        Ok(text) => Loaded::Page(page_of(file, &text)),
+        Ok(text) => Loaded::Page(parsed(file, &text, stamp.as_ref(), cache)),
         Err(reason) => Loaded::Unreadable(file.rel.clone(), reason),
     }
-}
-
-/// When the file was last changed, in milliseconds since the Unix epoch.
-fn modified_ms(path: &Path) -> Option<u64> {
-    let time = std::fs::metadata(path).ok()?.modified().ok()?;
-    let since = time.duration_since(std::time::UNIX_EPOCH).ok()?;
-    u64::try_from(since.as_millis()).ok()
 }
 
 fn is_reserved(file_name: &str) -> bool {
@@ -292,9 +308,43 @@ fn read_text(file: &File) -> Result<String, String> {
     }
 }
 
-fn page_of(file: &File, text: &str) -> Page {
+/// Removes the cache entries of pages that are gone, after a call that wrote some.
+fn sweep(cache: Option<&Cache>, files: &[File]) {
+    if let Some(cache) = cache.filter(|c| c.written() > 0) {
+        cache.sweep(files.iter().map(|f| f.rel.as_str()));
+    }
+}
+
+/// What the file looks like now. Taken before the file is read, never after: a change in
+/// between then shows as a new stamp on the next call, where the other order would pair old
+/// text with a new stamp and keep it.
+fn stamp_of(file: &File) -> Option<Stamp> {
+    std::fs::metadata(&file.full)
+        .ok()
+        .as_ref()
+        .and_then(Stamp::of)
+}
+
+/// The page from the cache, if it has one made from a file that looked like `stamp`.
+fn cached(file: &File, cache: Option<&Cache>, stamp: Option<&Stamp>) -> Option<Page> {
+    let mut page = cache?.read(&file.rel, stamp?)?;
+    page.modified = stamp.map(Stamp::millis);
+    Some(page)
+}
+
+/// The page `text` makes: from the cache when it has it, else parsed and put in the cache.
+/// `stamp` is what the file looked like just before `text` was read.
+fn page_of(file: &File, text: &str, stamp: Option<&Stamp>, cache: Option<&Cache>) -> Page {
+    cached(file, cache, stamp).unwrap_or_else(|| parsed(file, text, stamp, cache))
+}
+
+/// Parses `text` and puts the page in the cache.
+fn parsed(file: &File, text: &str, stamp: Option<&Stamp>, cache: Option<&Cache>) -> Page {
     let mut page = Page::parse(&file.rel, text);
-    page.modified = modified_ms(&file.full);
+    page.modified = stamp.map(Stamp::millis);
+    if let (Some(cache), Some(stamp)) = (cache, stamp) {
+        cache.write(&file.rel, stamp, &page);
+    }
     page
 }
 
