@@ -21,7 +21,7 @@ The config folder is `$TESSELA_CONFIG` when set, else the app's data folder (`~/
 ```
 
 - `main.js` is a plain ES module (no build step, no TypeScript, no bare imports) with a default export that gets `ctx`: `export default function (ctx) { ... }`. It may be `async`: the window waits for it before the first page opens.
-- A mod with the id of one that comes with the app **replaces** it (put your own `outline/` to change the outline). The ones that come with the app are `agenda`, `attach`, `changes`, `favorites`, `fold`, `folders`, `gfm-extras`, `live-lists`, `new-page`, `outline`, `pages`, `peek`, `properties`, `related`, `search` and `unlinked`; their source is `editor/src/mods/<id>/` in the Tessela repo and is the best place to look for how something is done.
+- A mod with the id of one that comes with the app **replaces** it (put your own `outline/` to change the outline). The ones that come with the app are `agenda`, `attach`, `changes`, `favorites`, `fold`, `folders`, `gfm-extras`, `live-lists`, `new-page`, `outline`, `pages`, `peek`, `properties`, `related`, `search`, `surface` and `unlinked`; their source is `editor/src/mods/<id>/` in the Tessela repo and is the best place to look for how something is done.
 - Mods are loaded once, before the first page opens. After editing one, restart the editor.
 - **The Mods panel** ("Show the mods" in the palette) lists every mod with where it comes from (`app` or `yours`), whether it loaded, failed or is off, and the errors it reported, and has a switch for each. A switch is kept in the config folder's `settings.json` as `{"mods": {"off": ["id", ...]}}` (an agent can edit that file too: it is the person's, so keep every other key) and takes effect when the window loads again, which "Apply and reload" does.
 - Start the editor with `--no-mods` to run without any (when a mod breaks the window). `--bundle DIR` picks the notes folder; `TESSELA_CONFIG=/some/folder` picks the config folder, which is how you try a mod without touching the real one.
@@ -41,6 +41,7 @@ Everything a mod can do is on `ctx`. A hook added by a mod is taken back if the 
 ### Commands, keys and the `/` menu
 
 - `ctx.commands.add({ id, label, hint?, keys?, run })` puts `label` in the command palette (Ctrl/Cmd+K). `keys` is a CodeMirror key name (`"Mod-Alt-j"`) that runs it while an editor has the focus; `hint` is only the text shown at the right of the palette. `run({ view })` gets the editor in use (`view` is a CodeMirror `EditorView`, or undefined when no page is open) and may return a promise. A command whose `id` is one of the built-in ones **replaces** it everywhere it is used (button, keys, palette). The built-in ids are `today`, `journals`, `new-page`, `open-file`, `root`, `preview`, `focus`, `focus-unit`, `sidebar`, `backlinks`, `theme`, `text`, `problems` and `mods`. Use ids like `mymod.thing` for your own.
+- `ctx.commands.run(id, { view?, page? })` runs the command another mod gave (false when there is none); `page` is the page path a command about a page is run for. The peek mod's `"peek.page"` peeks at `page` without taking the focus.
 - `ctx.slash.add({ label, detail?, text, cursor?, where? })` adds an item to the `/` menu: choosing it replaces the typed `/word` with `text` and puts the cursor `cursor` characters into it. `where` is `"line"` (only at the start of a line) or `"anywhere"` (the default).
 
 ### The editor itself
@@ -90,6 +91,13 @@ await ctx.cli(["save", "projects/tessela.md", "--expect", page.hash], { input: n
 - Reading: `pages`, `query`, `vocab`, `index`, `related`, `changes`, `lint`, `fence` (the body of a live list on `input`) and `read`. Changing: `add`, `save`, `rename`, `move`, `remove`, `attach`. `tessela schema` describes every command, argument and answer; the `tessela` skill explains the commands and the rule for changing a page: **read, then save with `--expect HASH`**, so a change you have not seen is never overwritten. On `conflict`, read again and decide; never retry blindly with the new hash.
 - The editor adds the notes folder: as the first argument for `lint`, `query`, `index`, `vocab` and `pages`, as `--bundle` for the others.
 - `ctx.bundle()` resolves to the notes folder's path, or `null` while none is open.
+
+### Jev
+
+`ctx.jev` asks Jev, TypeSafe AI's decision model: typed questions about one `state`, answered with probabilities, in well under a second. The key and an optional address live in the config folder's `settings.json` (`{"jev": {"key": "...", "baseUrl": "https://api.typesafe.ai", "model": "jev-latest"}}`; `baseUrl` and `model` are only needed for another service that speaks the same API, such as OpenRouter) and never reach the window.
+
+- `ctx.jev.on` is `false` without a key. A mod that needs Jev does nothing at all then: no calls, no UI, no fallback.
+- `ctx.jev.ask({ state, questions }, { signal? })` resolves to `{ ok: true, answers }` or `{ ok: false, error }` (no key, no network, cancelled by `signal`). `state` is any JSON value; `questions` are named: `{ type: "noul", instructions }` (answer `{ noul }`, the probability of yes), `{ type: "choice", instructions, criteria: { option: "what it means" } }` (answer `{ choice, probabilities, confidence }`) and `{ type: "score", instructions, criteria: ["lowest", ..., "highest"] }` (answer `{ score, probabilities, confidence }`, `score` from 0 to the last level). Put the content in `state` and the judgments in `questions`; every question sees the whole state. The surface mod is the example.
 
 ### The mod itself
 

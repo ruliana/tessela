@@ -44,7 +44,7 @@ describe("ModRegistry", () => {
 });
 
 describe("modRows", () => {
-  const info = (extra: object = {}) => ({ folder: "/cfg", recent: { shown: 6, dates: false }, editor: { typewriter: true }, disabled: false, ids: ["a", "b"], mods: [{ id: "a", source: "app" as const, off: false }, { id: "b", source: "config" as const, off: false }, { id: "c", source: "config" as const, off: true }], ...extra });
+  const info = (extra: object = {}) => ({ folder: "/cfg", recent: { shown: 6, dates: false }, editor: { typewriter: true }, jev: false, disabled: false, ids: ["a", "b"], mods: [{ id: "a", source: "app" as const, off: false }, { id: "b", source: "config" as const, off: false }, { id: "c", source: "config" as const, off: true }], ...extra });
 
   it("says for each mod where it comes from and whether it loaded, failed or is off, with its errors", () => {
     const rows = modRows(info(), ["a"], [{ mod: "b", message: "nope" }, { mod: "a", message: "Sync: boom" }]);

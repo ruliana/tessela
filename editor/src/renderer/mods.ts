@@ -14,7 +14,8 @@ import { makeSelection } from "../shared/blockSelection";
 import type { PageModel, PageNode } from "../shared/pageModel";
 
 import type { ModsInfo } from "../shared/api";
-import { type BacklinkContent, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModOverrides, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
+import type { JevRequest, JevResult } from "../shared/jev";
+import { type BacklinkContent, type CommandArg, type FenceArg, type ModCommand, type ModEventName, type ModEvents, type ModOverrides, type ModSlash, type ModView, type PageMenuItem, ModRegistry } from "../shared/mods";
 import type { Card } from "./card";
 import { type Dialog, type DialogOptions, openDialog } from "./dialog";
 import { drawer } from "./drawer";
@@ -114,7 +115,11 @@ function settingsOf(mod: string) {
 /** What a mod is handed. */
 export interface ModContext {
   readonly id: string;
-  commands: { add(command: ModCommand<EditorView>): void };
+  commands: {
+    add(command: ModCommand<EditorView>): void;
+    /** Runs the command with this id (a mod's, such as `peek.page`), told `arg`; false when there is none. */
+    run(id: string, arg?: CommandArg<EditorView>): boolean;
+  };
   slash: { add(item: ModSlash): void };
   /**
    * The editor, for extensions that draw the page. `extend` adds an extension to every editor; a
@@ -156,6 +161,13 @@ export interface ModContext {
   settings: { get(name: string): unknown; set(name: string, value: unknown): void };
   /** Runs a tessela command on the open notes folder and returns its `{api, ok, ...}` JSON (see Api.cli). */
   cli(argv: string[], options?: { input?: string | Uint8Array }): Promise<unknown>;
+  /**
+   * Jev, TypeSafe AI's decision model: typed questions about one `state`, answered with probabilities.
+   * `on` is false unless the config folder's settings.json has a key (`{"jev": {"key": "..."}}`; `baseUrl`
+   * and `model` are optional): a mod that needs Jev does nothing at all then, with no fallback. The key stays
+   * in the main process. `ask` fails with `{ ok: false, error }` instead of throwing, and stops when `signal` aborts.
+   */
+  jev: { on: boolean; ask(request: JevRequest, options?: { signal?: AbortSignal }): Promise<JevResult> };
   /** Parts of the window every mod looks alike with. */
   ui: {
     dialog(options: DialogOptions): Dialog;
@@ -215,11 +227,28 @@ export interface ModContext {
   cm: typeof cm;
 }
 
+let jevCalls = 0;
+
+/** One call to Jev through the main process; aborting `signal` stops it there too. */
+async function askJev(api: Window["tessela"], request: JevRequest, signal?: AbortSignal): Promise<JevResult> {
+  if (signal?.aborted) return { ok: false, error: "cancelled" };
+  const id = ++jevCalls;
+  const stop = () => void api.jevCancel(id);
+  signal?.addEventListener("abort", stop, { once: true });
+  try {
+    return await api.jev(id, request);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    signal?.removeEventListener("abort", stop);
+  }
+}
+
 function contextFor(mod: string): ModContext {
   const api = window.tessela;
   return {
     id: mod,
-    commands: { add: (command) => registry.addCommand(mod, command) },
+    commands: { add: (command) => registry.addCommand(mod, command), run: (id, arg = {}) => registry.runById(id, arg) },
     slash: { add: (item) => registry.addSlash(mod, item) },
     editor: {
       extend: (extension) => registry.addExtension(mod, extension),
@@ -261,6 +290,7 @@ function contextFor(mod: string): ModContext {
       card: (path, options) => host.card(path, options),
     },
     cli: (argv, options) => api.cli(argv, options?.input),
+    jev: { on: modsInfo?.jev === true, ask: (request, options) => askJev(api, request, options?.signal) },
     views: { add: (view) => registry.addView(mod, view), open: (id, arg) => host.showView(id, arg) },
     bundle: () => api.bundle(),
     cm,

@@ -9,6 +9,8 @@ import type { SlashItem } from "./slash";
 /** What a command is run with. `view` is the editor in use, when there is one. */
 export interface CommandArg<V = unknown> {
   view?: V;
+  /** The page the command is about, when another mod runs it for one (`ctx.commands.run("peek.page", { page })`). */
+  page?: string;
 }
 
 export interface ModCommand<V = unknown> {
@@ -316,6 +318,13 @@ export class ModRegistry<V = unknown, E = unknown> {
     });
     const known = new Set(builtin.map((b) => b.id));
     return [...merged, ...[...this.commandById.values()].filter((c) => !known.has(c.id)).map(make)];
+  }
+
+  /** Runs the mod command with this id, if there is one; false when there is none. */
+  runById(id: string, arg: CommandArg<V>): boolean {
+    const command = this.commandById.get(id);
+    if (command) this.run(command, arg);
+    return command !== undefined;
   }
 
   /** Runs a mod's command. A command that throws, or whose promise fails, is reported and goes no further. */

@@ -9,7 +9,7 @@ import { el } from "../../renderer/dom";
 import type { ModContext, PageCard } from "../../renderer/mods";
 import { dirOf } from "../../shared/pages";
 import { cliOf } from "../kit";
-import { countMentions, mentionsOf, peekAt, type PeekTarget } from "./plan";
+import { countMentions, mentionsOf, peekAt, peekPage, type PeekTarget } from "./plan";
 
 interface Hit {
   handle: string;
@@ -133,6 +133,15 @@ export default function (ctx: ModContext): void {
     void show(target, view, true);
   }
 
+  // For other mods (the surface mod peeks at the note it offers): a peek at a page, with the writing going on.
+  ctx.commands.add({
+    id: "peek.page",
+    label: "Peek at a page (for mods)",
+    run: ({ view, page }) => {
+      if (!page) return void ctx.ui.toast("This command is for other mods; to peek, put the cursor in a link, a #tag or a date.");
+      if (page !== ctx.pages.current()) void show(peekPage(page), view, false);
+    },
+  });
   ctx.commands.add({ id: "peek.open", label: "Peek at the link under the cursor", keys: "Mod-Alt-p", run: ({ view }) => peek(view) });
 
   // Esc closes the peek from the page being written too, unless it is closing a menu of the editor. A popup

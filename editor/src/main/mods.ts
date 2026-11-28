@@ -6,6 +6,7 @@ import path from "node:path";
 
 import type { EditorSettings, ModEntry, ModsInfo, RecentSettings } from "../shared/api";
 import { recentCount } from "../shared/nav";
+import { jevIn } from "./jev";
 
 /** The config folder: `$TESSELA_CONFIG`, else the app's own data folder. */
 export function configFolder(userData: string, env: string | undefined): string {
@@ -72,13 +73,14 @@ export function editorIn(folder: string): EditorSettings {
 export function listMods(folder: string, disabled: boolean, bundled?: string): ModsInfo {
   const recent = recentIn(folder);
   const editor = editorIn(folder);
-  if (disabled) return { folder, disabled, ids: [], mods: [], recent, editor };
+  const jev = jevIn(folder) !== null;
+  if (disabled) return { folder, disabled, ids: [], mods: [], recent, editor, jev };
   const own = new Set(modsIn(path.join(folder, "mods")));
   const off = new Set(offIn(folder));
   const mods: ModEntry[] = [...new Set([...(bundled ? modsIn(bundled) : []), ...own])]
     .sort()
     .map((id) => ({ id, source: own.has(id) ? "config" : "app", off: off.has(id) }));
-  return { folder, disabled, ids: mods.filter((m) => !m.off).map((m) => m.id), mods, recent, editor };
+  return { folder, disabled, ids: mods.filter((m) => !m.off).map((m) => m.id), mods, recent, editor, jev };
 }
 
 /**

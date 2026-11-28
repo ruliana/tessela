@@ -1,6 +1,7 @@
 // The contract between the Electron main process and the window. Everything the
 // window knows about the notes comes through these calls; it never reads files itself.
 
+import type { JevRequest, JevResult } from "./jev";
 import type { UpdateState } from "./updates";
 
 export type HitKind = "block" | "heading" | "page";
@@ -124,6 +125,8 @@ export interface ModsInfo {
   recent: RecentSettings;
   /** The editor's settings, from the same file. */
   editor: EditorSettings;
+  /** The config folder's settings.json has a Jev key (`{"jev": {"key": "..."}}`). The key itself never reaches the window. */
+  jev: boolean;
 }
 
 export interface Api {
@@ -166,6 +169,14 @@ export interface Api {
    * `input` goes to the command's standard input: text, or the bytes of a file (for `attach`).
    */
   cli(argv: string[], input?: string | Uint8Array): Promise<unknown>;
+  /**
+   * Asks Jev (TypeSafe AI's decision model) the questions of `request` with the key of the config folder's
+   * settings.json, and answers with its typed answers, or why there are none (no key, no network, `jevCancel`).
+   * `id` names the call for `jevCancel`; use a new one for each call.
+   */
+  jev(id: number, request: JevRequest): Promise<JevResult>;
+  /** Stops the `jev` call with this `id`, if it is still running. */
+  jevCancel(id: number): Promise<void>;
   /** Whether a newer version of the app exists, now. */
   updateState(): Promise<UpdateState>;
   /** Downloads the newer version (an AppImage); it is installed when the app restarts. */
