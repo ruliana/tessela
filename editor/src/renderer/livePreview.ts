@@ -49,13 +49,15 @@ const failedImages = new Set<string>();
 /** A picture drawn in the text. It never gets wider than the text, however narrow the window. */
 class ImageWidget extends WidgetType {
   constructor(
-    private readonly src: string,
-    private readonly alt: string,
+    readonly src: string,
+    readonly alt: string,
+    /** The picture of a bullet that holds one: a block of its own, with the text around it as its caption. */
+    private readonly figure = false,
   ) {
     super();
   }
   override eq(other: ImageWidget): boolean {
-    return other.src === this.src && other.alt === this.alt;
+    return other.src === this.src && other.alt === this.alt && other.figure === this.figure;
   }
   /** A click on the picture puts the cursor there, which shows its Markdown. */
   override ignoreEvent(): boolean {
@@ -63,7 +65,7 @@ class ImageWidget extends WidgetType {
   }
   override toDOM(view: EditorView): HTMLElement {
     const img = document.createElement("img");
-    img.className = "cm-lp-image";
+    img.className = this.figure ? "cm-lp-image cm-lp-figure" : "cm-lp-image";
     img.src = this.src;
     img.alt = this.alt;
     img.title = this.alt;
@@ -101,6 +103,31 @@ const quoteLine = Decoration.line({ class: "cm-lp-quote" });
 const inlineCode = Decoration.mark({ class: "cm-lp-code" });
 const doneTask = Decoration.mark({ class: "cm-lp-done" });
 const linkText = Decoration.mark({ class: "cm-lp-link" });
+/** The blank in front of a list marker, and the space after one: boxes of fixed width, so a wrapped line can hang under the text (see `.cm-lp-item` in style.css). */
+const indentMark = (n: number) => Decoration.mark({ class: "cm-lp-indent", attributes: { style: `--n:${n}` } });
+const gapMark = Decoration.mark({ class: "cm-lp-gap" });
+const numMark = (digits: number) => Decoration.mark({ class: "cm-lp-num", attributes: { style: `--d:${digits}` } });
+const itemLine = (kind: "bullet" | "task" | "num", indent: number, digits: number) =>
+  Decoration.line({ class: `cm-lp-item cm-lp-item-${kind}`, attributes: { style: `--ind:${indent};--d:${digits}` } });
+const figureLine = (indent: number) => Decoration.line({ class: "cm-lp-figure-line", attributes: { style: `--ind:${indent}` } });
+const caption = Decoration.mark({ class: "cm-lp-caption" });
+
+/** The picture that makes a bullet a figure: the first one in the item, when it is on the line of the marker and is drawn as a picture. */
+interface Figure {
+  image: SyntaxNode;
+  src: string;
+  /** The alt text in the brackets, the text before the picture, or the text after it: the first there is. */
+  alt: string;
+  /** The text on the line before the picture and after it, trimmed; null when there is none. */
+  before: { from: number; to: number } | null;
+  after: { from: number; to: number } | null;
+  /** Where the blank between the text and the picture is, on each side. */
+  gapBefore: { from: number; to: number } | null;
+  gapAfter: { from: number; to: number } | null;
+}
+
+/** The width of the leading blank of a line, a tab counting as four. */
+const blankWidth = (text: string) => [...text].reduce((n, c) => n + (c === "\t" ? 4 : 1), 0);
 
 const HEADING = /^ATXHeading[1-6]$/;
 
@@ -128,6 +155,44 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
     if (space && state.sliceDoc(to, to + 1) === " ") to++;
     if (to > from) ranges.push((shown ? (typeof raw === "function" ? raw(to - from) : raw) : hide).range(from, to));
   };
+  /** The first position from `pos` on that is not a blank, at most `limit`. */
+  const skipBlanks = (pos: number, limit: number) => {
+    while (pos < limit && /[ \t]/.test(state.sliceDoc(pos, pos + 1))) pos++;
+    return pos;
+  };
+  /** The same, backwards: the end of the text that ends before `pos`. */
+  const trimBlanks = (pos: number, floor: number) => {
+    while (pos > floor && /[ \t]/.test(state.sliceDoc(pos - 1, pos))) pos--;
+    return pos;
+  };
+  /** The figure of a bullet, when its first picture is on the marker's line and is drawn as a picture. */
+  const figureOf = (item: SyntaxNode, line: { from: number; to: number }): Figure | null => {
+    if (item.parent?.name !== "BulletList") return null;
+    const image = item.getChild("Paragraph")?.getChild("Image");
+    const marker = item.getChild("ListMark");
+    const url = image?.getChild("URL");
+    const marks = image?.getChildren("LinkMark") ?? [];
+    if (!image || !marker || !url || marks.length < 2 || image.from > line.to) return null;
+    const src = opts.imageUrl(state.sliceDoc(url.from, url.to));
+    if (src === null || failedImages.has(src)) return null;
+    // The text on the line, on each side of the picture, without the blanks around it.
+    const textStart = skipBlanks(marker.to, image.from);
+    const beforeEnd = trimBlanks(image.from, textStart);
+    const afterStart = skipBlanks(image.to, line.to);
+    const afterEnd = trimBlanks(line.to, afterStart);
+    const before = beforeEnd > textStart ? { from: textStart, to: beforeEnd } : null;
+    const after = afterEnd > afterStart ? { from: afterStart, to: afterEnd } : null;
+    const text = (part: { from: number; to: number } | null) => (part ? state.sliceDoc(part.from, part.to) : "");
+    return {
+      image,
+      src,
+      alt: text(before) || text(after),
+      before,
+      after,
+      gapBefore: before && beforeEnd < image.from ? { from: beforeEnd, to: image.from } : null,
+      gapAfter: after && afterStart > image.to ? { from: image.to, to: afterStart } : null,
+    };
+  };
   /** Whether the construct that a mark belongs to is typed. */
   const inside = (parent: SyntaxNode | null) => parent !== null && typed(parent.from, parent.to);
 
@@ -153,10 +218,37 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
           const after = /^(?:> ?)*/.exec(state.sliceDoc(end, line.to))?.[0].length ?? 0;
           mark(ref.from, ref.to, typed(line.from, line.to), (n) => rawHang("cm-mk-quote", n, after), true);
         } else if (name === "ListMark") {
-          // Ordered lists keep their numbers. A bullet is typed when the cursor is at it.
-          if (ref.node.parent?.parent?.name === "BulletList") {
-            if (typed(ref.from, ref.to + 1)) ranges.push(rawSlot("cm-mk-bullet").range(ref.from, ref.to));
-            else ranges.push(bullet.range(ref.from, ref.to));
+          const item = ref.node.parent;
+          const list = item?.parent?.name;
+          const line = lineOf(ref.from);
+          const lead = state.sliceDoc(line.from, ref.from);
+          // A marker that is the first thing on its line; the one in `- - x` or in a quote is not.
+          const first = item !== null && /^\s*$/.test(lead);
+          const figure = first ? figureOf(item, line) : null;
+          const space = state.sliceDoc(ref.to, ref.to + 1) === " ";
+          if (figure) {
+            // A bullet that holds a picture is a figure: no bullet, and the line is indented by its padding
+            // (a blank in front of a block would be a line of its own). The marker is typed in the margin.
+            ranges.push(figureLine(blankWidth(lead)).range(line.from));
+            if (lead !== "") ranges.push(hide.range(line.from, ref.from));
+            const textStart = skipBlanks(ref.to, line.to);
+            mark(ref.from, Math.max(ref.to, textStart > ref.to ? ref.to + 1 : ref.to), typed(ref.from, ref.to + 1), (n) => rawHang("cm-mk-figure", n, 0));
+            if (textStart > ref.to + 1) ranges.push(hide.range(ref.to + 1, textStart));
+            for (const part of [figure.before, figure.after]) if (part) ranges.push(caption.range(part.from, part.to));
+          } else {
+            // Ordered lists keep their numbers. A bullet is typed when the cursor is at it.
+            if (list === "BulletList") {
+              if (typed(ref.from, ref.to + 1)) ranges.push(rawSlot("cm-mk-bullet").range(ref.from, ref.to));
+              else ranges.push(bullet.range(ref.from, ref.to));
+            } else if (list === "OrderedList") {
+              ranges.push(numMark(ref.to - ref.from - 1).range(ref.from, ref.to));
+            }
+            if (first && item && (list === "BulletList" || list === "OrderedList")) {
+              const kind = list === "OrderedList" ? "num" : item.getChild("Task") ? "task" : "bullet";
+              ranges.push(itemLine(kind, blankWidth(lead), ref.to - ref.from - 1).range(line.from));
+              if (lead !== "") ranges.push(indentMark(blankWidth(lead)).range(line.from, ref.from));
+            }
+            if (space) ranges.push(gapMark.range(ref.to, ref.to + 1));
           }
         } else if (name === "TaskMarker") {
           const done = /\[[xX]\]/.test(state.sliceDoc(ref.from, ref.to));
@@ -164,6 +256,7 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
           else ranges.push((done ? checked : unchecked).range(ref.from, ref.to));
           const task = ref.node.parent;
           if (done && task && task.to > ref.to) ranges.push(doneTask.range(ref.to, task.to));
+          if (state.sliceDoc(ref.to, ref.to + 1) === " ") ranges.push(gapMark.range(ref.to, ref.to + 1));
         } else if (name === "HeaderMark") {
           const heading = ref.node.parent;
           if (heading && HEADING.test(heading.name)) {
@@ -184,7 +277,12 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
             ranges.push(hide.range(ref.from, marks[0]!.to), missing.range(marks[0]!.to, marks[1]!.from), hide.range(marks[1]!.from, ref.to));
             return false;
           }
-          ranges.push(Decoration.replace({ widget: new ImageWidget(src, alt) }).range(ref.from, ref.to));
+          // The first picture of a bullet is its figure: the blanks between it and the text are not drawn.
+          const item = ref.node.parent?.name === "Paragraph" ? ref.node.parent.parent : null;
+          const figure = item?.name === "ListItem" ? figureOf(item, lineOf(item.from)) : null;
+          const isFigure = figure !== null && figure.image.from === ref.from;
+          if (isFigure) for (const gap of [figure.gapBefore, figure.gapAfter]) if (gap) ranges.push(hide.range(gap.from, gap.to));
+          ranges.push(Decoration.replace({ widget: new ImageWidget(src, isFigure ? alt || figure.alt : alt, isFigure) }).range(ref.from, ref.to));
           return false;
         } else if (name === "Link") {
           // Only links written inline, [text](target): a reference [text][ref] stays as typed.

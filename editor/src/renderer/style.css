@@ -154,11 +154,14 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .editor .cm-line.cm-codeblock { text-wrap: wrap; }
 /* The headings you have scrolled under. It has no height, so it moves no text; the bar is drawn over it. */
 .cm-stickypath { position: sticky; top: 0; height: 0; z-index: 200; }
-.cm-stickypath-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: baseline; gap: 6px; max-width: calc(66ch + 48px); margin: 0 auto; padding: 5px 24px; background: var(--bg); border-bottom: 1px solid var(--border); font: 13px var(--sans); color: var(--muted); white-space: nowrap; overflow: hidden; }
+.cm-stickypath-bar { position: absolute; top: 0; left: 0; right: 0; background: var(--bg); border-bottom: 1px solid var(--border); font: 13px var(--sans); color: var(--muted); overflow: hidden; }
+/* The bar is as wide as the editor, so no text shows past it; its crumbs sit where the text of the page does. */
+.cm-stickypath-column { display: flex; align-items: baseline; gap: 6px; max-width: calc(66ch + 48px); margin: 0 auto; padding: 5px 24px; white-space: nowrap; }
+.card.compact .cm-stickypath-column { max-width: calc(70ch + 24px); margin: 0; }
 .cm-stickypath-bar[hidden] { display: none; }
-.cm-stickypath-bar button { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.cm-stickypath-bar button:hover { color: var(--accent); text-decoration: underline; }
-.cm-stickypath-bar button:last-child { color: var(--text); }
+.cm-stickypath-column button { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cm-stickypath-column button:hover { color: var(--accent); text-decoration: underline; }
+.cm-stickypath-column button:last-child { color: var(--text); }
 .editor .cm-cursor { border-left-color: var(--text); }
 .editor .cm-focused { outline: none; }
 /* The selection layer sits above the text and is translucent: behind it, a code block's own
@@ -231,14 +234,31 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 
 
 /* Live preview: Markdown shown rendered outside the block being edited. */
-.cm-lp-bullet { color: var(--muted); display: inline-block; width: 1em; }
-.cm-lp-check { color: var(--muted); display: inline-block; width: 1.4em; }
+.cm-lp-bullet { color: var(--muted); display: inline-block; width: var(--slot-w); }
+.cm-lp-check { color: var(--muted); display: inline-block; width: var(--box-w); }
 .cm-lp-checked { color: var(--accent); }
 .cm-lp-done { color: var(--muted); text-decoration: line-through; }
 .cm-lp-code { background: var(--codebg); color: var(--code); border-radius: 3px; padding: 0 3px; font-family: var(--mono); font-size: 0.86em; }
 .cm-lp-link { color: var(--text); text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 .cm-lp-quote { background: linear-gradient(var(--accent), var(--accent)) 24px 0 / 3px 100% no-repeat; padding-left: 37px !important; color: var(--muted); font-style: italic; }
 .cm-lp-rule { display: inline-block; width: 100%; height: 0; border-top: 1px solid var(--border); vertical-align: middle; }
+
+/* A list item hangs: a wrapped line starts under the first letter after the marker, not under the marker. What comes
+   before that letter is made of boxes of fixed width (the blank in front of the marker, the glyph or number, the
+   gap after it), so the line can say how wide it is: padding that far, and a negative indent that takes the first
+   line back. The boxes do not inherit that indent. A figure (a bullet that holds a picture) has none of them in
+   its line: it is the padding alone, because a blank in front of a block would be a line of its own. */
+:root { --ind-w: 0.675em; --slot-w: 1em; --box-w: 1.4em; --gap-w: 0.35em; }
+.editor .cm-line.cm-lp-item, .editor .cm-line.cm-lp-figure-line { --lead: calc(var(--ind) * var(--ind-w)); --hang: calc(var(--lead) + var(--slot-w) + var(--gap-w)); padding-left: calc(24px + var(--hang)); text-indent: calc(-1 * var(--hang)); }
+.editor .cm-line.cm-lp-item-task { --hang: calc(var(--lead) + var(--slot-w) + var(--gap-w) + var(--box-w) + var(--gap-w)); }
+.editor .cm-line.cm-lp-item-num { --hang: calc(var(--lead) + (var(--d) + 1) * 1ch + var(--gap-w)); }
+.editor .cm-line.cm-lp-figure-line { text-indent: 0; }
+/* What stands where a mark was hidden, and the buffers around a widget, are empty inline boxes: in front of a block each would be a line. */
+.cm-lp-figure-line > .cm-widgetBuffer, .cm-lp-figure-line > span[contenteditable="false"]:empty { display: none; }
+.cm-lp-indent, .cm-lp-gap, .cm-lp-num, .cm-lp-bullet, .cm-lp-check, .cm-mk-slot { text-indent: 0; white-space: pre; }
+.cm-lp-indent { display: inline-block; width: calc(var(--n) * var(--ind-w)); }
+.cm-lp-gap { display: inline-block; width: var(--gap-w); }
+.cm-lp-num { display: inline-block; width: calc((var(--d) + 1) * 1ch); font-variant-numeric: tabular-nums; }
 
 /* Marks that turn raw under the cursor (the reveal policy, reveal.ts). A mark is hidden or raw over the same
    characters, so what has to stay put is what is around it: a mark at the start of a line is drawn in the
@@ -252,8 +272,8 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 /* The address of a link is typed under the row of the link, out of the line, so that what follows the link does not move or wrap anew. */
 .cm-mk-addr { position: absolute; left: 24px; z-index: 2; margin-top: 1.9em; width: max-content; max-width: calc(100% - 52px); padding: 1px 6px; font: 400 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 2px 6px rgb(0 0 0 / 0.08); }
 .cm-mk-slot { display: inline-block; text-align: center; }
-.cm-mk-bullet { width: 1em; }
-.cm-mk-box { width: 1.4em; }
+.cm-mk-bullet { width: var(--slot-w); }
+.cm-mk-box { width: var(--box-w); }
 .cm-lp-link { cursor: pointer; }
 .cm-lp-tablewrap { margin: 4px 30px; }
 /* Selected blocks (select mode) are drawn from the state, one way for every kind of block: a line of one
@@ -270,6 +290,9 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .cm-lp-table a { color: var(--text); text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; cursor: pointer; }
 .cm-lp-table code { background: var(--codebg); color: var(--code); border-radius: 3px; padding: 0 3px; font-family: var(--mono); font-size: 0.86em; }
 .cm-lp-image { display: inline-block; max-width: 100%; height: auto; vertical-align: top; border-radius: 3px; cursor: text; }
+/* The picture of a bullet is a figure: a block of its own, with the text around it as its caption. */
+.cm-lp-image.cm-lp-figure { display: block; margin: 4px 0; text-indent: 0; }
+.cm-lp-caption { color: var(--muted); font: 13px/1.45 var(--sans); }
 .cm-lp-missing { color: var(--muted); font-style: italic; }
 
 .navs { display: flex; gap: 4px; }
