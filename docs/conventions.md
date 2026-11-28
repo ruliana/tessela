@@ -601,6 +601,15 @@ nobody has typed for six seconds, the results go to the right column ("Worth a l
 margin. Jev's answers are kept for the session by the paragraph's text and the note's handle; nothing is
 written to the notes. Without a key the mod does nothing at all.
 
+The bar learns from what you do. Each question that can raise a card (says otherwise, answers this, already
+written, overlaps, same topic, near a date) has one threshold, a number from 0.5 to 2 that starts at 1: a
+card comes in when its worth beats the cost of interrupting times that number. Opening or peeking at a note
+lowers it a little, linking it lowers it more, dismissing it raises it, and a card that goes away without
+being touched (the cursor moved on, or six quiet seconds sent it to the right column) raises it a very little.
+Opening or linking from the right column counts too. Each step moves the number part of the way to the
+end it points to, so it settles where your habits are. The numbers are in the window's settings for the
+mod (like the folds), not in the notes and not in the config folder.
+
 ### Editing keys
 
 | Keys                          | What it does                                                          |
