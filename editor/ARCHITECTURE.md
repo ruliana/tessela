@@ -221,8 +221,9 @@ changes a row.
 - Keep the node and unit names aligned with `docs/conventions.md` §3. If a word
   means two things, fix the doc.
 - Typing speed is a test (`test/keystroke.test.ts`): a key typed in a generated page of 5,000 lines,
-  with every extension and mod that decorates, must stay within the budgets at the top of that file
-  (the goal is 8 ms in all; a PR that makes typing faster lowers the numbers). A view plugin that
+  with every extension and mod that decorates, must stay within the work budgets at the top of that file
+  (steps through the syntax tree and lookups in the page, counted by `test/support/work.ts`: time would flake
+  on a busy runner and is only printed; the goal is 8 ms in all; a PR that makes typing do less lowers the numbers). A view plugin that
   draws should take the viewport (`inlineDecorations`, `markDecorations`, `chevronDecorations`,
   `textDecorations`) and be listed in `test/support/editorState.ts` with its scope; the test then checks that it draws only there.
   Print the table with `TESSELA_STATS=1 npm test -- keystroke`.

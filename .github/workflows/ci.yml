@@ -14,6 +14,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # The speed budgets count instructions with Cachegrind (crates/tessela-cli/tests/budgets.rs).
+      - run: sudo apt-get update && sudo apt-get install -y valgrind
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace

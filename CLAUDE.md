@@ -38,9 +38,14 @@ note, change the note in the same PR and say why.
 
 - Rust: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo test --workspace`.
-- Speed: `cargo bench -p tessela-cli` prints each command's time and pages parsed at 500,
-  1,500 and 3,000 topics. `tests/budgets.rs` holds the budgets (`TESSELA_STATS=1` makes a
-  call print how many pages it parsed); a speed PR lowers the numbers in `tests/support/mod.rs`.
+- Speed: speed tests count work, never time (a shared CI runner's clock flakes). `tests/budgets.rs`
+  holds, per command at 3,000 topics, the pages parsed and the instructions a warm call executes
+  (Cachegrind, so `valgrind` must be installed; CI installs it). The editor's keystroke test counts
+  steps through the syntax tree and lookups in the page (`editor/test/support/work.ts`). Wall time
+  is only for setting a budget: `cargo bench -p tessela-cli` prints each command's time and pages
+  parsed at 500, 1,500 and 3,000 topics; `TESSELA_STATS=1` makes `budgets` and `keystroke` print
+  work and time side by side. A speed PR lowers the numbers (`tests/support/mod.rs`, top of
+  `keystroke.test.ts`).
 - Editor (from `editor/`): `npm ci`, `npm run typecheck`, `npm test`, `npm run build`,
   then `xvfb-run -a node e2e/smoke.mjs` and `node e2e/acceptance.mjs`. The editor
   needs a built `tessela` binary (`cargo build -p tessela-cli`) to save.
