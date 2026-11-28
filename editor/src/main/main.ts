@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
 import { relativeInside, resolveImage, resolveInside } from "./files";
-import { askJev, jevIn } from "./jev";
+import { askJev, checkJev, jevIn } from "./jev";
 import { fetchTitle } from "./title";
 import { addPageVia, cliInput, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
 import { createUpdates, type Updates } from "./updates";
@@ -196,6 +196,7 @@ function registerIpc(): void {
       if (typeof id === "number") jevCalls.delete(id);
     }
   });
+  ipcMain.handle("jevCheck", () => checkJev(jevIn(config()), (url, init) => net.fetch(url, init), new AbortController().signal));
   ipcMain.handle("jevCancel", (_e, id: unknown) => {
     if (typeof id === "number") jevCalls.get(id)?.abort();
   });

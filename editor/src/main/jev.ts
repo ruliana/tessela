@@ -3,8 +3,10 @@
 //
 //   { "jev": { "key": "...", "baseUrl": "https://api.typesafe.ai", "model": "jev-latest" } }
 //
-// Only `key` is needed. `baseUrl` points at another service that speaks the same API (OpenRouter is
-// `https://openrouter.ai/api`, with `"model": "typesafe/jev-1.14"`). Without a key every Jev feature is off.
+// Jev is on when `key` or `baseUrl` is set. `baseUrl` points at another service that speaks the same API
+// (OpenRouter is `https://openrouter.ai/api`, with `"model": "typesafe/jev-1.14"`); a proxy that holds the
+// key itself needs only that, and the call then carries no authorization. With neither, every Jev feature
+// is off. At startup `checkJev` says whether the service answers.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -16,13 +18,14 @@ export const DEFAULT_MODEL = "jev-latest";
 export const JEV_TIMEOUT_MS = 10_000;
 
 export interface JevConfig {
+  /** Empty when the service holds the key itself (a proxy). */
   key: string;
   /** Without a trailing slash. */
   baseUrl: string;
   model: string;
 }
 
-/** The Jev settings of the config folder: null without a key, or when settings.json is missing or unreadable. */
+/** The Jev settings of the config folder: null with neither a key nor an address, or when settings.json is missing or unreadable. */
 export function jevIn(folder: string): JevConfig | null {
   let saved: { key?: unknown; baseUrl?: unknown; model?: unknown } = {};
   try {
@@ -32,17 +35,46 @@ export function jevIn(folder: string): JevConfig | null {
     return null;
   }
   const key = typeof saved.key === "string" ? saved.key.trim() : "";
-  if (key === "") return null;
   const base = typeof saved.baseUrl === "string" ? saved.baseUrl.trim().replace(/\/+$/, "") : "";
+  const address = /^https?:\/\//i.test(base) ? base : "";
+  if (key === "" && address === "") return null;
   const model = typeof saved.model === "string" ? saved.model.trim() : "";
-  return { key, baseUrl: /^https?:\/\//i.test(base) ? base : DEFAULT_BASE_URL, model: model === "" ? DEFAULT_MODEL : model };
+  return { key, baseUrl: address === "" ? DEFAULT_BASE_URL : address, model: model === "" ? DEFAULT_MODEL : model };
 }
 
 type Fetch = (url: string, init: { method: "POST"; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<Response>;
+type Probe = (url: string, init: { method: "GET"; headers: Record<string, string>; signal: AbortSignal }) => Promise<Response>;
+
+/**
+ * Whether the configured service answers: null when Jev is not configured, else ok or why not. It asks
+ * the endpoint with a GET, which a service that is up answers with anything but a server error, a refusal
+ * of the key, or "not found" (it expects a POST); no question is asked and no model is run.
+ */
+export async function checkJev(config: JevConfig | null, fetchImpl: Probe, signal: AbortSignal, timeoutMs = JEV_TIMEOUT_MS): Promise<{ ok: true } | { ok: false; error: string } | null> {
+  if (config === null) return null;
+  const at = config.baseUrl;
+  const abort = new AbortController();
+  const stop = () => abort.abort();
+  if (signal.aborted) return { ok: false, error: "cancelled" };
+  signal.addEventListener("abort", stop, { once: true });
+  const timer = setTimeout(stop, timeoutMs);
+  try {
+    const res = await fetchImpl(`${at}/v1/systemone`, { method: "GET", headers: config.key === "" ? {} : { authorization: `Bearer ${config.key}` }, signal: abort.signal });
+    if (res.status === 401 || res.status === 403) return { ok: false, error: config.key === "" ? `Jev at ${at} needs a key` : `Jev at ${at} refused the key` };
+    if (res.status === 404) return { ok: false, error: `Jev was not found at ${at}` };
+    if (res.status >= 500) return { ok: false, error: `Jev at ${at} answered ${res.status}` };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: signal.aborted ? "cancelled" : abort.signal.aborted ? `Jev at ${at} did not answer in time` : `Jev could not be reached at ${at}` };
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", stop);
+  }
+}
 
 /** Asks Jev the questions of `request` (see `Api.jev`). A failure is a result, never a throw. */
 export async function askJev(config: JevConfig | null, request: unknown, fetchImpl: Fetch, signal: AbortSignal, timeoutMs = JEV_TIMEOUT_MS): Promise<JevResult> {
-  if (config === null) return { ok: false, error: "no Jev key" };
+  if (config === null) return { ok: false, error: "Jev is not configured" };
   if (!isJevRequest(request)) return { ok: false, error: "not a Jev request" };
   const abort = new AbortController();
   const stop = () => abort.abort();
@@ -52,7 +84,7 @@ export async function askJev(config: JevConfig | null, request: unknown, fetchIm
   try {
     const res = await fetchImpl(`${config.baseUrl}/v1/systemone`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${config.key}` },
+      headers: config.key === "" ? { "content-type": "application/json" } : { "content-type": "application/json", authorization: `Bearer ${config.key}` },
       body: JSON.stringify({ model: config.model, state: request.state, questions: request.questions }),
       signal: abort.signal,
     });

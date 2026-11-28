@@ -9,10 +9,18 @@ import { front, suite } from "../harness.mjs";
 
 /** A Jev that likes every note: it answers each question the way a useful one would. Requests are kept. */
 const requests = [];
+/** The GETs of the startup check, which asks no question. */
+const probes = [];
 const server = createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
+    if (req.method === "GET") {
+      probes.push({ url: req.url, auth: req.headers.authorization });
+      res.statusCode = 405;
+      res.end();
+      return;
+    }
     const parsed = JSON.parse(body || "{}");
     requests.push({ url: req.url, auth: req.headers.authorization, body: parsed });
     const answers = {};
@@ -167,7 +175,18 @@ suite("Surface mod, with a key", files, (test) => {
   });
 }, { settings: settings({ key: "test-key", baseUrl: base }) });
 
-suite("Surface mod, without a key", files, (test) => {
+suite("Surface mod, with a base URL and no key (a proxy holds it)", files, (test) => {
+  test("the startup check asks the service, and a pause asks it without a key", async (s) => {
+    requests.length = 0;
+    await s.open(fresh());
+    await s.type("Thinking again about the #rust cache layer. ");
+    await s.win.waitForSelector(card);
+    assert.equal(probes.at(-1).auth, undefined, "the startup check of this window, which has no key");
+    assert.equal(requests[0].auth, undefined);
+  });
+}, { settings: settings({ baseUrl: base }) });
+
+suite("Surface mod, without Jev configured", files, (test) => {
   test("nothing is asked and nothing is shown", async (s) => {
     requests.length = 0;
     await writeSentence(s);
@@ -185,4 +204,4 @@ suite("Surface mod, without a key", files, (test) => {
     assert.equal(requests.length, 0);
     assert.equal(await s.win.$$eval(".read-next", (e) => e.length), 0);
   });
-}, { settings: settings({ baseUrl: base }) });
+}, { settings: settings(undefined) });

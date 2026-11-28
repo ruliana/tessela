@@ -3,7 +3,7 @@
 // state machine: a function of the state and the key that answers a transaction, or says the key is not
 // taken. The wiring below is only a keymap that asks it. A key that is not in the table, in either mode,
 // leaves select mode if it moves the selection or changes the text (that is the rule in selectMode.ts), so
-// every way out is listed here: Enter, Space, Left, Right, a character, Backspace's and Delete's last block,
+// every way out is listed here: Enter, Shift+Enter, Space, Left, Right, a character, Backspace's and Delete's last block,
 // Escape with nothing left to widen. The logic of the edits is in shared/blocks.ts (Tab, Shift+Tab,
 // Alt+Up/Down) and of the selection in shared/blockSelection.ts; both read the page model.
 //
@@ -16,6 +16,7 @@ import { EditorView, keymap } from "@codemirror/view";
 
 import {
   type BlockSelection,
+  enterBlock,
   extendBlock,
   makeSelection,
   membersOf,
@@ -26,7 +27,7 @@ import {
   widenBlock,
 } from "../shared/blockSelection";
 import { type BlockEdit, blockMoves, follow } from "../shared/blockEdit";
-import { type Sel, blockBelow, indent, move, outdent } from "../shared/blocks";
+import { type Sel, indent, lineAbove, move, outdent } from "../shared/blocks";
 import { toggleTask } from "../shared/format";
 import type { PageModel, PageNode } from "../shared/pageModel";
 import { parsePage } from "../shared/pageText";
@@ -63,7 +64,7 @@ const startOffset = (state: EditorState, n: { startLine: number }): number => st
 function afterChange(
   state: EditorState,
   edit: BlockEdit,
-  targets: { anchor: number; head: number; heading?: boolean } | null,
+  targets: { anchor: number; head: number; heading?: boolean; depth?: number } | null,
   fallback: number,
 ): TransactionSpec {
   const doc = edit.changes.apply(state.doc);
@@ -86,7 +87,7 @@ function blockEdit(op: (model: PageModel, sel: Sel) => BlockEdit | null): Action
       if (edit.changes.empty) return STAY;
       // The same blocks, wherever their text went.
       const at = (n: { startLine: number }) => follow(edit, startOffset(state, n));
-      return afterChange(state, edit, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, head);
+      return afterChange(state, edit, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading, depth: blocks.depth }, head);
     }
     const selection = { anchor: follow(edit, anchor), head: follow(edit, head) };
     return edit.changes.empty ? { selection } : { ...editSpec(edit), selection, userEvent: "input" };
@@ -98,17 +99,22 @@ const escape: Action = (state) => {
   const model = state.field(pageModel);
   const blocks = state.field(blockSelection, false);
   const { from, to } = state.selection.main;
-  const next = widenBlock(model, blocks ? selectedSpan(model, blocks) : { from, to }, visibleIn(state));
+  const next = widenBlock(model, blocks ? selectedSpan(model, blocks) : { from, to }, visibleIn(state), blocks?.depth);
   return next ? selectionSpec(state, next) : LEAVE;
 };
 
-/** Up and Down in select mode: the block before or after, in reading order, as far as it is shown. */
+/**
+ * Up and Down in select mode: the block before or after, in reading order, as far as it is shown and not
+ * nested deeper than the block select mode began on. Down on a block with children goes into the first
+ * of them, which is the way back after Up (or Escape) took the selection out to a parent.
+ */
 const step =
   (dir: "up" | "down"): Action =>
   (state) => {
     const blocks = state.field(blockSelection, false);
     if (!blocks) return null;
-    const next = stepBlock(state.field(pageModel), blocks, dir, visibleIn(state));
+    const visible = visibleIn(state);
+    const next = (dir === "down" && enterBlock(blocks, visible)) || stepBlock(state.field(pageModel), blocks, dir, visible);
     return next ? selectionSpec(state, next) : STAY;
   };
 
@@ -122,7 +128,7 @@ const extend =
     return next ? selectionSpec(state, next) : STAY;
   };
 
-/** The first and the last character of the selected blocks: where Space, Left and Right put the cursor. */
+/** The first and the last character of the selected blocks: where Space, Left, Right and Enter put the cursor. */
 function edge(end: boolean): Action {
   return (state) => {
     const blocks = state.field(blockSelection, false);
@@ -132,11 +138,14 @@ function edge(end: boolean): Action {
   };
 }
 
-/** Enter in select mode: a new block below the selected ones, and the cursor in it. */
-const addBlockBelow: Action = (state) => {
-  if (!isSelecting(state)) return null;
-  const { anchor, head } = state.selection.main;
-  const { at, insert, caret } = blockBelow(state.field(pageModel), { anchor, head });
+/**
+ * Shift+Enter: a new line above the line the cursor is on (above the first selected block in select mode),
+ * with the cursor in it. Another item above an item, a paragraph above a block, a plain line inside one.
+ */
+const openAbove: Action = (state) => {
+  const insertion = lineAbove(state.field(pageModel), state.selection.main.from);
+  if (!insertion) return null;
+  const { at, insert, caret } = insertion;
   return { changes: { from: at, insert }, selection: { anchor: at + caret }, scrollIntoView: true, userEvent: "input" };
 };
 
@@ -153,7 +162,7 @@ function removing(state: EditorState, blocks: BlockSelection): TransactionSpec {
     ? (() => {
         // The block that is left to select: where its first line goes, which is where it was when it lies before the cut.
         const at = changes.mapPos(startOffset(state, target.anchor), 1);
-        return afterChange(state, { changes, moves: [] }, { anchor: at, head: at, heading: target.heading }, range.from);
+        return afterChange(state, { changes, moves: [] }, { anchor: at, head: at, heading: target.heading, depth: target.depth }, range.from);
       })()
     : { changes, selection: { anchor: Math.min(range.from, changes.newLength) } };
   return { ...spec, userEvent: "delete" };
@@ -185,7 +194,7 @@ const duplicate: Action = (state) => {
   const changes = ChangeSet.of([{ from: end, insert: sep + state.sliceDoc(from, end) }], state.doc.length);
   // The copy starts after the separator, and each block of it is as far into it as the original is into its text.
   const at = (n: { startLine: number }) => end + sep.length + startOffset(state, n) - from;
-  return afterChange(state, { changes, moves: [] }, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, state.selection.main.head);
+  return afterChange(state, { changes, moves: [] }, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading, depth: blocks.depth }, state.selection.main.head);
 };
 
 /** Ctrl+Enter in select mode: ticks or unticks the selected items (a plain item becomes a task). */
@@ -202,7 +211,7 @@ const tick: Action = (state) => {
   const changes = ChangeSet.of(edits, state.doc.length);
   // Only the text of the lines changes: the blocks start where they started.
   const at = (n: { startLine: number }) => changes.mapPos(startOffset(state, n), -1);
-  return afterChange(state, { changes, moves: [] }, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading }, state.selection.main.head);
+  return afterChange(state, { changes, moves: [] }, { anchor: at(blocks.anchor), head: at(blocks.head), heading: blocks.heading, depth: blocks.depth }, state.selection.main.head);
 };
 
 /** A character typed in select mode goes to the start of the blocks, and never replaces them. */
@@ -235,6 +244,7 @@ export const KEYS = [
   "Shift-ArrowUp",
   "Shift-ArrowDown",
   "Enter",
+  "Shift-Enter",
   " ",
   "ArrowLeft",
   "ArrowRight",
@@ -256,7 +266,8 @@ const TABLE: Record<Key, { editing?: Action; selecting?: Action }> = {
   ArrowDown: { selecting: step("down") },
   "Shift-ArrowUp": { selecting: extend("up") },
   "Shift-ArrowDown": { selecting: extend("down") },
-  Enter: { selecting: addBlockBelow },
+  Enter: { selecting: edge(true) },
+  "Shift-Enter": { editing: openAbove, selecting: openAbove },
   " ": { selecting: edge(false) },
   ArrowLeft: { selecting: edge(false) },
   ArrowRight: { selecting: edge(true) },

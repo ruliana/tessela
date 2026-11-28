@@ -37,7 +37,7 @@ export type JevAnswer =
   | { type: "choice"; choice: string; probabilities: Record<string, number>; confidence: number }
   | { type: "score"; score: number; probabilities: Record<string, number>; confidence: number };
 
-/** An answer is the answers by question name, or why there are none: no key, no network, a refusal, a cancel. */
+/** An answer is the answers by question name, or why there are none: not configured, no network, a refusal, a cancel. */
 export type JevResult = { ok: true; answers: Record<string, JevAnswer> } | { ok: false; error: string };
 
 const MAX_QUESTIONS = 400;
