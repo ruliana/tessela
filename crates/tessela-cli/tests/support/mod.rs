@@ -208,7 +208,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --unlinked",
         args: &["query", "--unlinked", "cache", "--limit", "20", "--json"],
         positional: true,
-        max_ms: 16_000.0,
+        max_ms: 1_500.0,
         max_parsed: None,
     },
     Case {
@@ -222,8 +222,8 @@ pub const COMMANDS: &[Case] = &[
         name: "blocks",
         args: &["blocks", "topics/topic-1", "--json"],
         positional: false,
-        max_ms: 900.0,
-        max_parsed: None,
+        max_ms: 20.0,
+        max_parsed: Some(1),
     },
     Case {
         name: "read",
