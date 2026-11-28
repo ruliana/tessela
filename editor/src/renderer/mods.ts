@@ -163,8 +163,8 @@ export interface ModContext {
   cli(argv: string[], options?: { input?: string | Uint8Array }): Promise<unknown>;
   /**
    * Jev, TypeSafe AI's decision model: typed questions about one `state`, answered with probabilities.
-   * `on` is false unless the config folder's settings.json has a key (`{"jev": {"key": "..."}}`; `baseUrl`
-   * and `model` are optional): a mod that needs Jev does nothing at all then, with no fallback. The key stays
+   * `on` is false unless the config folder's settings.json has a key or a `baseUrl` (`{"jev": {"key": "..."}}`;
+   * a proxy that holds the key needs only `baseUrl`; `model` is optional): a mod that needs Jev does nothing at all then, with no fallback. The key stays
    * in the main process. `ask` fails with `{ ok: false, error }` instead of throwing, and stops when `signal` aborts.
    */
   jev: { on: boolean; ask(request: JevRequest, options?: { signal?: AbortSignal }): Promise<JevResult> };

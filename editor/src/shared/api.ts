@@ -125,7 +125,7 @@ export interface ModsInfo {
   recent: RecentSettings;
   /** The editor's settings, from the same file. */
   editor: EditorSettings;
-  /** The config folder's settings.json has a Jev key (`{"jev": {"key": "..."}}`). The key itself never reaches the window. */
+  /** The config folder's settings.json configures Jev: a key, a base URL, or both (`{"jev": {"key": "...", "baseUrl": "..."}}`). The key itself never reaches the window. */
   jev: boolean;
 }
 
@@ -170,11 +170,13 @@ export interface Api {
    */
   cli(argv: string[], input?: string | Uint8Array): Promise<unknown>;
   /**
-   * Asks Jev (TypeSafe AI's decision model) the questions of `request` with the key of the config folder's
-   * settings.json, and answers with its typed answers, or why there are none (no key, no network, `jevCancel`).
+   * Asks Jev (TypeSafe AI's decision model) the questions of `request` with the key and address of the config folder's
+   * settings.json, and answers with its typed answers, or why there are none (not configured, no network, `jevCancel`).
    * `id` names the call for `jevCancel`; use a new one for each call.
    */
   jev(id: number, request: JevRequest): Promise<JevResult>;
+  /** Whether the configured Jev answers: null when Jev is not configured, else ok or why not. */
+  jevCheck(): Promise<{ ok: true } | { ok: false; error: string } | null>;
   /** Stops the `jev` call with this `id`, if it is still running. */
   jevCancel(id: number): Promise<void>;
   /** Whether a newer version of the app exists, now. */

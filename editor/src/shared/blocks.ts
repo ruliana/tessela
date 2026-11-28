@@ -342,28 +342,21 @@ export interface Insertion {
 }
 
 /**
- * Enter in select mode: a new block below the selected ones. Below an item it is another item
- * of the same list; below anything else it is a paragraph, with a blank line to set it apart.
+ * Shift+Enter: a new line above the line at `pos`, with the cursor in it. Above an item it is another item
+ * of the same list (a task unticked); above the first line of any other block a paragraph, set apart by a
+ * blank line; above a line inside a block a plain line. Null in the front matter, where nothing opens above.
  */
-export function blockBelow(model: PageModel, sel: Sel): Insertion {
+export function lineAbove(model: PageModel, pos: number): Insertion | null {
   const doc = model.doc;
-  const [first, last] = selectedLines(model, sel);
-  const lineEnd = (line: number): number => doc.line(line + 1).to;
-  // The outermost block that ends where the selection does.
-  const owner = model.readingOrder().find((b) => movable(b) && startOf(b) >= first && ownEnd(b) === last);
-  const m = owner?.kind === "item" ? ITEM.exec(lineText(model, startOf(owner))) : null;
+  const line = doc.lineAt(pos);
+  const node = model.nodeAtLine(line.number);
+  if (node.kind === "frontmatter") return null;
+  const m = node.kind === "item" && node.startLine === line.number ? ITEM.exec(line.text) : null;
   if (m) {
-    const marker = /^\d/.test(m[2]!) ? `${parseInt(m[2]!, 10) + 1}${m[2]!.slice(-1)}` : m[2]!;
-    const task = /^ *[-*+] +\[[ xX]\]/.test(lineText(model, startOf(owner!))) ? "[ ] " : "";
-    const insert = `\n${m[1]}${marker} ${task}`;
-    return { at: lineEnd(last), insert, caret: insert.length };
+    const task = /^ *[-*+] +\[[ xX]\]/.test(line.text) ? "[ ] " : "";
+    const prefix = `${m[1]}${m[2]} ${task}`;
+    return { at: line.from, insert: `${prefix}\n`, caret: prefix.length };
   }
-  if (last + 1 >= doc.lines) return { at: lineEnd(last), insert: "\n\n", caret: 2 };
-  if (blank(lineText(model, last + 1))) {
-    // The gap is already there: the paragraph goes after it, with the same gap below.
-    return last + 2 >= doc.lines
-      ? { at: lineEnd(last + 1), insert: "\n", caret: 1 }
-      : { at: lineEnd(last + 1), insert: "\n\n", caret: 1 };
-  }
-  return { at: lineEnd(last), insert: "\n\n\n", caret: 2 };
+  const startsBlock = line.number === 1 || blank(doc.line(line.number - 1).text);
+  return { at: line.from, insert: startsBlock ? "\n\n" : "\n", caret: 0 };
 }

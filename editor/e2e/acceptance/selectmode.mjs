@@ -50,7 +50,7 @@ suite("Select mode", null, (test) => {
     assert.equal(await shown(s, "item one"), "• item one", "wider selections are drawn rendered too");
   });
 
-  test("Up and Down go to the block before and after, code blocks and nested items included", async (s) => {
+  test("Up and Down go to the block before and after, code blocks included, as deep as the block they began on", async (s) => {
     await select(s, "sel-nav", "First");
     await s.key("ArrowDown");
     assert.equal(await picked(s), "Second para continues");
@@ -69,9 +69,17 @@ suite("Select mode", null, (test) => {
     await s.key("ArrowUp");
     assert.equal(await picked(s), "item three");
     await s.key("ArrowUp");
-    assert.equal(await picked(s), "child two", "going up enters the nested items");
+    assert.equal(await picked(s), "item one child two", "begun on a top-level paragraph, the nested item is not a stop");
+  });
+
+  test("Down goes back into the children of a parent that Up went to", async (s) => {
+    await select(s, "sel-back", "child two");
     await s.key("ArrowUp");
     assert.equal(await picked(s), "item one child two");
+    await s.key("ArrowDown");
+    assert.equal(await picked(s), "child two", "down enters the first child, as deep as the block select mode began on");
+    await s.key("ArrowDown");
+    assert.equal(await picked(s), "item three");
   });
 
   test("a code block can be entered and left with the arrows from either side", async (s) => {
@@ -116,37 +124,24 @@ suite("Select mode", null, (test) => {
     assert.equal((await saved(s, "sel-click-in")).split("\n")[0], "> First **bold** paragraph.");
   });
 
-  test("Enter adds a paragraph below and edits it", async (s) => {
+  test("Enter edits at the end of the selected block, and adds nothing", async (s) => {
     await select(s, "sel-enter", "First");
     await s.key("Enter");
-    await s.type("new");
-    assert.equal(await saved(s, "sel-enter"), PAGE.replace("First **bold** paragraph.\n", "First **bold** paragraph.\n\nnew\n").replace(/^# Title\n\n/, ""));
+    assert.equal(await s.win.locator(".cm-select-mode").count(), 0, "select mode is left");
+    await s.type("!");
+    assert.equal(await saved(s, "sel-enter"), PAGE.replace("First **bold** paragraph.", "First **bold** paragraph.!").replace(/^# Title\n\n/, ""));
   });
 
-  test("Enter below a list item adds an item after the ones nested in it", async (s) => {
-    await select(s, "sel-enter-item", "item one");
-    await s.key("Enter");
+  test("Shift+Enter opens a line above and edits it: an item above an item, a paragraph above a block", async (s) => {
+    await select(s, "sel-shift-enter-item", "item three");
+    await s.key("Shift+Enter");
     await s.type("new");
-    assert.ok((await saved(s, "sel-enter-item")).includes("- item **one**\n  - child two\n- new\n- item three"));
-  });
-
-  test("Enter below a nested item adds a sibling of it", async (s) => {
-    await select(s, "sel-enter-child", "child two");
-    await s.key("Enter");
-    await s.type("new");
-    assert.ok((await saved(s, "sel-enter-child")).includes("  - child two\n  - new\n- item three"));
-  });
-
-  test("Enter below a code block adds a paragraph after the fence, and below several blocks after the last", async (s) => {
-    await select(s, "sel-enter-code", "let y");
-    await s.key("Enter");
-    await s.type("after");
-    assert.ok((await saved(s, "sel-enter-code")).includes("let y = 2;\n```\n\nafter\n\nLast end."));
-    await select(s, "sel-enter-many", "Second");
-    await s.key("Shift+ArrowUp");
-    await s.key("Enter");
-    await s.type("fresh");
-    assert.ok((await saved(s, "sel-enter-many")).includes("continues\n\nfresh\n\n- item"));
+    assert.ok((await saved(s, "sel-shift-enter-item")).includes("  - child two\n- new\n- item three"));
+    await s.openWith("sel-shift-enter", PAGE);
+    await s.win.click(".cm-line:has-text('Last end')");
+    await s.key("Shift+Enter");
+    await s.type("above");
+    assert.ok((await saved(s, "sel-shift-enter")).includes("let y = 2;\n```\n\nabove\n\nLast end."));
   });
 
   test("Space edits from the start of the block", async (s) => {
@@ -259,7 +254,11 @@ suite("Select mode, as blocks", null, (test) => {
     await s.key("Escape");
     assert.equal(await picked(s), "item one child two", "the item is the widest block in view");
     await s.key("ArrowDown");
-    assert.equal(await picked(s), "item one child two", "nothing after the zoomed block is reachable");
+    assert.equal(await picked(s), "child two", "Down goes into the child, and nothing after the zoomed block is reachable");
+    await s.key("ArrowDown");
+    assert.equal(await picked(s), "child two");
+    await s.key("Escape");
+    assert.equal(await picked(s), "item one child two");
     await s.key("Escape");
     assert.equal(await s.win.locator(".cm-select-mode").count(), 0, "nothing wider in the zoom: Esc leaves select mode");
     assert.equal(await s.selected(), "");
