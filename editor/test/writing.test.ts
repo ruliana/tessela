@@ -5,7 +5,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { outsideSentence } from "../src/renderer/sentenceFocus";
-import { wantsTypewriter } from "../src/renderer/typewriter";
+import { alongLine, wantsTypewriter } from "../src/renderer/typewriter";
 import { sentenceAt } from "../src/shared/sentences";
 import { TYPEWRITER_FRACTION, typewriterDelta } from "../src/shared/typewriter";
 import { revealState } from "./support/reveal";
@@ -37,6 +37,27 @@ describe("typewriter scrolling", () => {
     expect(wantsTypewriter(state.update({ selection: { anchor: 2 }, scrollIntoView: true, userEvent: "select" }))).toBe(true);
     expect(wantsTypewriter(state.update({ selection: { anchor: 2 }, scrollIntoView: true, userEvent: "select.pointer" }))).toBe(false);
     expect(wantsTypewriter(state.update({ selection: { anchor: 2 } }))).toBe(false);
+  });
+});
+
+describe("typewriter scrolling while a line wraps", () => {
+  const typed = (doc: string, at: number, insert: string) => {
+    const before = EditorState.create({ doc, selection: { anchor: at } });
+    return { before, after: before.update({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input.type" }).state };
+  };
+
+  it("counts a word that wraps onto a new row as the same line, to glide to it instead of jumping", () => {
+    const { before, after } = typed("one two three", 13, "x");
+    expect(alongLine(before, after)).toBe(true);
+  });
+
+  it("does not when the cursor goes to another line", () => {
+    const { before, after } = typed("one two", 7, "\n");
+    expect(alongLine(before, after)).toBe(false);
+    const moved = before.update({ selection: { anchor: 0 } }).state;
+    const two = EditorState.create({ doc: "a\nb", selection: { anchor: 1 } });
+    expect(alongLine(two, two.update({ selection: { anchor: 3 } }).state)).toBe(false);
+    expect(alongLine(before, moved)).toBe(true);
   });
 });
 

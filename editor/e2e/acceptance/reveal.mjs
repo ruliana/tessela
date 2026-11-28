@@ -1,7 +1,7 @@
 // Moving the cursor into a construct shows its marks, and the words around them do not jump: a mark at
 // the start of a line (heading, quote) is drawn in the margin, a bullet or a checkbox is raw in the
-// slot of its glyph, and code keeps its padding. Marks inside a line push the rest of their own line
-// and nothing else. The model side is test/revealShift.test.ts; this measures a real window.
+// slot of its glyph, and code keeps its padding. The address of a link is typed under its row. Marks
+// inside a line (bold) push the rest of their own line and nothing else. The model side is test/revealShift.test.ts; this measures a real window.
 
 import assert from "node:assert/strict";
 import { suite } from "../harness.mjs";
@@ -96,18 +96,21 @@ suite(
       assert.deepEqual(after.lines, base.lines);
     });
 
-    test("bold and a link push the rest of their own line, and nothing else", async (s) => {
+    test("bold pushes the rest of its own line, and nothing else", async (s) => {
       await enter(s, "hotel", "**hotel**");
-      let after = await measure(s);
+      const after = await measure(s);
       assert.deepEqual(moved(base, after).filter((w) => !["hotel", "india", "juliet", "kilo", "lima", "mike"].includes(w)), []);
       assert.deepEqual(after.lines, base.lines);
+    });
+
+    test("a link shows its address under its row: no word and no line moves", async (s) => {
       // A click on a drawn link opens it, so the cursor gets to the end of the link with keys.
       await s.win.click(".cm-line:has-text('mike') >> text=mike");
       await s.key("End");
       for (let i = 0; i < 6; i++) await s.key("ArrowLeft");
       await s.win.waitForFunction(() => [...document.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("](https://example.com")));
-      after = await measure(s);
-      assert.deepEqual(moved(base, after).filter((w) => !["hotel", "india", "juliet", "kilo", "lima", "mike"].includes(w)), []);
+      const after = await measure(s);
+      assert.deepEqual(moved(base, after), []);
       assert.deepEqual(after.lines, base.lines);
     });
   },
