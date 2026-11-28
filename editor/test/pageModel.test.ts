@@ -6,7 +6,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { pageModel } from "../src/renderer/pageModelField";
-import { type PageModel, type PageNode, findAgain } from "../src/shared/pageModel";
+import { type PageModel, type PageNode, findAgain, isWhiteSpace } from "../src/shared/pageModel";
 import { parsePage } from "../src/shared/pageText";
 import { modelOf, outline, stateOf } from "./support/page";
 import { page, pageWithExtras } from "./support/pages";
@@ -14,6 +14,14 @@ import { lines as wildLines, runs } from "./support/props";
 
 /** The tree of a page as text, one node a line, indented by depth: `kind first-last`. */
 const tree = (text: string) => outline(modelOf(text));
+
+describe("white space", () => {
+  it("is the same to the check by code unit that trims the end of a node and to the expression that normalizes keys", () => {
+    // Rust's `char::is_whitespace`, which is what `tessela-core` trims and splits by.
+    const rust = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/;
+    for (let c = 0; c < 0x10000; c++) expect(isWhiteSpace(c), `U+${c.toString(16)}`).toBe(rust.test(String.fromCharCode(c)));
+  });
+});
 
 describe("sections", () => {
   it("a heading owns what follows it up to the next heading as high or higher", () => {

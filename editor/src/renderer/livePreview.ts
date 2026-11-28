@@ -6,7 +6,7 @@
 // saving, searching and the tools see the same Markdown as always.
 
 import { syntaxTree } from "@codemirror/language";
-import { EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
+import { EditorState, type Extension, type Range, StateEffect, StateField, type Text } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 
@@ -16,6 +16,7 @@ import { type PageNode } from "../shared/pageModel";
 import { journalDest } from "../shared/pages";
 import type { PropertiesArg, PropertiesOverride } from "../shared/mods";
 import { type Properties, bodyRepeatsTitle, bodyStart, parseProperties, showWhen } from "../shared/properties";
+import { blockNodes } from "../shared/syntax";
 import { pageModel } from "./pageModelField";
 import { isEditing, rendered, revealChanged } from "./reveal";
 import { coversRange } from "./selectMode";
@@ -224,8 +225,12 @@ function alignsOf(row: string): Align[] {
 
 const RUN_TAG: Record<string, "strong" | "em" | "del"> = { StrongEmphasis: "strong", Emphasis: "em", Strikethrough: "del" };
 
+/** What reading a table needs of the page: the text, and not the state, so that a widget that stays does not keep an old state alive. */
+type Source = Pick<EditorState, "doc" | "sliceDoc">;
+const sourceOf = (doc: Text): Source => ({ doc, sliceDoc: (from, to) => doc.sliceString(from ?? 0, to) });
+
 /** The run that an inline node is, or null for a node that is just its text. */
-function runOf(state: EditorState, node: SyntaxNode): Run | null {
+function runOf(state: Source, node: SyntaxNode): Run | null {
   switch (node.name) {
     case "Escape":
       return state.sliceDoc(node.from + 1, node.to);
@@ -254,7 +259,7 @@ function runOf(state: EditorState, node: SyntaxNode): Run | null {
 }
 
 /** The runs of the text from `from` to `to`, which `node` holds: the nodes it has are runs, the text between them is text. */
-function runsIn(state: EditorState, node: SyntaxNode, from: number, to: number): Run[] {
+function runsIn(state: Source, node: SyntaxNode, from: number, to: number): Run[] {
   const out: Run[] = [];
   let at = from;
   const text = (end: number) => {
@@ -273,7 +278,7 @@ function runsIn(state: EditorState, node: SyntaxNode, from: number, to: number):
 }
 
 /** The cells of a row, by column: a pipe starts the next one, and an empty cell has no node of its own. */
-function cellsOf(state: EditorState, row: SyntaxNode, columns: number): Run[][] {
+function cellsOf(state: Source, row: SyntaxNode, columns: number): Run[][] {
   const cells: Run[][] = Array.from({ length: columns }, () => []);
   const leading = row.firstChild?.name === "TableDelimiter" && row.firstChild.from === row.from;
   let pipes = 0;
@@ -288,7 +293,7 @@ function cellsOf(state: EditorState, row: SyntaxNode, columns: number): Run[][] 
 }
 
 /** The table that a `Table` node of the syntax tree is; null when it has no header or delimiter row. */
-export function readTable(state: EditorState, table: SyntaxNode): ParsedTable | null {
+export function readTable(state: Source, table: SyntaxNode): ParsedTable | null {
   const header = table.getChild("TableHeader");
   const delimiter = table.getChild("TableDelimiter");
   if (!header || !delimiter) return null;
@@ -342,7 +347,8 @@ function appendRuns(runs: readonly Run[], parent: HTMLElement): void {
 
 class TableWidget extends WidgetType {
   constructor(
-    private readonly table: ParsedTable,
+    /** What the table says, read when it is drawn: a widget that is the same as the one on the screen is never drawn. */
+    private readonly read: () => ParsedTable,
     private readonly source: string,
     private readonly openLink: (dest: string) => void,
     private readonly selected: boolean,
@@ -356,7 +362,7 @@ class TableWidget extends WidgetType {
     return true;
   }
   override toDOM(view: EditorView): HTMLElement {
-    const { head, aligns, rows } = this.table;
+    const { head, aligns, rows } = this.read();
     const wrap = document.createElement("div");
     wrap.className = this.selected ? "cm-lp-tablewrap cm-block-selected" : "cm-lp-tablewrap";
     const table = document.createElement("table");
@@ -545,23 +551,16 @@ export function blockWidgets(state: EditorState, opts: PreviewOptions): Decorati
       ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
     }
   }
-  syntaxTree(state).iterate({
-    enter: (node) => {
-      if (node.name !== "Table") return;
-      const first = state.doc.lineAt(node.from);
-      const last = state.doc.lineAt(node.to);
-      // A table inside a list or a quote is left as text: there is no line to replace.
-      if (first.from !== node.from) return false;
-      if (isEditing(state, { from: first.from, to: last.to })) return false;
-      const table = readTable(state, node.node);
-      if (table) {
-        const source = state.sliceDoc(first.from, last.to);
-        const selected = coversRange(state, first.from, last.to);
-        ranges.push(Decoration.replace({ widget: new TableWidget(table, source, openLink, selected), block: true }).range(first.from, last.to));
-      }
-      return false;
-    },
-  });
+  for (const table of blockNodes(syntaxTree(state)).tables) {
+    const first = state.doc.lineAt(table.from);
+    const last = state.doc.lineAt(table.to);
+    // A table inside a list or a quote is left as text: there is no line to replace. One that has no header and delimiter is not a table to draw.
+    if (first.from !== table.from || !table.getChild("TableHeader") || !table.getChild("TableDelimiter")) continue;
+    if (isEditing(state, { from: first.from, to: last.to })) continue;
+    const source = state.sliceDoc(first.from, last.to);
+    const selected = coversRange(state, first.from, last.to);
+    ranges.push(Decoration.replace({ widget: new TableWidget(() => readTable(sourceOf(state.doc), table)!, source, openLink, selected), block: true }).range(first.from, last.to));
+  }
   return Decoration.set(ranges, true);
 }
 

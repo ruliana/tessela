@@ -1,7 +1,9 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { foldAround, foldables as foldablesOf, foldsOnLoad, foldsToRemember, zoomAt as zoomAtModel } from "../src/shared/folds";
 import { modelOf } from "./support/page";
+import { pageWithExtras } from "./support/pages";
 
 const lines = (text: string) => text.split("\n");
 const foldables = (l: string[]) => foldablesOf(modelOf(l.join("\n")));
@@ -57,6 +59,19 @@ describe("foldables", () => {
     expect(foldAround(f, 2)?.line).toBe(1);
     expect(foldAround(f, 2, 1)?.line).toBe(0);
     expect(foldAround(f, 3)).toBeNull();
+  });
+});
+
+describe("foldables of some lines", () => {
+  it("are the foldables that start on those lines, the same in every way, and no others", () => {
+    fc.assert(
+      fc.property(pageWithExtras, fc.nat(60), fc.nat(60), (text, a, b) => {
+        const model = modelOf(text);
+        const window = { from: Math.min(a, b), to: Math.max(a, b) };
+        const show = (fs: ReturnType<typeof foldablesOf>) => fs.map((f) => [f.line, f.last, f.depth, f.auto, f.key]);
+        expect(show(foldablesOf(model, window))).toEqual(show(foldablesOf(model).filter((f) => f.line >= window.from && f.line <= window.to)));
+      }),
+    );
   });
 });
 

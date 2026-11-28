@@ -21,6 +21,7 @@ import { formatting } from "../../src/renderer/formatKeys";
 import { stickyHeadings } from "../../src/renderer/headingPath";
 import { focusMarks, inlineDecorations, livePreview } from "../../src/renderer/livePreview";
 import type { ModContext, PageExtension } from "../../src/renderer/mods";
+import { pasting } from "../../src/renderer/paste";
 import { pageLanguage, pageModel } from "../../src/renderer/pageModelField";
 import { focusEffect, isEditing, isRendered, revealChanged, revealPolicy } from "../../src/renderer/reveal";
 import { coversRange, hiddenLines, selectedBlocks } from "../../src/renderer/selectMode";
@@ -108,6 +109,7 @@ export function typingEditor(doc: string): { state: EditorState; providers: Prov
     livePreview(previewOptions),
     blockKeymap,
     formatting,
+    pasting(),
     ...modExtensions(path),
     // The fences that mods draw (live lists, math, diagrams): a widget after each.
     fenceExtension(path, () => () => null),
@@ -120,8 +122,7 @@ export function typingEditor(doc: string): { state: EditorState; providers: Prov
     { name: "live preview: inline marks", scope: "viewport", draw: (s, v) => inlineDecorations(s, [v], previewOptions) },
     { name: "tags, links and dates", scope: "viewport", draw: (s, v) => markDecorations(s, [v], marks) },
     { name: "fold chevrons", scope: "viewport", draw: chevronDecorations },
-    // Callouts, footnotes and inline math: all three walk the whole syntax tree.
-    { name: "gfm-extras: callouts, footnotes, inline math", scope: "page", draw: (s) => textDecorations(s, reveal) },
+    { name: "gfm-extras: callouts, footnotes, inline math", scope: "viewport", draw: (s, v) => textDecorations(s, reveal, [v]) },
   ];
   return { state, providers };
 }

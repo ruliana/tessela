@@ -1,9 +1,9 @@
 // Typing stays fast as features pile up. A page of 5,000 lines gets every extension of the editor and
 // of the built-in mods, and typing goes through it a key at a time: the transaction (the state fields:
 // parser, page model, block widgets, folds) and what the view plugins then draw. The target is 8 ms for
-// all of it, so that a key is on the screen within a frame. It is not met yet (see TARGET_MS); the budgets
-// below are what CI holds the editor to meanwhile, with room for a noisy runner, and a PR that makes typing
-// faster lowers them. `TESSELA_STATS=1 npm test -- keystroke` prints the table.
+// all of it, so that a key is on the screen within a frame (TARGET_MS). It is met: a key costs about 5 to 7 ms
+// on a laptop. The budgets below are what CI holds the editor to, about 3x that for a noisy runner; a PR that
+// makes typing faster lowers them. `TESSELA_STATS=1 npm test -- keystroke` prints the table.
 
 import fc from "fast-check";
 import { syntaxTree } from "@codemirror/language";
@@ -19,11 +19,11 @@ const TARGET_MS = 8;
 /** What CI holds each part to, in milliseconds per key (median), at 5,000 lines. About 3x what a laptop measures. */
 const BUDGET_MS = {
   /** The state fields: parser, page model, block widgets, folds, fences. */
-  transaction: 45,
+  transaction: 16,
   /** View plugins that draw only the viewport. These should stay within the target on their own. */
-  viewport: TARGET_MS,
-  /** View plugins that still read the whole page. */
-  page: 30,
+  viewport: 4,
+  /** View plugins that still read the whole page. There should be none: one is a reason to make it read the viewport. */
+  page: 4,
 };
 /** Lines drawn around the cursor, about a screen and a half. */
 const SCREEN = 60;

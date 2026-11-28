@@ -64,6 +64,18 @@ export const INDEXED_KINDS: readonly PageKind[] = ["paragraph", "item", "code", 
 
 export type TaskState = "open" | "done";
 
+type Fence = { info: string; closed: boolean } | null;
+
+/** What a node has apart from its range: read when somebody asks, so that making a node is only filling in numbers. */
+interface Source {
+  /** The syntax node of a fenced block, which says its info string and whether it was closed. */
+  fence: SyntaxNode | null;
+  /** Where the text that the key is made of ends: for an item, where its first child block starts; for the rest, where its syntax node ends. */
+  textEnd: number;
+}
+
+const NO_CHILDREN: readonly PageNode[] = [];
+
 export class PageNode {
   /** What it is; see the kinds above. */
   readonly kind: PageKind;
@@ -75,37 +87,50 @@ export class PageNode {
   readonly startLine: number;
   readonly endLine: number;
   readonly parent: PageNode | null;
-  readonly children: readonly PageNode[] = [];
+  readonly children: readonly PageNode[] = NO_CHILDREN;
   /** For a section, the level of its heading, 1 to 6. For the rest, 0. */
   readonly level: number;
-  /** For an item that starts with a checkbox: whether it is ticked. */
-  readonly task: TaskState | null;
-  /** For a fenced code block: its info string (`js`, `tessela`) and whether the closing fence is there. Null for the rest, indented code included. */
-  readonly fence: { info: string; closed: boolean } | null;
-
-  /** What the key is a hash of, before normalizing; read once the keys are wanted. */
-  readonly #keyText: () => string;
+  readonly #source: Source | null;
+  #task: TaskState | null | undefined;
+  #fence: Fence | undefined;
   readonly #model: PageModel;
 
   /** @internal */
   constructor(
     model: PageModel,
     kind: PageKind,
-    range: { from: number; to: number; startLine: number; endLine: number },
+    from: number,
+    to: number,
+    startLine: number,
+    endLine: number,
     parent: PageNode | null,
-    extra: { level?: number; task?: TaskState | null; fence?: PageNode["fence"]; keyText?: () => string } = {},
+    level: number,
+    source: Source | null,
   ) {
     this.#model = model;
     this.kind = kind;
-    this.from = range.from;
-    this.to = range.to;
-    this.startLine = range.startLine;
-    this.endLine = range.endLine;
+    this.from = from;
+    this.to = to;
+    this.startLine = startLine;
+    this.endLine = endLine;
     this.parent = parent;
-    this.level = extra.level ?? 0;
-    this.task = extra.task ?? null;
-    this.fence = extra.fence ?? null;
-    this.#keyText = extra.keyText ?? (() => "");
+    this.level = level;
+    this.#source = source;
+  }
+
+  /** For an item that starts with a checkbox: whether it is ticked. */
+  get task(): TaskState | null {
+    if (this.#task === undefined) {
+      const doc = this.#model.doc;
+      this.#task = this.kind === "item" && this.#source ? taskOf(doc.sliceString(this.from, Math.min(this.#source.textEnd, doc.lineAt(this.from).to))) : null;
+    }
+    return this.#task;
+  }
+
+  /** For a fenced block: its info string (`js`, `tessela`) and whether the closing fence is there. Null for the rest, indented code included. */
+  get fence(): Fence {
+    if (this.#fence === undefined) this.#fence = this.#source?.fence ? fenceOf(this.#model.doc, this.#source.fence) : null;
+    return this.#fence;
   }
 
   /** The model this node belongs to: a node is one of one version of the page. */
@@ -113,9 +138,19 @@ export class PageNode {
     return this.#model;
   }
 
-  /** @internal */
+  /** @internal What the key is a hash of, before normalizing. */
   get keyText(): string {
-    return this.#keyText();
+    const { doc } = this.#model;
+    switch (this.kind) {
+      case "page":
+        return "";
+      case "section":
+        return headingText(doc.sliceString(this.from, doc.lineAt(this.from).to));
+      case "item":
+        return itemText(doc.sliceString(this.from, this.#source?.textEnd ?? this.to));
+      default:
+        return doc.sliceString(this.from, this.#source?.textEnd ?? this.to);
+    }
   }
 
   /**
@@ -183,7 +218,7 @@ export class PageModel {
     complete = true,
   ) {
     this.complete = complete;
-    this.root = new PageNode(this, "page", { from: 0, to: doc.length, startLine: 1, endLine: doc.lines }, null, { keyText: () => "" });
+    this.root = new PageNode(this, "page", 0, doc.length, 1, doc.lines, null, 0, null);
   }
 
   /** The nodes in reading order: what Up and Down step through. */
@@ -307,7 +342,10 @@ export function pageModelOf(state: EditorState): PageModel {
 const WS = "\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
 const WS_RUN = new RegExp(`[${WS}]+`, "g");
 const WS_EDGES = new RegExp(`^[${WS}]+|[${WS}]+$`, "g");
-const WS_CHAR = new RegExp(`^[${WS}]$`);
+/** Whether a UTF-16 code unit is white space, as `WS` says (a test holds the two together). */
+export function isWhiteSpace(c: number): boolean {
+  return c === 32 || (c >= 9 && c <= 13) || (c > 127 && (c === 0x85 || c === 0xa0 || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x2028 || c === 0x2029 || c === 0x202f || c === 0x205f || c === 0x3000));
+}
 const WS_START = new RegExp(`^[${WS}]+`);
 const WS_END = new RegExp(`[${WS}]+$`);
 
@@ -348,10 +386,21 @@ function stripListMarker(line: string): string {
   return line;
 }
 
-/** The task state of the item whose own source is `raw`. */
-function taskOf(raw: string): TaskState | null {
-  const first = stripListMarker(trimStartWs(trimEndWs(raw).split("\n")[0] ?? ""));
+/** The task state of the item whose first line is `line`. */
+function taskOf(line: string): TaskState | null {
+  const first = stripListMarker(trimStartWs(line));
   return CHECKBOXES.find(([box]) => first.startsWith(box))?.[1] ?? null;
+}
+
+/** The info string of a fenced block and whether its closing fence is there: the syntax tree says both. */
+function fenceOf(doc: Text, n: SyntaxNode): { info: string; closed: boolean } {
+  let info = "";
+  let marks = 0;
+  for (let c = n.firstChild; c; c = c.nextSibling) {
+    if (c.name === "CodeMark") marks++;
+    else if (c.name === "CodeInfo") info = doc.sliceString(c.from, c.to).trim();
+  }
+  return { info, closed: marks >= 2 };
 }
 
 /** The text of an item without its marker, checkbox and the indent of its continuation lines. */
@@ -405,44 +454,36 @@ export function buildPageModel(doc: Text, tree: Tree, complete = true): PageMode
   const model = new PageModel(doc, tree, complete);
   const building = (n: PageNode) => n as unknown as Building;
 
-  const sliceTo = (from: number, to: number) => doc.sliceString(from, to);
-
   /** Makes a node and adds it to `parent`. The end of the range is moved back over white space. */
-  const make = (
-    kind: PageKind,
-    from: number,
-    to: number,
-    parent: PageNode,
-    extra: { level?: number; task?: TaskState | null; fence?: PageNode["fence"]; keyText?: () => string } = {},
-  ): PageNode => {
+  const make = (kind: PageKind, from: number, to: number, parent: PageNode, level: number, source: Source | null): PageNode => {
+    let line = doc.lineAt(to);
     let end = to;
-    while (end > from && WS_CHAR.test(doc.sliceString(end - 1, end))) end--;
-    const node = new PageNode(
-      model,
-      kind,
-      { from, to: end, startLine: doc.lineAt(from).number, endLine: doc.lineAt(end).number },
-      parent,
-      extra,
-    );
-    building(parent).children.push(node);
+    for (;;) {
+      const text = line.text;
+      const floor = from > line.from ? from - line.from : 0;
+      let i = end - line.from;
+      while (i > floor && isWhiteSpace(text.charCodeAt(i - 1))) i--;
+      end = line.from + i;
+      // The whole line was white space, and so is the line break before it: go on from the end of the line above.
+      if (i === 0 && end > from && line.number > 1) {
+        line = doc.line(line.number - 1);
+        end = line.to;
+        continue;
+      }
+      break;
+    }
+    const startLine = from >= line.from ? line.number : doc.lineAt(from).number;
+    const node = new PageNode(model, kind, from, end, startLine, line.number, parent, level, source);
+    const siblings = building(parent);
+    if (siblings.children === NO_CHILDREN) siblings.children = [node];
+    else siblings.children.push(node);
     model.register(node);
     return node;
   };
 
   /** A node of a syntax node that is a leaf of the model: the key is the hash of its source. */
   const leaf = (kind: PageKind, n: SyntaxNode, parent: PageNode): PageNode =>
-    make(kind, n.from, n.to, parent, { fence: n.name === "FencedCode" ? fenceOf(n) : null, keyText: () => sliceTo(n.from, n.to) });
-
-  /** The info string of a fenced block and whether its closing fence is there: the syntax tree says both. */
-  const fenceOf = (n: SyntaxNode): { info: string; closed: boolean } => {
-    let info = "";
-    let marks = 0;
-    for (let c = n.firstChild; c; c = c.nextSibling) {
-      if (c.name === "CodeMark") marks++;
-      else if (c.name === "CodeInfo") info = sliceTo(c.from, c.to).trim();
-    }
-    return { info, closed: marks >= 2 };
-  };
+    make(kind, n.from, n.to, parent, 0, { fence: n.name === "FencedCode" ? n : null, textEnd: n.to });
 
   /** The items of a list, as children of `parent`. */
   const items = (list: SyntaxNode, parent: PageNode) => {
@@ -460,7 +501,7 @@ export function buildPageModel(doc: Text, tree: Tree, complete = true): PageMode
     // The text of the item runs to where its first child block starts.
     let textEnd = li.to;
     let ended = false;
-    const kids: { n: SyntaxNode; kind: PageKind | "list" }[] = [];
+    let kids: { n: SyntaxNode; kind: PageKind | "list" }[] | null = null;
     for (let c = li.firstChild; c; c = c.nextSibling) {
       const kind: PageKind | "list" | undefined = isList(c) ? "list" : LEAF[c.name];
       if (!kind) continue;
@@ -469,11 +510,10 @@ export function buildPageModel(doc: Text, tree: Tree, complete = true): PageMode
         textEnd = c.from;
       }
       // Before that, a paragraph, a table and the like are the item's text; after it, children.
-      if (ended) kids.push({ n: c, kind });
+      if (ended) (kids ??= []).push({ n: c, kind });
     }
-    const raw = sliceTo(li.from, Math.max(li.from, textEnd));
-    const node = make("item", li.from, li.to, parent, { task: taskOf(raw), keyText: () => itemText(raw) });
-    for (const { n, kind } of kids) {
+    const node = make("item", li.from, li.to, parent, 0, { fence: null, textEnd: Math.max(li.from, textEnd) });
+    for (const { n, kind } of kids ?? []) {
       if (kind === "list") items(n, node);
       else holder(kind, n, node);
     }
@@ -481,7 +521,7 @@ export function buildPageModel(doc: Text, tree: Tree, complete = true): PageMode
   };
 
   const heading = (n: SyntaxNode, level: number, parent: PageNode): PageNode =>
-    make("section", n.from, n.to, parent, { level, keyText: () => headingText(sliceTo(n.from, doc.lineAt(n.from).to)) });
+    make("section", n.from, n.to, parent, level, null);
 
   // The sections open at this point of the page, outermost first.
   const open: PageNode[] = [];
