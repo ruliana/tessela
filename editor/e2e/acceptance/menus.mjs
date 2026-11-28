@@ -205,12 +205,29 @@ suite("Find (Ctrl+F)", bundle, (test) => {
     assert.match(await s.doc(), /Z/);
   });
 
+  test("opening it, and typing in it, moves no text", async (s) => {
+    await s.openWith("find-still", "# Title\n\nred car, red house, red barn");
+    const top = () => s.win.$eval(".cm-line", (e) => e.getBoundingClientRect().top);
+    const before = await top();
+    await s.key("Control+f");
+    await s.win.waitForSelector(".cm-search");
+    assert.equal(await top(), before);
+    await s.type("red");
+    await s.key("Control+h");
+    assert.equal(await top(), before);
+    assert.equal(await s.win.textContent(".cm-search .find-count"), "3");
+    const box = await s.win.$eval(".cm-search", (e) => e.getBoundingClientRect().width);
+    await s.type("d");
+    assert.equal(await s.win.$eval(".cm-search", (e) => e.getBoundingClientRect().width), box);
+    await s.key("Escape");
+  });
+
   test("is not case sensitive unless asked", async (s) => {
     await s.openWith("find-case", "Apple apple APPLE");
     await s.key("Control+f");
     await s.type("apple");
     await s.win.waitForFunction(() => document.querySelectorAll(".cm-searchMatch").length === 3);
-    await s.win.check(".cm-search input[name=case]");
+    await s.win.click(".cm-search button[name=case]");
     await s.win.waitForFunction(() => document.querySelectorAll(".cm-searchMatch").length === 1);
   });
 
@@ -228,6 +245,7 @@ suite("Find (Ctrl+F)", bundle, (test) => {
     await s.openWith("find-replace", "red car, red house");
     await s.key("Control+f");
     await s.type("red");
+    await s.key("Control+h");
     await s.win.fill(".cm-search input[name=replace]", "blue");
     await s.win.click(".cm-search button[name=replaceAll]");
     assert.equal(await s.body(), "blue car, blue house");

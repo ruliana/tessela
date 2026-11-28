@@ -655,6 +655,7 @@ note's handle. Without a key it does nothing.
 | Ctrl+Enter                    | Tick or untick a task; makes a task of an item or a paragraph         |
 | `/`                           | Menu: headings, lists, tasks, quote, code, table, dates, link, tag     |
 | Ctrl+F                        | Find in the page                                                      |
+| Ctrl+H                        | Find and replace in the page                                          |
 
 Esc leaves the cursor in *select mode*: whole blocks are selected (a run of neighbours under one
 parent, each with what it owns), they are drawn as Markdown, like the blocks without the cursor, and
