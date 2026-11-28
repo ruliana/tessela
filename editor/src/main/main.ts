@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
 import { relativeInside, resolveImage, resolveInside } from "./files";
+import { askJev, jevIn } from "./jev";
 import { fetchTitle } from "./title";
 import { addPageVia, cliInput, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
 import { createUpdates, type Updates } from "./updates";
@@ -183,6 +184,20 @@ function registerIpc(): void {
   ipcMain.handle("setModOff", (_e, id: unknown, off: unknown) => {
     if (typeof id !== "string" || !isModId(id) || typeof off !== "boolean") throw new Error("setModOff: a mod id and true or false");
     setModOff(config(), id, off);
+  });
+  // For mods: Jev, with the key of the config folder (the window never sees it).
+  const jevCalls = new Map<number, AbortController>();
+  ipcMain.handle("jev", async (_e, id: unknown, request: unknown) => {
+    const abort = new AbortController();
+    if (typeof id === "number") jevCalls.set(id, abort);
+    try {
+      return await askJev(jevIn(config()), request, (url, init) => net.fetch(url, init), abort.signal);
+    } finally {
+      if (typeof id === "number") jevCalls.delete(id);
+    }
+  });
+  ipcMain.handle("jevCancel", (_e, id: unknown) => {
+    if (typeof id === "number") jevCalls.get(id)?.abort();
   });
   // For mods: any tessela command on the open folder (see Api.cli).
   ipcMain.handle("cli", (_e, argv: unknown, input: unknown) =>

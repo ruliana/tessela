@@ -2,7 +2,7 @@
 
 import { dayAt } from "../../shared/dates";
 import { conceptAt } from "../../shared/links";
-import { conceptPath } from "../../shared/pages";
+import { conceptPath, pageId } from "../../shared/pages";
 
 /** What a peek is about: a page or concept (`path` is where its page is, or would be), or a day of the journal. */
 export type PeekTarget = { kind: "concept"; id: string; path: string } | { kind: "day"; day: string; id: string; path: string };
@@ -32,4 +32,11 @@ export function mentionsOf<T extends { handle: string; path: string }>(hits: T[]
 /** "No mentions", "1 mention" or "4 mentions". */
 export function countMentions(n: number): string {
   return n === 0 ? "No mentions" : n === 1 ? "1 mention" : `${n} mentions`;
+}
+
+/** What a peek at the page written at `path` shows: the page itself, or the day when it is a journal day. */
+export function peekPage(path: string): PeekTarget {
+  const id = pageId(path);
+  const day = JOURNAL.exec(id)?.[1];
+  return day ? { kind: "day", day, id, path } : { kind: "concept", id, path };
 }

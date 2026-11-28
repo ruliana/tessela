@@ -584,6 +584,23 @@ While you type or move with the keys, the window scrolls so that the line you ar
 of the way down it; a click or a drag never moves the text. It is on by default and the config
 folder's `settings.json` turns it off: `{"editor": {"typewriter": false}}` (read when the window loads).
 
+### Surfacing notes while you write (Jev)
+
+With a Jev key in the config folder's `settings.json` (`{"jev": {"key": "..."}}`; `baseUrl` and `model` are
+optional, see the README) the `surface` mod brings the one note that matters to the paragraph you are
+writing. At a pause (600 ms with no key pressed, the end of a sentence, or Enter; never on a keystroke) it
+runs `tessela surface` for the block under the cursor, asks Jev typed questions about each candidate (does
+it answer this, contradict it, say it already, how close is the topic) and about the paragraph (does it hold
+a task or a date, what the writer is doing), and shows a note only when its worth (the probability that it is
+useful times what it is worth: a contradiction counts for more than a neighbour) beats the cost of
+interrupting, which rises with typing speed and halves at the end of a paragraph. One new card for each
+paragraph, level with it in the right margin (the text never moves); a card stays until its worth falls to
+70% of the cost. Ctrl/Cmd+Alt+Enter peeks at the note, Ctrl/Cmd+Alt+I inserts its link at the cursor, Esc
+dismisses it for good. A key typed cancels the call in flight, and an answer for older text is dropped. When
+nobody has typed for six seconds, the results go to the right column ("Worth a look") in place of the
+margin. Jev's answers are kept for the session by the paragraph's text and the note's handle; nothing is
+written to the notes. Without a key the mod does nothing at all.
+
 ### Editing keys
 
 | Keys                          | What it does                                                          |
