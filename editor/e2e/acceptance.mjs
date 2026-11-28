@@ -36,6 +36,7 @@ import "./acceptance/changes.mjs";
 import "./acceptance/folders.mjs";
 import "./acceptance/searchmod.mjs";
 import "./acceptance/outline.mjs";
+import "./acceptance/stickypath.mjs";
 import "./acceptance/propertiesmod.mjs";
 import "./acceptance/newpage.mjs";
 import "./acceptance/gfm.mjs";
