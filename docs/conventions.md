@@ -572,6 +572,8 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Ctrl+Shift+X                  | Strikethrough                                                         |
 | `*` `_` `~` `(` `[` `{` `"` `` ` `` | Typed over a selection, surround it; brackets close themselves   |
 | Paste a URL over a selection  | Makes a link of the selection                                         |
+| Paste a URL on its own        | The address, then `[page title](address)` when the title arrives      |
+| Paste from a web page or an office program | Markdown: marks, links, headings, lists, code, tables  |
 | Ctrl+Enter                    | Tick or untick a task; makes a task of an item or a paragraph         |
 | `/`                           | Menu: headings, lists, tasks, quote, code, table, dates, link, tag     |
 | Ctrl+F                        | Find in the page                                                      |
@@ -628,8 +630,29 @@ A `[` that is a task box (`[ ]`, `[x]`), an image (`![`) or the text of a link t
 exists does not search.
 
 An address (`https://...`, `mailto:...`) pasted over selected text makes the text its link,
-so a title and an address are not typed twice. With nothing selected, or inside code, a
-paste is a plain paste.
+so a title and an address are not typed twice. Inside code a paste is a plain paste.
+
+**Smart paste.** One handler decides what a paste turns into, in this order:
+
+1. A web address pasted with nothing selected stays as it is, and the editor asks the page for
+   its `<title>` (the main process, 4 seconds at most, only the start of the page is read). When
+   the title comes the address becomes `[title](address)`, as one change of its own, so one undo
+   brings the bare address back. If the address was edited meanwhile, or no title comes, nothing
+   happens. Addresses on this computer or a private network (`localhost`, `10.x`, `192.168.x`,
+   names without a dot) are never asked, and nor is an address inside a link.
+2. Clipboard HTML that says more than its plain text (a link, a mark, a heading, a list, code, a
+   table, a quote, a picture) is written as Markdown: `**bold**`, `*italic*`, `~~struck~~`,
+   `` `code` ``, `[text](address)`, `# headings`, nested `- lists` and `1. lists` with `[ ]` boxes,
+   fenced code with its language, `> quotes`, `| tables |` and `![pictures](address)`. Styles,
+   classes and scripts are dropped, and words that Markdown would read as something else
+   (`1.`, `- `, `*`, `[`) are escaped. HTML that is only plain words is pasted as the plain text,
+   and so is anything copied from a code editor.
+3. A list lands where the cursor is: pasted over an empty item it takes that item's place, and
+   its lines keep the indentation and quote marks of the line they land on. A list indented with
+   tabs is indented with two spaces.
+
+A pasted file goes to the attach mod, and a paste inside code or over several selections is the
+editor's plain paste.
 
 ## 12. Importing from Logseq
 
