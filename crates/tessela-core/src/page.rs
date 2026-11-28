@@ -1,5 +1,7 @@
 //! Pages: OKF concept files with YAML frontmatter and a Markdown body.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use serde_yaml_ng::{Mapping, Value};
 
 use crate::blocks::{Block, Heading, parse_body};
@@ -24,8 +26,18 @@ pub struct Page {
     pub modified: Option<u64>,
 }
 
+/// How many pages this process has parsed. Speed work reads it to assert that a command
+/// parses as few pages as it needs, which is deterministic where a clock is not.
+static PARSED: AtomicUsize = AtomicUsize::new(0);
+
+/// The number of [`Page::parse`] calls so far in this process.
+pub fn parsed_pages() -> usize {
+    PARSED.load(Ordering::Relaxed)
+}
+
 impl Page {
     pub fn parse(path: &str, text: &str) -> Page {
+        PARSED.fetch_add(1, Ordering::Relaxed);
         let id = path.strip_suffix(".md").unwrap_or(path).to_string();
         let mut page = Page {
             id,

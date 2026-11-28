@@ -26,7 +26,7 @@ import { tags as t } from "@lezer/highlight";
 
 import type { VocabEntry } from "../shared/api";
 import { suggest } from "../shared/complete";
-import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../shared/linkFlows";
+import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink } from "../shared/linkFlows";
 import { conceptAt, findAnchor, headingText, linkTargetId, localTarget } from "../shared/links";
 import { dayAt } from "../shared/dates";
 import type { PropertiesOverride } from "../shared/mods";
@@ -36,6 +36,7 @@ import { blockKeymap, leaveFocus } from "./blockKeys";
 import { isSelecting } from "./selectMode";
 import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
+import { pasting } from "./paste";
 import { focusMarks, livePreview } from "./livePreview";
 import { isDrawn, revealPolicy } from "./reveal";
 import { sentenceMarks } from "./sentenceFocus";
@@ -301,6 +302,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         blockKeymap,
         opts.onLeaveFocus ? leaveFocus.of(opts.onLeaveFocus) : [],
         formatting,
+        pasting(),
         // What mods add comes before the defaults below, so their keys win over them.
         ...(opts.extensions?.() ?? []),
         search({ top: true }),
@@ -318,21 +320,6 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         ),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.domEventHandlers({
-          // An address pasted over selected words makes the words its link.
-          paste(event, v) {
-            const sel = v.state.selection;
-            if (sel.ranges.length !== 1 || sel.main.empty || inCode(v.state, sel.main.from)) return false;
-            const link = pasteLink(v.state.sliceDoc(sel.main.from, sel.main.to), event.clipboardData?.getData("text/plain") ?? "");
-            if (link === null) return false;
-            event.preventDefault();
-            v.dispatch({
-              changes: { from: sel.main.from, to: sel.main.to, insert: link },
-              selection: { anchor: sel.main.from + link.length },
-              scrollIntoView: true,
-              userEvent: "input.paste",
-            });
-            return true;
-          },
           focus() {
             opts.onFocus?.();
             return false;

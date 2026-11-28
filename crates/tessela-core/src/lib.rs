@@ -11,6 +11,7 @@ pub mod index;
 pub mod lint;
 pub mod logseq;
 pub mod page;
+mod prefilter;
 pub mod query;
 pub mod refs;
 pub mod related;
