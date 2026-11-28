@@ -13,6 +13,7 @@ import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { el } from "../../renderer/dom";
 import type { ModContext } from "../../renderer/mods";
 import { cliOf } from "../kit";
+import { type Outcome, Ledger, adjust, learn, thresholdsFrom } from "./learn";
 import {
   type Burst,
   type Card,
@@ -53,6 +54,9 @@ export default function (ctx: ModContext): void {
   const side = ctx.slots.mount("side-bottom");
   const runs = new Runs();
   const memory = memories();
+  // What the writer does with cards moves the bar for the question that raised them; the numbers are kept in the window's settings.
+  const ledger = new Ledger();
+  let thresholds = thresholdsFrom(ctx.settings.get("thresholds"));
 
   let log: Burst[] = [];
   /** The text of the editor being written in, counted per change: an answer for an older one is dropped. */
@@ -70,7 +74,28 @@ export default function (ctx: ModContext): void {
   let tracked = "";
   /** The card on show in the margin, and the editor it is drawn in. */
   let drawn: { root: HTMLElement; view: EditorView } | null = null;
+  /** The card the ledger knows to be on show, and the paragraph it was raised for. */
+  let shownCard: { card: Card; paragraph: number } | null = null;
   let panel: HTMLElement | null = null;
+
+  /** What became of `card`: the bar of the question that raised it moves, once for each card. */
+  function outcome(card: Card, what: Outcome, of = paragraph): void {
+    const learned = ledger.settle(card, of, what);
+    if (!learned) return;
+    thresholds = learn(thresholds, learned.why, learned.outcome);
+    ctx.settings.set("thresholds", thresholds);
+  }
+
+  /** The card in the margin went, unless the writer already did something with it, and `next` (if any) is the one that came in its place. */
+  function sync(next: Card | null): void {
+    const was = shownCard;
+    const same = was !== null && was.card.candidate.handle === next?.candidate.handle && was.paragraph === paragraph;
+    if (was && !same) outcome(was.card, "ignored", was.paragraph);
+    if (next && !same) {
+      ledger.raise(next, paragraph);
+      shownCard = { card: next, paragraph };
+    } else if (!next) shownCard = null;
+  }
 
   // ---- the margin card ----
 
@@ -131,7 +156,7 @@ export default function (ctx: ModContext): void {
       "aside",
       { class: "surface-card", role: "note", ariaLabel: "A note that may matter here" },
       el("div", { class: "surface-why" }, WHY_LABEL[card.why]),
-      el("button", { class: "surface-title", type: "button", title: `Open ${candidate.path}`, onclick: () => void ctx.pages.open(candidate.path, candidate.line) }, candidate.title),
+      el("button", { class: "surface-title", type: "button", title: `Open ${candidate.path}`, onclick: () => (outcome(card, "opened"), void ctx.pages.open(candidate.path, candidate.line)) }, candidate.title),
       ...(where === "" ? [] : [el("div", { class: "surface-where" }, where)]),
       el("div", { class: "surface-excerpt" }, candidate.excerpt),
       el("div", { class: "surface-keys" }, `${MOD}Alt+↵ peek · ${MOD}Alt+I link · Esc dismiss`),
@@ -157,9 +182,9 @@ export default function (ctx: ModContext): void {
       el(
         "div",
         { class: "surface-item" },
-        el("button", { class: "surface-name", type: "button", title: `Open ${c.candidate.path}`, onclick: () => void ctx.pages.open(c.candidate.path, c.candidate.line) }, c.candidate.title),
+        el("button", { class: "surface-name", type: "button", title: `Open ${c.candidate.path}`, onclick: () => (outcome(c, "opened"), void ctx.pages.open(c.candidate.path, c.candidate.line)) }, c.candidate.title),
         el("span", { class: "surface-reason" }, `${WHY_LABEL[c.why]} · ${c.candidate.reason}`),
-        el("button", { class: "surface-link", type: "button", title: "Insert a link at the cursor", onclick: () => ctx.pages.insert(c.candidate.link) }, "Link"),
+        el("button", { class: "surface-link", type: "button", title: "Insert a link at the cursor", onclick: () => (outcome(c, "linked"), ctx.pages.insert(c.candidate.link)) }, "Link"),
       ),
     );
     panel = el("section", { class: "bl-group surface-panel" }, el("h3", {}, "Worth a look", el("span", { class: "n" }, String(list.length))), ...rows);
@@ -189,10 +214,12 @@ export default function (ctx: ModContext): void {
   function hide(): void {
     removeCard();
     state = { ...state, shown: null };
+    sync(null);
   }
 
   function dismissCard(): boolean {
     if (!state.shown || !drawn) return false;
+    outcome(state.shown, "dismissed");
     state = dismiss(state);
     removeCard();
     return true;
@@ -229,9 +256,10 @@ export default function (ctx: ModContext): void {
     // The paragraph is the block's start, followed through the edits that came since it was last asked about.
     if (anchor?.view !== view || anchor.from !== thought.from) paragraph++;
     anchor = { view, from: thought.from, to: thought.end };
-    cards = cardsOf(notes, judged.verdicts, judged.paragraph);
+    cards = adjust(cardsOf(notes, judged.verdicts, judged.paragraph), thresholds);
     const cost = costOf(typing, head >= thought.end, judged.paragraph.activity);
     const next = decide(state, cards, cost, paragraph);
+    sync(next.state.shown);
     apply(view, next.state, next.change);
     clearTimeout(panelTimer);
     panelTimer = setTimeout(idle, Math.max(0, PANEL_MS - (Date.now() - now)));
@@ -242,6 +270,7 @@ export default function (ctx: ModContext): void {
     if (cards.length === 0) return;
     removeCard();
     state = { ...state, shown: null };
+    sync(null);
     drawPanel(panelCards(cards, state.dismissed));
   }
 
@@ -313,6 +342,7 @@ export default function (ctx: ModContext): void {
     run: ({ view }) => {
       const card = state.shown;
       if (!card) return nothing();
+      outcome(card, "opened");
       ctx.commands.run("peek.page", { view, page: card.candidate.path });
     },
   });
@@ -324,11 +354,13 @@ export default function (ctx: ModContext): void {
     run: () => {
       const card = state.shown;
       if (!card) return nothing();
+      outcome(card, "linked");
       ctx.pages.insert(card.candidate.link);
     },
   });
 
   function forget(): void {
+    sync(null);
     runs.cancel();
     clearTimeout(timer);
     clearTimeout(panelTimer);

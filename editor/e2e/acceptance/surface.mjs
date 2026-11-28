@@ -97,6 +97,22 @@ suite("Surface mod, with a key", files, (test) => {
     assert.equal(await s.win.$$eval(card, (e) => e.length), 0);
   });
 
+  test("dismissing a card raises the bar of the question that raised it, and opening one lowers it", async (s) => {
+    const bar = async () => JSON.parse(await s.win.evaluate(() => localStorage.getItem("tessela.mod.surface") ?? "{}")).thresholds?.answers ?? 1;
+    const before = await bar();
+    await writeSentence(s);
+    await s.win.waitForSelector(card);
+    await s.key("Escape");
+    await s.win.waitForFunction(() => !document.querySelector(".surface-card"));
+    const dismissed = await bar();
+    assert.ok(dismissed > before, `dismissed: ${before} -> ${dismissed}`);
+    await writeSentence(s);
+    await s.win.waitForSelector(card);
+    await s.win.click(`${card} .surface-title`);
+    const opened = await bar();
+    assert.ok(opened < dismissed, `opened: ${dismissed} -> ${opened}`);
+  });
+
   test("the keys link and peek at the note", async (s) => {
     await writeSentence(s);
     await s.win.waitForSelector(card);
