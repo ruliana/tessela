@@ -210,9 +210,46 @@ impl Drop for Watch {
     }
 }
 
+impl Watch {
+    /// Reads `changed` lines until every path in `want` has been reported, and returns all the paths
+    /// reported. Changes made close together usually arrive as one line, but where the line breaks
+    /// depends on how long the writer was paused (the system can be busy), so a test must not count lines.
+    /// Each line has sorted, unique paths.
+    fn changed_until(&self, want: &[&str]) -> Vec<String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut seen: Vec<String> = Vec::new();
+        while !want.iter().all(|w| seen.iter().any(|s| s == w)) {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            let line = self
+                .next(left.as_millis() as u64)
+                .unwrap_or_else(|| panic!("no changed line with {want:?}; saw {seen:?}"));
+            assert_eq!(line["event"], "changed", "{line}");
+            let paths: Vec<String> = line["paths"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| p.as_str().unwrap().to_string())
+                .collect();
+            assert!(
+                paths.windows(2).all(|w| w[0] < w[1]),
+                "paths not sorted and unique: {paths:?}"
+            );
+            seen.extend(paths);
+        }
+        seen
+    }
+}
+
 #[test]
 fn watch_streams_the_pages_that_change() {
-    let dir = bundle("watch", &[("a.md", "one\n"), ("sub/b.md", "two\n")]);
+    let dir = bundle(
+        "watch",
+        &[
+            ("a.md", "one\n"),
+            ("sub/b.md", "two\n"),
+            ("c.md", "three\n"),
+        ],
+    );
     let watch = Watch::start(&dir);
     let ready = watch.next(5000).expect("a ready line");
     assert_eq!(ready["event"], "ready");
@@ -225,18 +262,17 @@ fn watch_streams_the_pages_that_change() {
     std::fs::create_dir_all(dir.join(".git")).unwrap();
     std::fs::write(dir.join(".git/x.md"), "x").unwrap();
     std::fs::write(dir.join("notes.txt"), "x").unwrap();
-    // Several changes close together arrive as one line, with sorted, unique paths.
     std::fs::write(dir.join("sub/b.md"), "changed\n").unwrap();
     std::fs::write(dir.join("a.md"), "changed\n").unwrap();
     std::fs::write(dir.join("a.md"), "changed again\n").unwrap();
-    let changed = watch.next(5000).expect("a changed line");
-    assert_eq!(changed["event"], "changed");
-    assert_eq!(changed["paths"], serde_json::json!(["a.md", "sub/b.md"]));
+    let mut seen = watch.changed_until(&["a.md", "sub/b.md"]);
+    seen.sort();
+    seen.dedup();
+    assert_eq!(seen, ["a.md", "sub/b.md"]);
 
-    // A deleted page is reported too.
-    std::fs::remove_file(dir.join("a.md")).unwrap();
-    let gone = watch.next(5000).expect("a changed line for the deletion");
-    assert_eq!(gone["paths"], serde_json::json!(["a.md"]));
+    // A deleted page is reported too (a page nothing else touched, so no earlier line can stand for it).
+    std::fs::remove_file(dir.join("c.md")).unwrap();
+    assert!(watch.changed_until(&["c.md"]).iter().any(|p| p == "c.md"));
 }
 
 #[test]

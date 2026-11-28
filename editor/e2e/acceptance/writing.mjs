@@ -31,11 +31,19 @@ const onTheThird = (s) =>
     return Math.abs((document.querySelector(".cm-cursor").getBoundingClientRect().top - a.top) / a.height - 1 / 3) < 0.04;
   });
 
+/**
+ * Waits until the window has drawn the frame after the keys so far. Typewriter scrolling is a measure
+ * the editor runs in the next frame, so the cursor being on the third already proves nothing about the
+ * last key: its scroll can still be on its way, and would undo a scroll the test makes before it lands.
+ */
+const frameDrawn = (s) => s.win.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+
 suite("Typewriter scrolling and sentence focus", bundle, (test) => {
   test("typing keeps the line a third of the way down the window", async (s) => {
     await s.open("long");
     await goTo(s, 30);
-    await onTheThird(s); // the keys got it there; wait for the last one to settle
+    await onTheThird(s);
+    await frameDrawn(s); // the last key's scroll has landed
     // The wheel moves the text away from the third; typing brings the line back.
     await s.win.evaluate(() => (document.querySelector(".stack").scrollTop += 150));
     assert.ok(Math.abs((await cursorFraction(s)) - 1 / 3) > 0.1, "the text was moved off the third");
@@ -43,6 +51,7 @@ suite("Typewriter scrolling and sentence focus", bundle, (test) => {
     await onTheThird(s);
     assert.ok(Math.abs((await cursorFraction(s)) - 1 / 3) < 0.04, `the cursor is at ${await cursorFraction(s)} of the window`);
     for (let i = 0; i < 6; i++) await s.key("ArrowDown");
+    await frameDrawn(s);
     assert.ok(Math.abs((await cursorFraction(s)) - 1 / 3) < 0.04, "moving with the keys keeps it there");
   });
 

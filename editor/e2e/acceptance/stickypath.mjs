@@ -15,8 +15,12 @@ const waitFor = (s, want) =>
 suite("Sticky heading path", () => ({ "long.md": front() + PAGE }), (test) => {
   test("at the top of the page there is no bar", async (s) => {
     await s.open("long");
-    await s.win.waitForSelector(".cm-line");
-    assert.deepEqual(await crumbs(s), []);
+    // Opening a page puts the cursor at its end, so the window goes to the end and the bar appears.
+    // Wait for that, then go to the top: the bar leaves when the window gets there.
+    await waitFor(s, ["Project", "Plan"]);
+    await s.key("Control+Home");
+    await s.win.waitForFunction(() => document.querySelector(".stack").scrollTop === 0);
+    await waitFor(s, []);
   });
 
   test("scrolled into a section, it shows the headings above, outermost first", async (s) => {
