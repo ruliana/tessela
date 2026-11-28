@@ -218,19 +218,22 @@ impl Query {
         if self.kind.as_deref().is_some_and(|k| page.kind() != Some(k)) {
             return false;
         }
-        if let Some(wanted) = &self.page {
-            let id = page.id.to_lowercase();
-            let wanted = wanted.trim_end_matches(".md").to_lowercase();
-            let ok = if wanted.ends_with('/') {
-                id.starts_with(&wanted)
-            } else {
-                id == wanted
-            };
-            if !ok {
-                return false;
-            }
+        self.page_id_matches(&page.id)
+    }
+
+    /// Whether a page with this ID passes the `page` filter: the one filter that needs nothing
+    /// but the path, so a load can skip the other files unread.
+    pub(crate) fn page_id_matches(&self, id: &str) -> bool {
+        let Some(wanted) = &self.page else {
+            return true;
+        };
+        let id = id.to_lowercase();
+        let wanted = wanted.trim_end_matches(".md").to_lowercase();
+        if wanted.ends_with('/') {
+            id.starts_with(&wanted)
+        } else {
+            id == wanted
         }
-        true
     }
 
     fn in_range(&self, date: &str) -> bool {

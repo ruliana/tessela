@@ -60,6 +60,8 @@ suite("Files and the notes folder", bundle, (test) => {
   test("New page on a name that exists opens it and keeps its text", async (s) => {
     await newPage(s, "people/ana");
     await s.win.waitForFunction(() => document.querySelector(".card-title")?.textContent === "people/ana");
+    // The card is there before its text is read from the file; wait for the text.
+    await s.win.waitForFunction(() => /Ana works on the editor/.test(document.querySelector(".card .cm-content")?.textContent ?? ""));
     assert.match(await s.doc(), /Ana works on the editor/);
     assert.match(read(s.bundle, "people/ana.md"), /Ana works on the editor/);
   });

@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import type { Diagnostic, Hit, OpenFileResult, PageEntry, QueryArgs, VocabEntry } from "../shared/api";
 import { journalPath, localDay } from "../shared/pages";
 import { relativeInside, resolveImage, resolveInside } from "./files";
+import { fetchTitle } from "./title";
 import { addPageVia, cliInput, cliVia, findTessela, lintArgv, pagesArgv, queryArgv, readPageVia, runJson, savePageVia, vocabArgv, watchVia } from "./tessela";
 import { createUpdates, type Updates } from "./updates";
 import { agentsText, cliArgv, configFolder, installAgents, isModId, listMods, resolveModFile, setModOff } from "./mods";
@@ -172,6 +173,7 @@ function registerIpc(): void {
     // Only addresses meant for another program: never a file or a custom scheme.
     if (typeof url === "string" && /^(https?:|mailto:)/i.test(url)) await shell.openExternal(url);
   });
+  ipcMain.handle("pageTitle", (_e, url: unknown) => fetchTitle(url, (u, init) => net.fetch(u, init)));
   ipcMain.handle("todayPath", () => journalPath(localDay(new Date())));
   ipcMain.handle("mods", () => listMods(config(), modsDisabled, bundledMods));
   ipcMain.handle("updateState", () => updates?.state() ?? { kind: "idle" });

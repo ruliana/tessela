@@ -1792,6 +1792,7 @@ dependencies = [
  "aho-corasick",
  "blake3",
  "diffy",
+ "memchr",
  "postcard",
  "proptest",
  "pulldown-cmark",

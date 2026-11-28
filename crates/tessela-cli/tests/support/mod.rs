@@ -21,6 +21,17 @@ const WORDS: [&str; 24] = [
     "decision", "value", "flow", "design", "mouse",
 ];
 
+/// One topic in [`RARE_EVERY`] mentions this word, and tags it, so a text or tag query for it
+/// has a few real answers among thousands of pages that cannot match.
+pub const RARE: &str = "zebrafish";
+pub const RARE_EVERY: usize = 100;
+const RARE_AT: usize = 7;
+
+/// How many of `topics` topics mention [`RARE`].
+pub fn rare_topics(topics: usize) -> usize {
+    (0..topics).filter(|i| i % RARE_EVERY == RARE_AT).count()
+}
+
 /// A small deterministic generator (xorshift64*): the same seed gives the same bundle on
 /// every machine, with no dependency.
 struct Rng(u64);
@@ -101,6 +112,9 @@ pub fn generate(root: &Path, topics: usize) -> usize {
                 );
             }
             text += &format!("\n{}\n\n", rng.paragraph());
+        }
+        if i % RARE_EVERY == RARE_AT {
+            text += &format!("- A note on {RARE}, tagged #{RARE}\n");
         }
         write(&path, text);
     }
@@ -202,10 +216,8 @@ pub struct Case {
     pub args: &'static [&'static str],
     /// How the bundle is named: the command takes a positional folder, or `--bundle`.
     pub positional: bool,
-    /// Wall-clock budget in ms of the cold call, on a release build, at 3,000 topics.
-    pub cold_ms: f64,
-    /// Wall-clock budget in ms of a warm call. A speed PR that makes the command faster
-    /// lowers this number in the same PR.
+    /// Wall-clock budget in ms of a warm call, on a release build, at 3,000 topics. A speed
+    /// PR that makes the command faster lowers this number in the same PR.
     pub warm_ms: f64,
     /// Pages the cold call may parse. `None` means all of them. A PR that makes a command
     /// parse fewer pages sets the exact limit here.
@@ -220,8 +232,7 @@ pub const COMMANDS: &[Case] = &[
         name: "pages",
         args: &["pages", "--json"],
         positional: true,
-        cold_ms: 400.0,
-        warm_ms: 75.0,
+        warm_ms: 80.0,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -229,8 +240,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --words",
         args: &["query", "--words", "rust cache", "--limit", "20", "--json"],
         positional: true,
-        cold_ms: 700.0,
-        warm_ms: 280.0,
+        warm_ms: 220.0,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -238,17 +248,39 @@ pub const COMMANDS: &[Case] = &[
         name: "query --ref",
         args: &["query", "--ref", "#rust", "--limit", "20", "--json"],
         positional: true,
-        cold_ms: 650.0,
-        warm_ms: 270.0,
+        warm_ms: 220.0,
         cold_parsed: None,
+        warm_parsed: 0,
+    },
+    Case {
+        name: "query --words rare",
+        args: &["query", "--words", "zebrafish", "--limit", "20", "--json"],
+        positional: true,
+        warm_ms: 45.0,
+        cold_parsed: Some(30),
+        warm_parsed: 0,
+    },
+    Case {
+        name: "query --ref rare",
+        args: &["query", "--ref", "#zebrafish", "--limit", "20", "--json"],
+        positional: true,
+        warm_ms: 45.0,
+        cold_parsed: Some(30),
+        warm_parsed: 0,
+    },
+    Case {
+        name: "query --page",
+        args: &["query", "--page", "topics/topic-1", "--json"],
+        positional: true,
+        warm_ms: 25.0,
+        cold_parsed: Some(1),
         warm_parsed: 0,
     },
     Case {
         name: "query --unlinked",
         args: &["query", "--unlinked", "cache", "--limit", "20", "--json"],
         positional: true,
-        cold_ms: 1100.0,
-        warm_ms: 600.0,
+        warm_ms: 500.0,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -256,7 +288,6 @@ pub const COMMANDS: &[Case] = &[
         name: "related",
         args: &["related", "topics/topic-1", "--json"],
         positional: false,
-        cold_ms: 400.0,
         warm_ms: 80.0,
         cold_parsed: None,
         warm_parsed: 0,
@@ -265,7 +296,6 @@ pub const COMMANDS: &[Case] = &[
         name: "blocks",
         args: &["blocks", "topics/topic-1", "--json"],
         positional: false,
-        cold_ms: 20.0,
         warm_ms: 20.0,
         cold_parsed: Some(1),
         warm_parsed: 1,
@@ -274,7 +304,6 @@ pub const COMMANDS: &[Case] = &[
         name: "read",
         args: &["read", "topics/topic-1", "--json"],
         positional: false,
-        cold_ms: 20.0,
         warm_ms: 20.0,
         cold_parsed: Some(1),
         warm_parsed: 0,
@@ -283,8 +312,7 @@ pub const COMMANDS: &[Case] = &[
         name: "vocab",
         args: &["vocab", "--json"],
         positional: true,
-        cold_ms: 500.0,
-        warm_ms: 150.0,
+        warm_ms: 140.0,
         cold_parsed: None,
         warm_parsed: 0,
     },

@@ -40,59 +40,69 @@ const marks = {
 
 const blockLine = Decoration.line({ class: "cm-codeblock" });
 
+/** A part of the page to draw. */
+export interface Visible {
+  from: number;
+  to: number;
+}
+
+/**
+ * The marks for the tags, concept links, dates and code blocks in `visible`, and nowhere else: the
+ * work is in what is on the screen, not in the length of the page.
+ */
+export function markDecorations(state: EditorState, visible: readonly Visible[], opts: DecorationOptions): DecorationSet {
+  const written = opts.written();
+  const ranges = [];
+  // The tags of the front matter tag the page itself.
+  const head = Array.from({ length: Math.min(state.doc.lines, 200) }, (_, i) => state.doc.line(i + 1).text);
+  const front = state.field(pageModel, false)?.root.children.find((n) => n.kind === "frontmatter");
+  const fmEnd = front ? front.endLine - 1 : -1;
+  const pageTags = fmEnd > 0 ? frontmatterTags(head, fmEnd) : new Map<number, Token[]>();
+  for (const { from, to } of visible) {
+    for (let pos = from; pos <= to; ) {
+      const line = state.doc.lineAt(pos);
+      const own = pageTags.get(line.number - 1) ?? [];
+      for (const t of [...own, ...inlineTokens(line.text, opts.pageDir())]) {
+        if (own.length === 0 && inCode(state, line.from + t.from)) continue;
+        const missing = written !== null && t.id !== undefined && !written.has(t.id);
+        const mark =
+          t.kind === "tag" ? (missing ? marks.tagNew : marks.tag)
+          : t.kind === "concept" ? (missing ? marks.conceptNew : marks.concept)
+          : t.kind === "file" ? marks.file
+          : t.kind === "datetime" ? marks.datetime
+          : marks.date;
+        ranges.push(mark.range(line.from + t.from, line.from + t.to));
+      }
+      pos = line.to + 1;
+    }
+    syntaxTree(state).iterate({
+      from,
+      to,
+      enter: (node) => {
+        if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
+        for (let n = state.doc.lineAt(node.from).number; n <= state.doc.lineAt(node.to).number; n++) {
+          ranges.push(blockLine.range(state.doc.line(n).from));
+        }
+        return false;
+      },
+    });
+  }
+  return Decoration.set(ranges, true);
+}
+
 export function queryableMarks(opts: DecorationOptions): Extension {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
       constructor(view: EditorView) {
-        this.decorations = this.build(view);
+        this.decorations = markDecorations(view.state, view.visibleRanges, opts);
       }
       update(update: ViewUpdate) {
         const tree = syntaxTree(update.startState) !== syntaxTree(update.state);
         const refresh = update.transactions.some((tr) => tr.effects.some((e) => e.is(refreshDecorations)));
         if (update.docChanged || update.viewportChanged || tree || refresh) {
-          this.decorations = this.build(update.view);
+          this.decorations = markDecorations(update.state, update.view.visibleRanges, opts);
         }
-      }
-      build(view: EditorView): DecorationSet {
-        const { state } = view;
-        const written = opts.written();
-        const ranges = [];
-        // The tags of the front matter tag the page itself.
-        const head = Array.from({ length: Math.min(state.doc.lines, 200) }, (_, i) => state.doc.line(i + 1).text);
-        const front = state.field(pageModel, false)?.root.children.find((n) => n.kind === "frontmatter");
-        const fmEnd = front ? front.endLine - 1 : -1;
-        const pageTags = fmEnd > 0 ? frontmatterTags(head, fmEnd) : new Map<number, Token[]>();
-        for (const { from, to } of view.visibleRanges) {
-          for (let pos = from; pos <= to; ) {
-            const line = state.doc.lineAt(pos);
-            const own = pageTags.get(line.number - 1) ?? [];
-            for (const t of [...own, ...inlineTokens(line.text, opts.pageDir())]) {
-              if (own.length === 0 && inCode(state, line.from + t.from)) continue;
-              const missing = written !== null && t.id !== undefined && !written.has(t.id);
-              const mark =
-                t.kind === "tag" ? (missing ? marks.tagNew : marks.tag)
-                : t.kind === "concept" ? (missing ? marks.conceptNew : marks.concept)
-                : t.kind === "file" ? marks.file
-                : t.kind === "datetime" ? marks.datetime
-                : marks.date;
-              ranges.push(mark.range(line.from + t.from, line.from + t.to));
-            }
-            pos = line.to + 1;
-          }
-          syntaxTree(state).iterate({
-            from,
-            to,
-            enter: (node) => {
-              if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
-              for (let n = state.doc.lineAt(node.from).number; n <= state.doc.lineAt(node.to).number; n++) {
-                ranges.push(blockLine.range(state.doc.line(n).from));
-              }
-              return false;
-            },
-          });
-        }
-        return Decoration.set(ranges, true);
       }
     },
     { decorations: (v) => v.decorations },

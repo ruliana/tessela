@@ -2,7 +2,8 @@
 
 import type { VocabEntry } from "../../src/shared/api";
 import { slugFirst, suggest } from "../../src/shared/complete";
-import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink, pasteLink } from "../../src/shared/linkFlows";
+import { type LinkChoice, type LinkPage, bracketSearch, choicesFor, markdownLink } from "../../src/shared/linkFlows";
+import { pasteLink } from "../../src/shared/format";
 import { type Doc, type Flow, type Option } from "./typing";
 
 function replace(doc: Doc, from: number, to: number, insert: string, cursor = from + insert.length): Doc {
