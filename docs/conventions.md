@@ -588,7 +588,7 @@ folder's `settings.json` turns it off: `{"editor": {"typewriter": false}}` (read
 
 ### Surfacing notes while you write (Jev)
 
-With a Jev key in the config folder's `settings.json` (`{"jev": {"key": "..."}}`; `baseUrl` and `model` are
+With a Jev key or `baseUrl` in the config folder's `settings.json` (`{"jev": {"key": "..."}}`; `model` is
 optional, see the README) the `surface` mod brings the one note that matters to the paragraph you are
 writing. At a pause (600 ms with no key pressed, the end of a sentence, or Enter; never on a keystroke) it
 runs `tessela surface` for the block under the cursor, asks Jev typed questions about each candidate (does
@@ -601,7 +601,7 @@ paragraph, level with it in the right margin (the text never moves); a card stay
 dismisses it for good. A key typed cancels the call in flight, and an answer for older text is dropped. When
 nobody has typed for six seconds, the results go to the right column ("Worth a look") in place of the
 margin. Jev's answers are kept for the session by the paragraph's text and the note's handle; nothing is
-written to the notes. Without a key the mod does nothing at all.
+written to the notes. Without Jev configured (no key and no `baseUrl`) the mod does nothing at all.
 
 The bar learns from what you do. Each question that can raise a card (says otherwise, answers this, already
 written, overlaps, same topic, near a date) has one threshold, a number from 0.5 to 2 that starts at 1: a
@@ -620,7 +620,7 @@ does this page already say everything it says. A note ranks by the first times t
 the second; the best two or three that rank at "a good note to read next" or above are listed under the
 last line, a block after the text, so nothing above it moves. Nothing is listed when none is good enough. It
 leaves the page when the cursor and the view leave its end; answers are kept by what the page says and the
-note's handle. Without a key it does nothing.
+note's handle. Without Jev configured it does nothing.
 
 ### Editing keys
 

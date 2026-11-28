@@ -47,7 +47,7 @@ const IS_MAC = typeof navigator !== "undefined" && navigator.userAgent.includes(
 const MOD = IS_MAC ? "⌘" : "Ctrl+";
 
 export default function (ctx: ModContext): void {
-  // No key: no calls, no cards, no commands. There is no fallback.
+  // Jev not configured: no calls, no cards, no commands. There is no fallback.
   if (!ctx.jev.on) return;
 
   const cli = cliOf(ctx);
