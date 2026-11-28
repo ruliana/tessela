@@ -12,6 +12,7 @@ import type { SyntaxNode } from "@lezer/common";
 
 import { daysInLine } from "../shared/dates";
 import { allowedHtml } from "../shared/html";
+import { numericColumns } from "../shared/numeric";
 import { type PageNode } from "../shared/pageModel";
 import { journalDest } from "../shared/pages";
 import type { PropertiesArg, PropertiesOverride } from "../shared/mods";
@@ -307,11 +308,14 @@ export function readTable(state: Source, table: SyntaxNode): ParsedTable | null 
   const header = table.getChild("TableHeader");
   const delimiter = table.getChild("TableDelimiter");
   if (!header || !delimiter) return null;
-  const aligns = alignsOf(state.sliceDoc(delimiter.from, delimiter.to));
+  const written = alignsOf(state.sliceDoc(delimiter.from, delimiter.to));
   const first = state.doc.lineAt(table.from).number;
-  const columns = Math.max(1, header.getChildren("TableCell").length, aligns.length);
+  const columns = Math.max(1, header.getChildren("TableCell").length, written.length);
   const head = cellsOf(state, header, columns);
   const rows = table.getChildren("TableRow").map((row) => ({ line: state.doc.lineAt(row.from).number - first, cells: cellsOf(state, row, columns) }));
+  // A column nobody aligned is right-aligned when it is all numbers; a chosen alignment stays.
+  const numeric = numericColumns(rows.map((r) => r.cells.map(runText)), columns);
+  const aligns = Array.from({ length: columns }, (_, i): Align => written[i] ?? (numeric[i] ? "right" : null));
   return { head, aligns, rows };
 }
 

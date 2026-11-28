@@ -191,3 +191,21 @@ fn a_bundle_that_cannot_be_written_to_still_loads() {
     assert_eq!(Bundle::load(&dir).unwrap().pages[0].title(), "One");
     assert_eq!(Bundle::load(&dir).unwrap().pages[0].title(), "One");
 }
+
+#[test]
+fn every_page_of_a_first_parallel_load_is_cached() {
+    // The first writes all find no cache folder at once; each one must still end up on disk.
+    for round in 0..600 {
+        let dir = scratch();
+        for i in 0..80 {
+            write_old(
+                &dir,
+                &format!("p{i}.md"),
+                &format!("# Page {i}\n"),
+                1_700_000_000,
+            );
+        }
+        Bundle::load(&dir).unwrap();
+        assert_eq!(entries(&dir), 80, "round {round}");
+    }
+}

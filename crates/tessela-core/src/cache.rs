@@ -206,8 +206,9 @@ impl Cache {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         let mut result = std::fs::write(&tmp, bytes);
-        if result.is_err() && !self.dir.is_dir() {
-            // First write into this bundle, or the folder was deleted under us.
+        if result.is_err() {
+            // First write into this bundle, or the folder was deleted under us. Another thread
+            // may have made the folder since this write failed, so try again either way.
             if self.make_dir().is_ok() {
                 result = std::fs::write(&tmp, bytes);
             }

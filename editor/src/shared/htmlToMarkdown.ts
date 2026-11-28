@@ -8,6 +8,7 @@
 // classes, scripts, wrappers) is dropped and its text kept.
 
 import { decodeEntities } from "./htmlText";
+import { numericColumns } from "./numeric";
 
 export interface Converted {
   markdown: string;
@@ -421,7 +422,9 @@ function tableMarkdown(table: Element, seen: Seen): string[] {
   );
   const line = (cs: string[]) => `| ${cs.map((c) => (c === "" ? " " : c)).join(" | ")} |`;
   seen.rich = true;
-  return [[line(text[0]!), line(Array.from({ length: width }, () => "---")), ...text.slice(1).map(line)].join("\n")];
+  // A column of numbers is right-aligned (`---:`), as a spreadsheet draws it.
+  const numeric = numericColumns(text.slice(1), width);
+  return [[line(text[0]!), line(numeric.map((n) => (n ? "---:" : "---"))), ...text.slice(1).map(line)].join("\n")];
 }
 
 function block(el: Element, seen: Seen): string[] {

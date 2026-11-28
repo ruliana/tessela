@@ -579,6 +579,8 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
   hold several lines. A table's cells are drawn from their text, so anything not on the
   list is shown as typed there (`<b onclick=x>` is those characters, never an element).
   In code spans and outside tables the text is not drawn from HTML at all and shows as typed.
+- A table column whose delimiter has no colon (`---`) and whose cells are all numbers (`93`, `-1.5`, `$1,200`, `12%`)
+  is drawn right-aligned; `:---` and `:-:` are kept as written. The file is not changed by drawing it.
 
 ### Typewriter scrolling
 
@@ -654,7 +656,7 @@ note's handle. Without Jev configured it does nothing.
 | `*` `_` `~` `(` `[` `{` `"` `` ` `` | Typed over a selection, surround it; brackets close themselves   |
 | Paste a URL over a selection  | Makes a link of the selection                                         |
 | Paste a URL on its own        | The address, then `[page title](address)` when the title arrives      |
-| Paste from a web page or an office program | Markdown: marks, links, headings, lists, code, tables  |
+| Paste from a web page or an office program | Markdown: marks, links, headings, lists, code, tables; a column of numbers gets `---:` |
 | Ctrl+Enter                    | Tick or untick a task; makes a task of an item or a paragraph         |
 | `/`                           | Menu: headings, lists, tasks, quote, code, table, dates, link, tag     |
 | Ctrl+F                        | Find in the page                                                      |
