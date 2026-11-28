@@ -77,6 +77,8 @@ export interface EditorOptions {
   onLeaveFocus?: () => boolean;
   /** Blocks were selected (select mode began) or the selection ended. */
   onSelectMode?: (on: boolean) => void;
+  /** Whether focus mode dims all but the current sentence (asked at every change; `refresh()` asks again). Off when absent. */
+  sentenceFocus?: () => boolean;
   /** Whether typewriter scrolling is on (asked at every keystroke); on when absent. */
   typewriter?: () => boolean;
 }
@@ -296,7 +298,7 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
         focusMarks(),
-        sentenceMarks(),
+        sentenceMarks(opts.sentenceFocus ?? (() => false)),
         typewriter(opts.typewriter ?? (() => true)),
         preview.of(previewOn ? previewExtension() : []),
         blockKeymap,

@@ -4,7 +4,7 @@ import { EditorState } from "@codemirror/state";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { outsideSentence } from "../src/renderer/sentenceFocus";
+import { outsideSentence, sentenceDecorations } from "../src/renderer/sentenceFocus";
 import { alongLine, wantsTypewriter } from "../src/renderer/typewriter";
 import { sentenceAt } from "../src/shared/sentences";
 import { SELECTION_MARGIN, TYPEWRITER_FRACTION, selectionDelta, typewriterDelta } from "../src/shared/typewriter";
@@ -91,6 +91,22 @@ describe("typewriter scrolling while a line wraps", () => {
     const two = EditorState.create({ doc: "a\nb", selection: { anchor: 1 } });
     expect(alongLine(two, two.update({ selection: { anchor: 3 } }).state)).toBe(false);
     expect(alongLine(before, moved)).toBe(true);
+  });
+});
+
+describe("the dimming of the sentence", () => {
+  // Marks cut a paragraph into pieces, and a row that is full to within a pixel wraps differently with
+  // other pieces: a word jumps between rows as the cursor moves. So there are none unless it is on.
+  const state = revealState("One two. Three four. Five six.", { at: 12 });
+  const count = (on: boolean, focused = true) => sentenceDecorations(state, on, focused).size;
+
+  it("has no marks while sentence focus is off, whatever the sentences", () => {
+    expect(count(false)).toBe(0);
+  });
+
+  it("has them, outside the current sentence, while it is on and the editor has the focus", () => {
+    expect(count(true)).toBe(2);
+    expect(count(true, false)).toBe(0);
   });
 });
 

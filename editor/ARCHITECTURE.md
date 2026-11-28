@@ -117,7 +117,10 @@ the backticks) are characters of the line and push the rest of that line, and no
 `e2e/acceptance/reveal.mjs` measures a window. Typewriter scrolling follows the same rule (2026-11-28):
 when typing makes the line wrap, the cursor drops a row and the page follows by gliding, not by a jump
 (`alongLine`, `typewriter.ts`); the status strip keeps a fixed width for the save state, so the words and
-problems next to it do not move when it changes.
+problems next to it do not move when it changes. Nothing splits the text of a paragraph into pieces
+that depend on the cursor, unless the writer asked for it: the sentence marks of focus mode exist only while
+sentence focus is on, because a row that is full to within a pixel wraps differently with other pieces and a
+word jumped between rows as the cursor moved through the sentences (`e2e/acceptance/writing.mjs`).
 
 The facts the rule reads are kept in one place each: the focus in `editorFocus` (`reveal.ts`),
 the mode in `selectMode`, whether the Markdown is drawn at all in the `rendered` facet that live

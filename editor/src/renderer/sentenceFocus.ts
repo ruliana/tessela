@@ -1,9 +1,13 @@
 // The sentence level of focus mode: inside the block the cursor is in (the lines `cm-focus-cur`
-// marks), the text outside the current sentence gets `cm-focus-out`. Like the block marks they are
-// always there and only the window's focus setting (`data-focus-unit="sentence"`) makes them dim.
+// marks), the text outside the current sentence gets `cm-focus-out`, and the window's focus setting
+// (`data-focus-unit="sentence"`) makes it dim. The marks exist only while sentence focus is on: they cut
+// the text of a paragraph into pieces, and a row that is full to within a pixel wraps differently when its
+// pieces change, so a word would jump between rows as the cursor moved through the sentences.
 
-import { type EditorState, type Range } from "@codemirror/state";
+import { type EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+
+import { refreshDecorations } from "./decorations";
 
 import { sentenceAt } from "../shared/sentences";
 import { LINE_BLOCKS, currentLines } from "./livePreview";
@@ -44,20 +48,25 @@ export function outsideSentence(state: EditorState): { from: number; to: number 
   ];
 }
 
-export function sentenceMarks() {
+/** The dimmed marks for a state: none unless sentence focus is on and the editor has the keyboard focus. */
+export function sentenceDecorations(state: EditorState, on: boolean, hasFocus: boolean): DecorationSet {
+  if (!on || !hasFocus) return Decoration.none;
+  return Decoration.set(outsideSentence(state).map((r) => outside.range(r.from, r.to)), true);
+}
+
+/** `on` is asked at every change; `refresh()` of the editor makes it ask again when it flips. */
+export function sentenceMarks(on: () => boolean) {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
       constructor(view: EditorView) {
-        this.decorations = this.build(view);
+        this.decorations = sentenceDecorations(view.state, on(), view.hasFocus);
       }
       update(update: ViewUpdate) {
-        if (update.docChanged || update.selectionSet || update.focusChanged) this.decorations = this.build(update.view);
-      }
-      build(view: EditorView): DecorationSet {
-        if (!view.hasFocus) return Decoration.none;
-        const ranges: Range<Decoration>[] = outsideSentence(view.state).map((r) => outside.range(r.from, r.to));
-        return Decoration.set(ranges, true);
+        const refresh = update.transactions.some((tr) => tr.effects.some((e) => e.is(refreshDecorations)));
+        if (update.docChanged || update.selectionSet || update.focusChanged || refresh) {
+          this.decorations = sentenceDecorations(update.state, on(), update.view.hasFocus);
+        }
       }
     },
     { decorations: (v) => v.decorations },

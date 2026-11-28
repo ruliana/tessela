@@ -109,7 +109,7 @@ export function typingEditor(doc: string): { state: EditorState; providers: Prov
     revealPolicy(),
     queryableMarks(marks),
     focusMarks(),
-    sentenceMarks(),
+    sentenceMarks(() => true),
     typewriter(() => true),
     livePreview(previewOptions),
     blockKeymap,
