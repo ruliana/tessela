@@ -219,27 +219,28 @@ class Chevron extends WidgetType {
   }
 }
 
+/** The chevrons of the folds whose line is in the viewport. */
+export function chevronDecorations(state: EditorState, viewport: { from: number; to: number }): DecorationSet {
+  const marks: Range<Decoration>[] = [];
+  for (const f of foldsOf(state)) {
+    const line = state.doc.line(f.line + 1);
+    if (line.to < viewport.from || line.from > viewport.to) continue;
+    marks.push(Decoration.widget({ widget: new Chevron(isFolded(state, hidden(state, f))), side: -1 }).range(line.from));
+  }
+  return Decoration.set(marks);
+}
+
 /** A chevron before each line that can fold, shown on hover and always on one that is folded. */
 const chevrons = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = this.build(view);
+      this.decorations = chevronDecorations(view.state, view.viewport);
     }
     update(update: ViewUpdate) {
       if (update.docChanged || update.viewportChanged || syntaxTree(update.startState) !== syntaxTree(update.state) || foldedRanges(update.startState) !== foldedRanges(update.state)) {
-        this.decorations = this.build(update.view);
+        this.decorations = chevronDecorations(update.state, update.view.viewport);
       }
-    }
-    build(view: EditorView): DecorationSet {
-      const { state } = view;
-      const marks: Range<Decoration>[] = [];
-      for (const f of foldsOf(state)) {
-        const line = state.doc.line(f.line + 1);
-        if (line.to < view.viewport.from || line.from > view.viewport.to) continue;
-        marks.push(Decoration.widget({ widget: new Chevron(isFolded(state, hidden(state, f))), side: -1 }).range(line.from));
-      }
-      return Decoration.set(marks);
     }
   },
   { decorations: (v) => v.decorations },
