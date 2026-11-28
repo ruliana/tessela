@@ -630,10 +630,11 @@ note's handle. Without a key it does nothing.
 | Shift+Tab                     | Nested item moves out; a top-level item becomes a paragraph again      |
 | Alt+Up / Alt+Down             | Move the block, with what it owns (a heading takes its section), past its neighbour |
 | Esc, then Esc again           | Select the block at the cursor, then the one around it each time: parent item, list, section, the whole page (the page is its blocks, not its front matter). A zoom is a limit: nothing outside it is selected. When nothing is left to widen, Esc leaves focus mode |
-| Up / Down (select mode)       | Select the block before or after, in reading order, among the blocks that are shown: code blocks, quotes, tables and nested items are blocks too, a heading is its own line, and what a fold hides or a zoom leaves out is skipped |
+| Up / Down (select mode)       | Select the block before or after, in reading order, among the blocks that are shown: code blocks, quotes and tables are blocks too, a heading is its own line, and what a fold hides or a zoom leaves out is skipped. The walk goes as deep as the block select mode began on: nested blocks deeper than that are left with their parent, and Down on a parent (after Up or Esc went out to it) goes into its first child. Esc up the parents never changes the depth |
 | Shift+Up / Shift+Down (select mode) | Take in the next block in that direction (a list at the top of a page or a section in one step); from a heading's line, its section first; past the last (or first) block of an item, the item itself; with the selection taken in the other direction, give a block back |
 | Shift+click (select mode)     | Take in everything from the selection to the block clicked |
-| Enter (select mode)           | Add a block below the selected ones (another item below an item) and edit it |
+| Enter (select mode)           | Edit, with the cursor at the end of the selected blocks (nothing is added) |
+| Shift+Enter                   | Open a line above the cursor (above the first selected block in select mode) and edit it: another item above an item, a blank-line-separated paragraph above the first line of a block, a plain line inside one |
 | Space, Left (select mode)     | Edit, with the cursor at the start of the selected blocks              |
 | Right (select mode)           | Edit, with the cursor at the end of the selected blocks                |
 | Any character (select mode)   | Edit, typing it at the start of the selected blocks                    |
@@ -658,7 +659,7 @@ note's handle. Without a key it does nothing.
 
 Esc leaves the cursor in *select mode*: whole blocks are selected (a run of neighbours under one
 parent, each with what it owns), they are drawn as Markdown, like the blocks without the cursor, and
-the keys above act on blocks. The only ways back to editing are Enter, Space, Left, Right, typing a
+the keys above act on blocks. The only ways back to editing are Enter, Shift+Enter, Space, Left, Right, typing a
 character, removing the last block, Esc with nothing left to widen (when focus mode is off), and
 anything that moves the selection or changes the text on its own, a click above all. Esc is taken in
 this order: a menu or popup that is open, then widening the selection, then leaving focus mode.

@@ -138,7 +138,7 @@ each mode is in one table, and select mode is a pure function
 `(state, key) → (state, transaction)`. Escape is resolved in one place, in this
 order: an open menu or popup, then widening the block selection (block, parent,
 section, page), then leaving focus mode only when there is nothing left to widen.
-Select mode exits only through named transitions: Enter, Space, Left, Right, a
+Select mode exits only through named transitions: Enter, Shift+Enter, Space, Left, Right, a
 typed character, Backspace or Delete when no block is left to select, Escape with
 nothing left to widen (and focus mode off), a click, and any edit or selection that
 select mode did not make. A menu or popup that is open takes Escape before all that:
@@ -172,7 +172,7 @@ Decided by Ronie on 2026-11-27.
 | Reveal policy | Only the exact construct under the cursor is raw; block widgets open whole; nothing is raw in select mode. This replaces today's whole-block reveal. |
 | Select mode | Block selection in its own state field, as a run of sibling blocks. Backspace and Delete remove the blocks and stay in select mode (the next block is selected, or the previous at the end of the page). Shift+Down from a last child selects its parent. Escape with the whole page selected leaves focus mode. |
 | Select-mode actions | Tab, Shift+Tab and Alt+Up/Down act on the selection and stay. Ctrl+D duplicates and selects the copy. Ctrl+C/X copy or cut the whole blocks as Markdown. Ctrl+Enter toggles the task on every selected item. Ctrl+Up/Down folds the selected blocks. |
-| Navigation | Up/Down and Shift+Up/Down step through the next or previous **visible** block in reading order: folded content and anything outside a zoom are skipped. |
+| Navigation | Up/Down and Shift+Up/Down step through the next or previous **visible** block in reading order: folded content and anything outside a zoom are skipped. Up/Down also stop at no block nested deeper than the one select mode began on (`depth` on the selection, set when it is entered and carried by every move, and only raised by an edit that nests the blocks deeper), and Down on a selected parent goes into its first child within that depth, so Up to a parent can always be undone by Down (2026-11-28, Ronie's "Smarter" option; Escape is the way up the parents, so nothing else was added for it). Enter exits at the end of the selection like Right, and Shift+Enter opens a line above (an item above an item) while editing and in select mode. |
 | Mouse | A drag across blocks stays a text selection. Shift+click on another block while in select mode extends the selection to it. |
 | Mod API | Green field: breaking changes are allowed, with no deprecation shims. Built-in mods are updated in the same PR. Mods get `ctx.editor.selectedBlocks()` and events for entering and leaving select mode, in place of the `cm-select-mode` class. |
 | Process | PRs merge when checks pass, without review. Every bug found gets a test that fails before the fix and passes after it. |

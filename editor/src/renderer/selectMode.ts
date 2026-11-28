@@ -33,7 +33,7 @@ import { pageModel } from "./pageModelField";
  * `selectionSpec`). A node is one of the page model of the state the transaction starts from, a number
  * is an offset into the document the transaction makes: the block that starts on its line is meant.
  */
-export const setBlockSelection = StateEffect.define<{ anchor: PageNode | number; head: PageNode | number; heading?: boolean }>();
+export const setBlockSelection = StateEffect.define<{ anchor: PageNode | number; head: PageNode | number; heading?: boolean; depth?: number }>();
 
 /** A node of the model of the new document: the same node, or the one at the same place when the text came out the same. */
 function resolve(model: PageModel, target: PageNode | number): PageNode | null {
@@ -42,10 +42,10 @@ function resolve(model: PageModel, target: PageNode | number): PageNode | null {
   return model.nodes.find((n) => n.from === target.from && n.kind === target.kind) ?? null;
 }
 
-function select(model: PageModel, value: { anchor: PageNode | number; head: PageNode | number; heading?: boolean }): BlockSelection | null {
+function select(model: PageModel, value: { anchor: PageNode | number; head: PageNode | number; heading?: boolean; depth?: number }): BlockSelection | null {
   const anchor = resolve(model, value.anchor);
   const head = resolve(model, value.head);
-  return anchor && head ? makeSelection(anchor, head, value.heading === true) : null;
+  return anchor && head ? makeSelection(anchor, head, value.heading === true, value.depth) : null;
 }
 
 /** The blocks that are selected, or null while the person is editing. */
@@ -60,7 +60,7 @@ export const blockSelection = StateField.define<BlockSelection | null>({
     // A selection or an edit that select mode did not make is the way back to editing.
     if (tr.docChanged || tr.selection !== undefined) return null;
     // The parser reached further into an unchanged page: the same blocks, in the new model.
-    return value.anchor.model === model ? value : select(model, { anchor: value.anchor, head: value.head, heading: value.heading });
+    return value.anchor.model === model ? value : select(model, value);
   },
   provide: (f) => EditorView.editorAttributes.from(f, (sel) => ({ class: sel ? "cm-select-mode" : "" })),
 });
@@ -119,7 +119,7 @@ function projection(doc: Text, sel: BlockSelection): EditorSelection {
 export function selectionSpec(state: EditorState, sel: BlockSelection): TransactionSpec {
   return {
     selection: projection(state.doc, sel),
-    effects: setBlockSelection.of({ anchor: sel.anchor, head: sel.head, heading: sel.heading }),
+    effects: setBlockSelection.of({ anchor: sel.anchor, head: sel.head, heading: sel.heading, depth: sel.depth }),
     scrollIntoView: true,
   };
 }
@@ -131,7 +131,7 @@ export function selectionSpec(state: EditorState, sel: BlockSelection): Transact
 export function selectAtSpec(
   doc: Text,
   model: PageModel,
-  targets: { anchor: number; head: number; heading?: boolean },
+  targets: { anchor: number; head: number; heading?: boolean; depth?: number },
 ): TransactionSpec | null {
   const sel = select(model, targets);
   return sel ? { selection: projection(doc, sel), effects: setBlockSelection.of(targets), scrollIntoView: true } : null;
