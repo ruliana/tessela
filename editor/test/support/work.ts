@@ -108,16 +108,28 @@ function install(tree: Tree, doc: Text): void {
   }
 }
 
-/** What `fn` did, counted. `state` is only used to find the classes the counts are taken from. */
+/**
+ * What `fn` did, counted. `state` is only used to find the classes the counts are taken from.
+ *
+ * The clock stands still while `fn` runs. The language gives the parser a slice of time for each
+ * transaction (20 ms) and stops when it is used up, leaving a tree that ends part way, which the page model is then
+ * built from and built again when the parser goes on. How far the parser gets in a slice depends on how busy the
+ * machine is, so with a running clock the work of a key differs from run to run, by more the busier the
+ * machine. With the clock still the slice never ends: a key parses what it needs to, once.
+ */
 export function measure<T>(state: EditorState, fn: () => T): { result: T; work: Work } {
   install(syntaxTree(state), state.doc);
   const before = { ...total };
+  const now = Date.now;
+  const frozen = now.call(Date);
+  Date.now = () => frozen;
   counting = true;
   try {
     const result = fn();
     return { result, work: { tree: total.tree - before.tree, text: total.text - before.text, chars: total.chars - before.chars } };
   } finally {
     counting = false;
+    Date.now = now;
   }
 }
 
