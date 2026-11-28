@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { type BlockEdit, follow } from "../src/shared/blockEdit";
-import { type Sel, blockBelow, indent, move, outdent } from "../src/shared/blocks";
+import { type Sel, indent, lineAbove, move, outdent } from "../src/shared/blocks";
 import type { PageModel } from "../src/shared/pageModel";
 import { textOf } from "./support/edits";
 import { modelOf, outline } from "./support/page";
@@ -192,18 +192,23 @@ describe("select mode", () => {
   const sel = (line: number, end = line): Sel => ({ anchor: offsetOf(text, line), head: offsetOf(text, end, page[end]!.length) });
   const at = (line: number, col: number) => offsetOf(text, line, col);
 
-  it("adds an item below an item, after the items nested in it", () => {
-    const below = blockBelow(m(page), sel(8, 9));
-    expect(below).toEqual({ at: at(9, 9), insert: "\n- ", caret: 3 });
-    expect(blockBelow(m(page), sel(9)).insert).toBe("\n  - ");
-    expect(blockBelow(m(["1. a", "- [x] b"]), { anchor: 0, head: 0 }).insert).toBe("\n2. ");
-    expect(blockBelow(m(["- [x] b"]), { anchor: 0, head: 0 }).insert).toBe("\n- [ ] ");
+  it("opens an item above an item, with the same marker and indentation, and a task unticked", () => {
+    expect(lineAbove(m(page), at(8, 3))).toEqual({ at: at(8, 0), insert: "- \n", caret: 2 });
+    expect(lineAbove(m(page), at(9, 0))).toEqual({ at: at(9, 0), insert: "  - \n", caret: 4 });
+    expect(lineAbove(m(["1. a"]), 0)!.insert).toBe("1. \n");
+    expect(lineAbove(m(["- [x] b"]), 0)!.insert).toBe("- [ ] \n");
   });
 
-  it("adds a paragraph below any other block, with the gap kept", () => {
-    expect(blockBelow(m(page), sel(2, 6))).toEqual({ at: at(7, 0), insert: "\n\n", caret: 1 });
-    expect(blockBelow(m(page), sel(12))).toEqual({ at: at(12, 7), insert: "\n\n", caret: 2 });
-    expect(blockBelow(m(["# H", "text"]), { anchor: 0, head: 0 }).insert).toBe("\n\n\n");
+  it("opens a paragraph above a block, with a blank line between, and a plain line inside one", () => {
+    expect(lineAbove(m(page), at(0, 2))).toEqual({ at: 0, insert: "\n\n", caret: 0 });
+    expect(lineAbove(m(page), at(12, 3))).toEqual({ at: at(12, 0), insert: "\n\n", caret: 0 });
+    // Inside a block: the line before it is not blank, so it is a line of the same block.
+    expect(lineAbove(m(page), at(3, 0))).toEqual({ at: at(3, 0), insert: "\n", caret: 0 });
+    expect(lineAbove(m(["a", "b"]), 2)).toEqual({ at: 2, insert: "\n", caret: 0 });
+  });
+
+  it("leaves the front matter alone", () => {
+    expect(lineAbove(m(["---", "type: x", "---", "", "text"]), 5)).toBeNull();
   });
 });
 

@@ -1169,6 +1169,13 @@ registry.onFailure = (f) => {
 
 api.onUpdate(showUpdate);
 
+// Jev, when configured, is checked once at startup (after the window is up); only a problem is said.
+const checkJev = (): void =>
+  void api.jevCheck().then((r) => {
+    if (r !== null && !r.ok) host.toast(`${r.error}. Its features will not work.`);
+  });
+
 loadMods()
   .then(start)
+  .then(checkJev)
   .catch((e) => welcome(String(e)));

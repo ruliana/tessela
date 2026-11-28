@@ -106,6 +106,30 @@ describe("a mark that turns raw stays where it was", () => {
   });
 });
 
+// ---- links -------------------------------------------------------------------------
+
+describe("a link that turns raw", () => {
+  const link = fc.tuple(letters, letters, letters).map(([before, text, target]) => ({ doc: `${before} [${text}](https://x.test/${target}) end`, open: before.length + 1, text: text.length, target: target.length }));
+
+  it("hangs its bracket and holds its address out of the line, so the text after it stays put", () => {
+    fc.assert(
+      fc.property(link, ({ doc, open, text }) => {
+        const state = revealState(doc, { at: open + 1 });
+        const how = slots(state);
+        expect(how.get(`${open}-${open + 1}`), doc).toMatch(/^raw cm-mk cm-mk-hang\b/);
+        const close = open + 1 + text;
+        const end = doc.indexOf(")") + 1;
+        expect(how.get(`${close}-${end}`), doc).toMatch(/^raw cm-mk cm-mk-addr\b/);
+        // Away from the link, the same ranges are hidden.
+        const away = slots(revealState(doc, { at: doc.length }));
+        expect(away.get(`${open}-${open + 1}`)).toBe("hidden");
+        expect(away.get(`${close}-${end}`)).toBe("hidden");
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
+
 // ---- marks at the start of a line ------------------------------------------------
 
 interface Row {

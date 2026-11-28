@@ -115,6 +115,28 @@ suite("Command palette and focus", bundle, (test) => {
     await s.win.waitForSelector(".sidebar", { state: "visible" });
   });
 
+  // Focus mode only dismisses the panels: the text being written must not move, in the journals (left-aligned
+  // days) or on a page (centered), so the eye does not have to find it again.
+  test("focus mode leaves the editing column where it was, in the journals and on a page", async (s) => {
+    const left = () => s.win.evaluate(() => document.querySelector(".cm-content").getBoundingClientRect().left);
+    const settle = () => s.win.waitForTimeout(450); // longer than the grid transition
+    for (const view of ["journals", "page"]) {
+      if (view === "journals") await s.win.click("#journals-view");
+      else await s.open("alpha");
+      await s.win.waitForSelector(".cm-content");
+      await settle();
+      const before = await left();
+      await s.key("Control+.");
+      await s.win.waitForFunction(() => document.querySelector(".shell")?.dataset.focus === "1");
+      await settle();
+      assert.equal(await left(), before, `${view}: the text did not move when focus mode began`);
+      await s.key("Control+.");
+      await s.win.waitForFunction(() => document.querySelector(".shell")?.dataset.focus === "0");
+      await settle();
+      assert.equal(await left(), before, `${view}: the text did not move when focus mode ended`);
+    }
+  });
+
   test("the strip has a Focus button too", async (s) => {
     await s.win.click("#focus-toggle");
     assert.equal(await s.win.getAttribute("#focus-toggle", "aria-pressed"), "true");

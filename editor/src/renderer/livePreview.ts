@@ -87,6 +87,11 @@ const rawSlot = (cls: string) => Decoration.mark({ class: `cm-mk cm-mk-slot ${cl
  * length of the marks of the same kind that follow it on the line (a quote in a quote).
  */
 const rawHang = (kind: string, n: number, after: number) => Decoration.mark({ class: `cm-mk cm-mk-hang ${kind}`, attributes: { style: `--n:${n};--after:${after}` } });
+/**
+ * The address of a link, `](target)`, shown as typed. It is long and has no place in the line, so it is
+ * held out of it, under the row of the link (style.css): the text after the link does not move.
+ */
+const rawAddress = Decoration.mark({ class: "cm-mk cm-mk-addr" });
 const missing = Decoration.mark({ class: "cm-lp-missing" });
 const bullet = Decoration.replace({ widget: new Glyph("•", "cm-lp-bullet") });
 const unchecked = Decoration.replace({ widget: new Glyph("☐", "cm-lp-check") });
@@ -182,13 +187,18 @@ export function inlineDecorations(state: EditorState, visible: readonly DrawnRan
           ranges.push(Decoration.replace({ widget: new ImageWidget(src, alt) }).range(ref.from, ref.to));
           return false;
         } else if (name === "Link") {
-          const open = ref.node.getChild("URL") ? ref.node.getChild("LinkMark") : null;
-          const close = open?.nextSibling;
-          if (open && close && close.to > open.to && !typed(ref.from, ref.to)) ranges.push(linkText.range(open.to, close.from));
-        } else if (name === "LinkMark" || name === "URL" || name === "LinkTitle") {
           // Only links written inline, [text](target): a reference [text][ref] stays as typed.
+          const [open, close] = ref.node.getChild("URL") ? ref.node.getChildren("LinkMark") : [];
+          if (open && close && close.to > open.to) {
+            const editing = typed(ref.from, ref.to);
+            if (!editing) ranges.push(linkText.range(open.to, close.from));
+            mark(open.from, open.to, editing, rawHang("cm-mk-link", open.to - open.from, 0));
+            mark(close.from, ref.to, editing, rawAddress);
+          }
+        } else if (name === "LinkMark" || name === "URL" || name === "LinkTitle") {
+          // The marks of a picture; those of a link are drawn with the link.
           const parent = ref.node.parent;
-          if ((parent?.name === "Link" || parent?.name === "Image") && parent.getChild("URL")) mark(ref.from, ref.to, inside(parent));
+          if (parent?.name === "Image" && parent.getChild("URL")) mark(ref.from, ref.to, inside(parent));
         }
       },
     });

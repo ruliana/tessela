@@ -4,7 +4,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { askJev, jevIn } from "../src/main/jev";
+import { askJev, checkJev, jevIn } from "../src/main/jev";
 import surface from "../src/mods/surface/main";
 import {
   type Candidate,
@@ -455,7 +455,7 @@ describe("the Jev client", () => {
 
   it("answers with a reason, and never the key, when there is no key, the call fails or it is cancelled", async () => {
     const live = new AbortController().signal;
-    expect(await askJev(null, request, answer({}), live)).toEqual({ ok: false, error: "no Jev key" });
+    expect(await askJev(null, request, answer({}), live)).toEqual({ ok: false, error: "Jev is not configured" });
     expect(await askJev(config, { state: 1, questions: {} }, answer({}), live)).toEqual({ ok: false, error: "not a Jev request" });
     expect(await askJev(config, request, answer({}, 429), live)).toEqual({ ok: false, error: "Jev answered 429" });
     const down = await askJev(config, request, async () => Promise.reject(new Error("connect ECONNREFUSED with k-1")), live);
@@ -466,6 +466,29 @@ describe("the Jev client", () => {
     stop.abort();
     expect(await pending).toEqual({ ok: false, error: "cancelled" });
     expect(await askJev(config, request, slow, live, 20)).toEqual({ ok: false, error: "Jev did not answer in time" });
+  });
+
+  it("sends no authorization when the proxy holds the key", async () => {
+    let headers: Record<string, string> = {};
+    await askJev({ key: "", baseUrl: "https://proxy.test", model: "m" }, request, async (_url, init) => {
+      headers = init.headers;
+      return new Response(JSON.stringify({ answers: {} }));
+    }, new AbortController().signal);
+    expect(headers.authorization).toBeUndefined();
+  });
+
+  it("checks at startup that the service can be reached, and says why not", async () => {
+    const live = new AbortController().signal;
+    const status = (code: number) => async () => new Response("", { status: code });
+    expect(await checkJev(null, status(200), live)).toBeNull();
+    for (const code of [200, 400, 405, 422]) expect(await checkJev(config, status(code), live)).toEqual({ ok: true });
+    expect(await checkJev(config, status(401), live)).toEqual({ ok: false, error: "Jev at https://jev.test refused the key" });
+    expect(await checkJev({ ...config, key: "" }, status(403), live)).toEqual({ ok: false, error: "Jev at https://jev.test needs a key" });
+    expect(await checkJev(config, status(404), live)).toEqual({ ok: false, error: "Jev was not found at https://jev.test" });
+    expect(await checkJev(config, status(503), live)).toEqual({ ok: false, error: "Jev at https://jev.test answered 503" });
+    expect(await checkJev(config, async () => Promise.reject(new Error("ECONNREFUSED k-1")), live)).toEqual({ ok: false, error: "Jev could not be reached at https://jev.test" });
+    const slow = (_url: string, init: { signal: AbortSignal }) => new Promise<Response>((_ok, fail) => init.signal.addEventListener("abort", () => fail(new Error("aborted"))));
+    expect(await checkJev(config, slow, live, 20)).toEqual({ ok: false, error: "Jev at https://jev.test did not answer in time" });
   });
 
   it("rejects requests that are not named questions of the three kinds", () => {
@@ -479,7 +502,7 @@ describe("the Jev client", () => {
 });
 
 describe("the Jev settings", () => {
-  it("need a key; the address and the model are optional", async () => {
+  it("need a key or an address; the model is optional", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -493,6 +516,8 @@ describe("the Jev settings", () => {
     expect(jevIn(withSettings("not json"))).toBeNull();
     expect(jevIn(withSettings({ jev: {} }))).toBeNull();
     expect(jevIn(withSettings({ jev: { key: "  " } }))).toBeNull();
+    expect(jevIn(withSettings({ jev: { baseUrl: "not a url" } }))).toBeNull();
+    expect(jevIn(withSettings({ jev: { baseUrl: "http://proxy.test:8080/" } }))).toEqual({ key: "", baseUrl: "http://proxy.test:8080", model: "jev-latest" });
     expect(jevIn(withSettings({ jev: { key: "abc" } }))).toEqual({ key: "abc", baseUrl: "https://api.typesafe.ai", model: "jev-latest" });
     expect(jevIn(withSettings({ jev: { key: "abc", baseUrl: "http://127.0.0.1:9/", model: "m" } }))).toEqual({ key: "abc", baseUrl: "http://127.0.0.1:9", model: "m" });
     expect(jevIn(withSettings({ jev: { key: "abc", baseUrl: "file:///etc" } }))?.baseUrl).toBe("https://api.typesafe.ai");

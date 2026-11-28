@@ -232,6 +232,8 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 @media (prefers-reduced-motion: reduce) { .cm-mk { animation: none; } }
 .cm-mk-hang { --gap: 0px; --after: 0; --off: calc(var(--gap) + var(--after) * 1ch); display: inline-block; width: calc(var(--n) * 1ch); margin: 0 var(--off) 0 calc(-1 * (var(--n) * 1ch + var(--off))); font: 400 12px var(--mono); text-align: right; white-space: pre; text-decoration: none; letter-spacing: 0; }
 .cm-mk-quote { --gap: 15px; }
+/* The address of a link is typed under the row of the link, out of the line, so that what follows the link does not move or wrap anew. */
+.cm-mk-addr { position: absolute; left: 24px; z-index: 2; margin-top: 1.9em; width: max-content; max-width: calc(100% - 52px); padding: 1px 6px; font: 400 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 2px 6px rgb(0 0 0 / 0.08); }
 .cm-mk-slot { display: inline-block; text-align: center; }
 .cm-mk-bullet { width: 1em; }
 .cm-mk-box { width: 1.4em; }
@@ -337,10 +339,11 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .strip { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; gap: 16px; padding: 0 12px; border-top: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
 .strip .sp { flex: 1; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; margin-right: 6px; vertical-align: 1px; }
+.strip-status { display: inline-block; min-width: 8em; }
 .strip-status[data-state="dirty"] .dot { background: var(--muted); }
 .strip-status[data-state="conflict"] { color: var(--warn); font-weight: 500; }
 .strip-status[data-state="conflict"] .dot { background: var(--warn); }
-.strip-words { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.strip-words { display: inline-block; min-width: 12ch; font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .problems-toggle { background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted); font-size: 12px; opacity: 0.85; }
 .problems-toggle:hover { color: var(--text); }
 .problems-toggle[data-clean="false"] { color: var(--warn); font-weight: 500; opacity: 1; }
@@ -390,9 +393,11 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .card.compact .cm-scroller { padding: 14px 0 4px; }
 
 /* Panels and focus: the sidebar and the backlinks fold away, and focus dims all but the block you are in. */
-.shell[data-sidebar="0"], .shell[data-focus="1"] { --side-w: 0px; }
-.shell[data-backlinks="0"], .shell[data-focus="1"] { --back-w: 0px; }
-.shell[data-sidebar="0"] .sidebar, .shell[data-focus="1"] .sidebar, .shell[data-backlinks="0"] .backlinks, .shell[data-focus="1"] .backlinks { visibility: hidden; padding: 0; border-width: 0; overflow: hidden; }
+/* Focus hides the panels but keeps their columns, so the page being written does not move. */
+.shell[data-sidebar="0"] { --side-w: 0px; }
+.shell[data-backlinks="0"] { --back-w: 0px; }
+.shell[data-sidebar="0"] .sidebar, .shell[data-backlinks="0"] .backlinks { visibility: hidden; padding: 0; border-width: 0; overflow: hidden; }
+.shell[data-focus="1"] .sidebar, .shell[data-focus="1"] .backlinks { visibility: hidden; }
 .shell[data-focus="1"] .cm-focused .cm-line:not(.cm-focus-cur), .shell[data-focus="1"] .cm-focused .cm-props, .shell[data-focus="1"] .cm-focused .cm-lp-tablewrap { opacity: 0.32; transition: opacity 0.2s; }
 .pref[aria-pressed="true"] { color: var(--accent); font-weight: 500; }
 .shell[data-focus="1"][data-focus-unit="sentence"] .cm-focused .cm-focus-out { opacity: 0.32; transition: opacity 0.2s; }

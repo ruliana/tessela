@@ -94,7 +94,8 @@ describe("Up and Down", () => {
     const state = selecting(PAGE, 4, { folds: [{ first: 4, last: 5 }] });
     expect(picked(state)).toEqual([4, 5]);
     expect(picked(press(state, "ArrowDown"))).toEqual([6, 6]);
-    expect(picked(press(selecting(PAGE, 6), "ArrowUp"))).toEqual([5, 5]);
+    // Begun on `two`, the child is deeper than the walk: Up leaves `one` with it.
+    expect(picked(press(selecting(PAGE, 6), "ArrowUp"))).toEqual([4, 5]);
     expect(picked(press(selecting(PAGE, 6, { folds: [{ first: 4, last: 5 }] }), "ArrowUp"))).toEqual([4, 5]);
   });
 
@@ -123,6 +124,40 @@ describe("Up and Down", () => {
     const state = pageState(PAGE);
     expect(respond(state, "ArrowDown")).toBeNull();
     expect(respond(state, "ArrowUp")).toBeNull();
+  });
+
+  // Known bug (0.5.0 feedback): Up onto a parent, then Down, went past its children, and from a page with
+  // nothing else got stuck. Down now goes into the children, as deep as the block select mode began on.
+  it("go back down into the children of a parent they went up to, as deep as the block they began on", () => {
+    const text = "- a\n  - b\n    - c\n- d";
+    const deep = selecting(text, 2);
+    // Up climbs out of c and b, and Down comes back the same way, to d.
+    const seen: string[] = [];
+    let state = deep;
+    for (const key of ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowDown"] as const) {
+      state = press(state, key);
+      seen.push(picked(state)!.join("-"));
+    }
+    expect(seen).toEqual(["1-2", "0-2", "1-2", "2-2", "3-3"]);
+    // Begun on b, c is deeper than the level of the walk: it is not a stop, and the parent still leads back to b.
+    const mid = selecting(text, 1);
+    expect(picked(press(mid, "ArrowUp"))).toEqual([0, 2]);
+    expect(picked(press(mid, "ArrowUp", "ArrowDown"))).toEqual([1, 2]);
+    expect(picked(press(mid, "ArrowDown"))).toEqual([3, 3]);
+    // Begun at the top, nothing nested is a stop.
+    expect(picked(press(selecting(text, 0), "ArrowDown"))).toEqual([3, 3]);
+  });
+
+  it("do not get stuck on a parent that is all there is", () => {
+    const state = press(selecting("- a\n  - b", 1), "ArrowUp");
+    expect(picked(state)).toEqual([0, 1]);
+    expect(picked(press(state, "ArrowDown"))).toEqual([1, 1]);
+  });
+
+  it("keep the level of the walk when Escape climbs to the parents", () => {
+    const state = press(selecting("- a\n  - b\n    - c\n- d", 2), "Escape", "Escape");
+    expect(picked(state)).toEqual([0, 2]);
+    expect(picked(press(state, "ArrowDown"))).toEqual([1, 2]);
   });
 });
 
@@ -167,10 +202,13 @@ describe("Shift+Up and Shift+Down", () => {
 });
 
 describe("leaving select mode", () => {
-  it("Enter adds a block below, Space and Left edit at the start, Right at the end, a character is typed at the start", () => {
+  it("Enter, Space and Left edit at the start, Right at the end, a character is typed at the start", () => {
     const state = selecting(PAGE, 2);
-    expect(picked(press(state, "Enter"))).toBeNull();
-    expect(press(state, "Enter").doc.toString()).toBe(PAGE.replace("Intro\n", "Intro\n\n\n"));
+    // Known bug: Enter added a line below, where it is the same as Right: edit at the end of what is selected.
+    const enter = press(state, "Enter");
+    expect(picked(enter)).toBeNull();
+    expect(enter.doc.toString()).toBe(PAGE);
+    expect(enter.selection.main.head).toBe(offsetOf(PAGE, 2, 5));
     for (const key of [" ", "ArrowLeft"] as const) {
       const out = press(state, key);
       expect(picked(out)).toBeNull();
@@ -182,6 +220,17 @@ describe("leaving select mode", () => {
     expect(out.doc.toString()).toBe(PAGE.replace("Intro", "xIntro"));
     expect(picked(out)).toBeNull();
     expect(typed(pageState(PAGE), "x")).toBeNull();
+  });
+
+  it("Shift+Enter opens a line above the selected blocks, and above the cursor while editing, with the cursor in it", () => {
+    const state = selecting(PAGE, 4);
+    const out = press(state, "Shift-Enter");
+    expect(picked(out)).toBeNull();
+    expect(out.doc.toString()).toBe(PAGE.replace("- one\n", "- \n- one\n"));
+    expect(out.selection.main.head).toBe(offsetOf(PAGE, 4, 2));
+    const editing = press(pageState(PAGE, { at: offsetOf(PAGE, 2, 3) }), "Shift-Enter");
+    expect(editing.doc.toString()).toBe(PAGE.replace("Intro", "\n\nIntro"));
+    expect(editing.selection.main.head).toBe(offsetOf(PAGE, 2));
   });
 
   it("a click, or anything else that moves the selection or changes the text, goes back to editing", () => {

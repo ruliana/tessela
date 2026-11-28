@@ -203,11 +203,14 @@ code (your own or audited) and load before the first page opens.
   calendar has them). A new setting takes effect when the window loads again.
 - `{"editor": {"typewriter": false}}` turns off typewriter scrolling (the line you write on stays a third
   of the way down the window; on by default).
-- `{"jev": {"key": "..."}}` turns on the features that use [Jev](https://docs.typesafe.ai) (TypeSafe AI's decision
+- `{"jev": {"key": "..."}}` (or a `baseUrl`, see below) turns on the features that use [Jev](https://docs.typesafe.ai) (TypeSafe AI's decision
   model), today the surface mod: at a pause in your typing, the one note that bears on the paragraph appears in
   the margin, only when it is worth the interruption (Esc dismisses it, Ctrl/Cmd+Alt+Enter peeks at it,
   Ctrl/Cmd+Alt+I links it). `baseUrl` (default `https://api.typesafe.ai`) and `model` (default `jev-latest`) point
-  it at another service that speaks the same API, OpenRouter for one. Without a key every Jev feature is off.
+  it at another service that speaks the same API, OpenRouter for one. A proxy that holds the key itself needs
+  only `{"jev": {"baseUrl": "https://proxy.example"}}`: the calls then carry no key. With neither a key nor a
+  `baseUrl` every Jev feature is off. When either is set, Tessela checks once at startup that the service
+  answers and says so in the sidebar if it does not (unreachable, refused key, not found).
 - The whole API is in the [mod-writing skill](skills/tessela-mods/SKILL.md).
 
 ```js
