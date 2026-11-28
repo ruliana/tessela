@@ -38,7 +38,9 @@ import { inCode, queryableMarks, refreshDecorations } from "./decorations";
 import { formatting } from "./formatKeys";
 import { focusMarks, livePreview } from "./livePreview";
 import { isDrawn, revealPolicy } from "./reveal";
+import { sentenceMarks } from "./sentenceFocus";
 import { slashSource } from "./slash";
+import { typewriter } from "./typewriter";
 import { pageLanguage, pageModel } from "./pageModelField";
 import { bodyStart } from "../shared/properties";
 
@@ -73,6 +75,8 @@ export interface EditorOptions {
   onLeaveFocus?: () => boolean;
   /** Blocks were selected (select mode began) or the selection ended. */
   onSelectMode?: (on: boolean) => void;
+  /** Whether typewriter scrolling is on (asked at every keystroke); on when absent. */
+  typewriter?: () => boolean;
 }
 
 export interface EditorHandle {
@@ -289,6 +293,8 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
         autocompletion({ override: [completions(opts.vocab, opts.pages), slashSource], icons: false }),
         queryableMarks({ pageDir: opts.pageDir, written: opts.written }),
         focusMarks(),
+        sentenceMarks(),
+        typewriter(opts.typewriter ?? (() => true)),
         preview.of(previewOn ? previewExtension() : []),
         blockKeymap,
         opts.onLeaveFocus ? leaveFocus.of(opts.onLeaveFocus) : [],

@@ -42,5 +42,6 @@ import "./acceptance/gfm.mjs";
 import "./acceptance/favorites.mjs";
 import "./acceptance/drawers.mjs";
 import "./acceptance/updates.mjs";
+import "./acceptance/writing.mjs";
 
 await runAll();

@@ -546,6 +546,12 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
   list is shown as typed there (`<b onclick=x>` is those characters, never an element).
   In code spans and outside tables the text is not drawn from HTML at all and shows as typed.
 
+### Typewriter scrolling
+
+While you type or move with the keys, the window scrolls so that the line you are on stays a third
+of the way down it; a click or a drag never moves the text. It is on by default and the config
+folder's `settings.json` turns it off: `{"editor": {"typewriter": false}}` (read when the window loads).
+
 ### Editing keys
 
 | Keys                          | What it does                                                          |
@@ -568,6 +574,8 @@ follows changes with `tessela watch`, so it reads nothing from the folder itself
 | Ctrl+Enter (select mode)      | Tick or untick every selected item (a plain item becomes a task)       |
 | Ctrl+Up / Ctrl+Down           | Fold, or open, the block at the cursor (in select mode, the selected blocks); pressed again, the block around it |
 | Ctrl+Alt+Right / Left         | Zoom in on the block at the cursor, or back out one level              |
+| Ctrl+.                        | Focus mode: hide the panels and dim all but the block the cursor is in (Esc with nothing left to widen leaves it) |
+| Ctrl+Shift+.                  | Switch focus mode between the block and the sentence (a paragraph or item's own text, cut at `.` `!` `?`), turning it on when it was off |
 | Ctrl+B, Ctrl+I, Ctrl+E        | Bold, italic, code (the word at the cursor when nothing is selected)   |
 | Ctrl+Shift+X                  | Strikethrough                                                         |
 | `*` `_` `~` `(` `[` `{` `"` `` ` `` | Typed over a selection, surround it; brackets close themselves   |

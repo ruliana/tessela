@@ -112,8 +112,20 @@ const PANELS_KEY = "tessela.panels";
 /** Which side panels are shown; remembered. Focus mode hides both for a while and is not. */
 let panels = readPanels();
 let focusMode = false;
+/** What focus mode dims all but: the block the cursor is in, or its sentence. Remembered. */
+let focusUnit = readFocusUnit();
 let shellEl: HTMLElement | undefined;
 let focusButton: HTMLElement | undefined;
+
+const FOCUS_UNIT_KEY = "tessela.focusUnit";
+
+function readFocusUnit(): "block" | "sentence" {
+  try {
+    return localStorage.getItem(FOCUS_UNIT_KEY) === "sentence" ? "sentence" : "block";
+  } catch {
+    return "block";
+  }
+}
 
 function readPanels(): { sidebar: boolean; backlinks: boolean } {
   try {
@@ -130,6 +142,7 @@ function applyLayout(): void {
   shellEl.dataset.sidebar = panels.sidebar ? "1" : "0";
   shellEl.dataset.backlinks = panels.backlinks ? "1" : "0";
   shellEl.dataset.focus = focusMode ? "1" : "0";
+  shellEl.dataset.focusUnit = focusUnit;
   focusButton?.setAttribute("aria-pressed", String(focusMode));
 }
 
@@ -141,6 +154,15 @@ function togglePanel(which: "sidebar" | "backlinks"): void {
 
 function toggleFocus(): void {
   focusMode = !focusMode;
+  applyLayout();
+  active?.focus();
+}
+
+/** Switches focus mode between the block and the sentence, and turns it on when it was off. */
+function toggleFocusUnit(): void {
+  focusUnit = focusUnit === "block" ? "sentence" : "block";
+  store(FOCUS_UNIT_KEY, focusUnit);
+  focusMode = true;
   applyLayout();
   active?.focus();
 }
@@ -477,7 +499,7 @@ function buildShell(bundle: string): void {
     el("div", { class: "lists" }, journalsSection, conceptsSection),
   );
 
-  focusButton = el("button", { class: "pref", id: "focus-toggle", title: `Hide the panels and dim all but the block you are in (${key}+.)`, onclick: toggleFocus }, "Focus");
+  focusButton = el("button", { class: "pref", id: "focus-toggle", title: `Hide the panels and dim all but the block you are in; ${key}+Shift+. dims all but the sentence (${key}+.)`, onclick: toggleFocus }, "Focus");
   focusButton.setAttribute("aria-pressed", String(focusMode));
   statusEl = el("span", { class: "strip-status", id: "strip-status" });
   wordsEl = el("span", { class: "strip-words", id: "strip-words" });
@@ -778,7 +800,8 @@ function builtinCommands(): Command[] {
     { id: "open-file", label: "Open file…", hint: `${key} O`, run: () => void openFile() },
     { id: "root", label: "Change the notes folder…", hint: `${key} Shift O`, run: () => void changeRoot() },
     { id: "preview", label: livePreview ? "Show the Markdown as written" : "Show the Markdown rendered", hint: `${key} Alt M`, run: togglePreview },
-    { id: "focus", label: focusMode ? "Leave focus mode" : "Focus on the current block", hint: `${key} .`, run: toggleFocus },
+    { id: "focus", label: focusMode ? "Leave focus mode" : `Focus on the current ${focusUnit}`, hint: `${key} .`, run: toggleFocus },
+    { id: "focus-unit", label: focusUnit === "block" ? "Focus on the current sentence" : "Focus on the current block", hint: `${key} Shift .`, run: toggleFocusUnit },
     { id: "sidebar", label: panels.sidebar ? "Hide the sidebar" : "Show the sidebar", hint: `${key} \\`, run: () => togglePanel("sidebar") },
     { id: "backlinks", label: panels.backlinks ? "Hide the backlinks" : "Show the backlinks", hint: `${key} Shift \\`, run: () => togglePanel("backlinks") },
     { id: "theme", label: `Theme: ${label(theme)}, change`, run: cycleTheme },
@@ -818,7 +841,7 @@ window.addEventListener(
     if (e.code === "KeyK" && !e.shiftKey) openPalette();
     else if (paletteOpen()) return;
     else if (e.code === "Backslash") togglePanel(e.shiftKey ? "backlinks" : "sidebar");
-    else if (e.code === "Period" && !e.shiftKey) toggleFocus();
+    else if (e.code === "Period") (e.shiftKey ? toggleFocusUnit : toggleFocus)();
     else return;
     e.preventDefault();
     e.stopPropagation();
@@ -851,6 +874,7 @@ function cardDeps() {
     },
     onOpened: (path: string) => registry.emit("page-opened", { path }),
     onLeaveFocus: leaveFocusMode,
+    typewriter: () => modsInfo?.editor.typewriter !== false,
     onSelectMode: (path: string, on: boolean) => registry.emit(on ? "select-mode-entered" : "select-mode-left", { path }),
     onTitleEdited: (path: string, from: string, to: string) => registry.emit("title-edited", { path, from, to }),
     pageMenu: (path: string) =>
