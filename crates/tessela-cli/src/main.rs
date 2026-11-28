@@ -14,6 +14,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use serde::Serialize;
 use tessela_core::edit::{self, API_VERSION, EditError, ErrorCode, Expect, FsStore, PageStore};
 use tessela_core::related;
+use tessela_core::surface;
 use tessela_core::{
     Bundle, HitKind, Linter, Query, Severity, TaskFilter, index, logseq, vocabulary,
 };
@@ -370,6 +371,26 @@ enum Command {
         #[arg(long, default_value_t = 10)]
         limit: usize,
     },
+    /// What the notes have to say about the thought at a line of a page: pages that point at it,
+    /// blocks that mention the same things, names written without a link, uncommon words in
+    /// common, open tasks due near a date it writes
+    Surface {
+        #[command(flatten)]
+        edit: EditArgs,
+        /// The page, e.g. `project/tessela.md`
+        page: String,
+        /// The line the writer is on (1-based): its block, with its parents and headings, is
+        /// the thought
+        #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+        at: u64,
+        /// The text of that block as the writer has it, when the file is behind; `-` reads it
+        /// from stdin
+        #[arg(long)]
+        text: Option<String>,
+        /// List at most this many candidates
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Run the body of a ```tessela fence (a live list): a read-only command, then filters
     Fence {
         #[command(flatten)]
@@ -606,6 +627,52 @@ fn run() -> ExitCode {
                         out.push_str(&format!("{}  ({at})  {}\n", t.concept, t.reason));
                     }
                     out
+                },
+                true,
+            ))
+        }),
+        Command::Surface {
+            edit,
+            page,
+            at,
+            text,
+            limit,
+        } => run_edit(&edit, |_| {
+            let path = edit::existing_path(&page)?;
+            let text = match text.as_deref() {
+                Some("-") => Some(read_input(None)?),
+                other => other.map(str::to_string),
+            };
+            let request = surface::Request {
+                page: &path,
+                line: usize::try_from(at).unwrap_or(usize::MAX),
+                text: text.as_deref(),
+                limit,
+            };
+            let out = surface::surface(&edit.bundle, &request).map_err(|e| match e {
+                surface::Error::NotFound(m) => EditError::new(ErrorCode::NotFound, m),
+                surface::Error::Io(m) => EditError::new(ErrorCode::Io, m),
+            })?;
+            Ok(Done::new(
+                &out,
+                |s| {
+                    let mut text = String::new();
+                    for c in &s.candidates {
+                        let place = match c.kind {
+                            HitKind::Page => c.path.clone(),
+                            _ => format!("{}:{}", c.path, c.line),
+                        };
+                        let source = serde_json::to_value(c.source).unwrap_or_default();
+                        text.push_str(&format!(
+                            "{place}  [{}] {}\n",
+                            source.as_str().unwrap_or(""),
+                            c.reason
+                        ));
+                        if !c.excerpt.is_empty() {
+                            text.push_str(&format!("  {}\n", c.excerpt));
+                        }
+                    }
+                    text
                 },
                 true,
             ))

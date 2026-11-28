@@ -6,6 +6,7 @@ pub mod blocks;
 pub mod bundle;
 mod cache;
 pub mod changes;
+mod corpus;
 pub mod edit;
 pub mod fence;
 pub mod index;
@@ -17,6 +18,8 @@ pub mod query;
 pub mod refs;
 pub mod related;
 pub mod rewrite;
+mod summary;
+pub mod surface;
 pub mod unlinked;
 pub mod vocab;
 

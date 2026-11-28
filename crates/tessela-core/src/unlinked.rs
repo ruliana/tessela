@@ -40,8 +40,8 @@ pub struct Mention {
 pub struct Spec {
     /// The concept ID.
     pub concept: String,
-    /// All the names at once, longest first. Absent when there is no name worth looking for.
-    names: Option<AhoCorasick>,
+    /// All the names at once. Absent when there is no name worth looking for.
+    names: Option<Names>,
     /// How a page links to it: `/machine-learning.md`.
     target: String,
 }
@@ -75,15 +75,7 @@ impl Spec {
                 add(&spaced(&term));
             }
         }
-        names.sort_by_key(|n| std::cmp::Reverse(n.chars().count()));
-        // Standard matching with overlaps reports every occurrence of every name; which of
-        // them to keep is decided in `find_words`, since that needs the words around them.
-        let names = (!names.is_empty()).then(|| {
-            AhoCorasick::builder()
-                .match_kind(MatchKind::Standard)
-                .build(names.iter().map(|n| fold(n).0))
-                .expect("a few short names always build")
-        });
+        let names = Names::new(names.into_iter().map(|n| (n, 0)).collect());
         Spec {
             target: format!("/{concept}.md"),
             concept,
@@ -107,16 +99,16 @@ impl Spec {
         }
         // Most blocks name nothing. Whatever a mention is, its words are in the raw text
         // as they are, so one scan of it tells whether the Markdown is worth reading.
-        let (raw, _) = fold(&block.text);
-        if !names.is_match(&raw) {
+        if !names.may_match(&block.text) {
             return Vec::new();
         }
         let mut found: Vec<(usize, usize)> = Vec::new();
         for (start, masked) in plain_text(&block.text) {
             found.extend(
-                find_words(names, &masked)
+                names
+                    .find(&masked)
                     .into_iter()
-                    .map(|(from, to)| (start + from, start + to)),
+                    .map(|(from, to, _)| (start + from, start + to)),
             );
         }
         found.sort();
@@ -179,9 +171,73 @@ impl<'a> PageFile<'a> {
     }
 }
 
+/// Names to look for in text, each standing for something (a page, a concept): where any of
+/// them is written as whole words, ignoring case, found in one scan however many there are.
+pub(crate) struct Names {
+    /// The names folded to lower case, longest first.
+    automaton: AhoCorasick,
+    /// What each pattern of the automaton stands for.
+    tags: Vec<usize>,
+}
+
+impl Names {
+    /// `None` when there is no name. Among names of one length the earlier one wins.
+    pub fn new(mut names: Vec<(String, usize)>) -> Option<Names> {
+        if names.is_empty() {
+            return None;
+        }
+        names.sort_by_key(|(n, _)| std::cmp::Reverse(n.chars().count()));
+        // Standard matching with overlaps reports every occurrence of every name; which of
+        // them to keep is decided in `find`, since that needs the words around them.
+        let automaton = AhoCorasick::builder()
+            .match_kind(MatchKind::Standard)
+            .build(names.iter().map(|(n, _)| fold(n).0))
+            .expect("names always build");
+        Some(Names {
+            automaton,
+            tags: names.into_iter().map(|(_, tag)| tag).collect(),
+        })
+    }
+
+    /// Whether any name is written in the text, as part of a word or not: one scan, to tell
+    /// whether the rest of the work is worth doing.
+    pub fn may_match(&self, text: &str) -> bool {
+        self.automaton.is_match(&fold(text).0)
+    }
+
+    /// Where the names are written in `text` as whole words, ignoring case, as (from, to, what
+    /// the name stands for). Where two overlap, the longer name wins (the earlier one among
+    /// equals), and the words of a name rejected for the letters around it do not hide one
+    /// that overlaps it.
+    pub fn find(&self, text: &str) -> Vec<(usize, usize, usize)> {
+        let (folded, offsets) = fold(text);
+        let at = |i: usize| offsets.as_ref().map_or(i, |o| o[i]);
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        // Pattern numbers run from the longest name to the shortest.
+        let mut candidates: Vec<(usize, usize, usize)> = self
+            .automaton
+            .find_overlapping_iter(&folded)
+            .map(|m| (m.pattern().as_usize(), at(m.start()), at(m.end())))
+            .filter(|&(_, from, to)| {
+                !text[..from].chars().next_back().is_some_and(word)
+                    && !text[to..].chars().next().is_some_and(word)
+            })
+            .collect();
+        candidates.sort_unstable();
+        let mut found: Vec<(usize, usize, usize)> = Vec::new();
+        for (pattern, from, to) in candidates {
+            if !found.iter().any(|&(a, b, _)| from < b && a < to) {
+                found.push((from, to, self.tags[pattern]));
+            }
+        }
+        found.sort_unstable();
+        found
+    }
+}
+
 /// The parts of a block's text that are plain words, as (offset in the text, the part with
 /// tags and web addresses blanked out). Code, links and images are left out.
-fn plain_text(text: &str) -> Vec<(usize, String)> {
+pub(crate) fn plain_text(text: &str) -> Vec<(usize, String)> {
     let mut parts = Vec::new();
     let mut skip = 0usize;
     for (event, range) in Parser::new_ext(text, Options::ENABLE_STRIKETHROUGH).into_offset_iter() {
@@ -221,36 +277,9 @@ fn blank_out(text: &str) -> String {
     String::from_utf8(bytes).expect("blanking keeps UTF-8")
 }
 
-/// Where any of the names is written in `text` as whole words, ignoring case, in one scan.
-/// Where two overlap, the longer name wins (the earlier one among equals), and the words
-/// of a name rejected for the letters around it do not hide one that overlaps it.
-fn find_words(names: &AhoCorasick, text: &str) -> Vec<(usize, usize)> {
-    let (folded, offsets) = fold(text);
-    let at = |i: usize| offsets.as_ref().map_or(i, |o| o[i]);
-    let word = |c: char| c.is_alphanumeric() || c == '_';
-    // Pattern numbers run from the longest name to the shortest.
-    let mut candidates: Vec<(usize, usize, usize)> = names
-        .find_overlapping_iter(&folded)
-        .map(|m| (m.pattern().as_usize(), at(m.start()), at(m.end())))
-        .filter(|&(_, from, to)| {
-            !text[..from].chars().next_back().is_some_and(word)
-                && !text[to..].chars().next().is_some_and(word)
-        })
-        .collect();
-    candidates.sort_unstable();
-    let mut found: Vec<(usize, usize)> = Vec::new();
-    for (_, from, to) in candidates {
-        if !found.iter().any(|&(a, b)| from < b && a < to) {
-            found.push((from, to));
-        }
-    }
-    found.sort_unstable();
-    found
-}
-
 /// The text with every letter in lower case, and where each byte of the result was in the
 /// text (absent when the two are the same length, which is every ASCII text).
-fn fold(text: &str) -> (String, Option<Vec<usize>>) {
+pub(crate) fn fold(text: &str) -> (String, Option<Vec<usize>>) {
     if text.is_ascii() {
         return (text.to_ascii_lowercase(), None);
     }
@@ -281,17 +310,10 @@ mod tests {
     use proptest::prelude::*;
     use regex::RegexBuilder;
 
-    fn automaton(names: &[&str]) -> AhoCorasick {
-        let mut names: Vec<&str> = names.to_vec();
-        names.sort_by_key(|n| std::cmp::Reverse(n.chars().count()));
-        AhoCorasick::builder()
-            .match_kind(MatchKind::Standard)
-            .build(names.iter().map(|n| fold(n).0))
-            .unwrap()
-    }
-
     fn words(text: &str, names: &[&str]) -> Vec<(usize, usize)> {
-        find_words(&automaton(names), text)
+        let names = names.iter().map(|n| (n.to_string(), 0)).collect();
+        let found = Names::new(names).unwrap().find(text);
+        found.into_iter().map(|(from, to, _)| (from, to)).collect()
     }
 
     #[test]
@@ -331,12 +353,13 @@ mod tests {
     }
 
     /// The obvious way: one regex per name, every occurrence tried, longest names first.
-    fn oracle(text: &str, names: &[String]) -> Vec<(usize, usize)> {
+    /// Each name stands for its place in `names`.
+    fn oracle(text: &str, names: &[String]) -> Vec<(usize, usize, usize)> {
         let word = |c: char| c.is_alphanumeric() || c == '_';
-        let mut names: Vec<&String> = names.iter().collect();
-        names.sort_by_key(|n| std::cmp::Reverse(n.chars().count()));
-        let mut found: Vec<(usize, usize)> = Vec::new();
-        for name in names {
+        let mut names: Vec<(usize, &String)> = names.iter().enumerate().collect();
+        names.sort_by_key(|(_, n)| std::cmp::Reverse(n.chars().count()));
+        let mut found: Vec<(usize, usize, usize)> = Vec::new();
+        for (tag, name) in names {
             let re = RegexBuilder::new(&regex::escape(name))
                 .case_insensitive(true)
                 .build()
@@ -347,9 +370,9 @@ mod tests {
                 let (a, b) = (m.start(), m.end());
                 if !text[..a].chars().next_back().is_some_and(word)
                     && !text[b..].chars().next().is_some_and(word)
-                    && !found.iter().any(|&(x, y)| a < y && x < b)
+                    && !found.iter().any(|&(x, y, _)| a < y && x < b)
                 {
-                    found.push((a, b));
+                    found.push((a, b, tag));
                 }
             }
         }
@@ -358,8 +381,9 @@ mod tests {
     }
 
     proptest! {
-        /// One scan finds what a search per name finds, on texts built from a few letters,
-        /// separators and letters that change size when lowered, so that names overlap.
+        /// One scan finds what a search per name finds, and says which name it is, on texts
+        /// built from a few letters, separators and letters that change size when lowered, so
+        /// that names overlap.
         #[test]
         fn one_scan_finds_what_a_search_per_name_finds(
             text in "[abAB\u{e9}\u{c9}\u{212A}k_ +-]{0,40}",
@@ -371,8 +395,9 @@ mod tests {
                 .filter(|n| n.chars().count() >= MIN_NAME_CHARS)
                 .collect();
             prop_assume!(!names.is_empty());
-            let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-            prop_assert_eq!(words(&text, &refs), oracle(&text, &names));
+            let tagged = names.iter().cloned().zip(0..).collect();
+            let found = Names::new(tagged).unwrap().find(&text);
+            prop_assert_eq!(found, oracle(&text, &names));
         }
     }
 }

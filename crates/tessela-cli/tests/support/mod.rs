@@ -309,6 +309,23 @@ pub const COMMANDS: &[Case] = &[
         warm_parsed: 0,
     },
     Case {
+        // The block at line 9, with words in it that few pages use.
+        name: "surface",
+        args: &[
+            "surface",
+            "topics/topic-1",
+            "--at",
+            "9",
+            "--text",
+            "zebrafish notes on #rust and the cache",
+            "--json",
+        ],
+        positional: false,
+        warm_ms: 60.0,
+        cold_parsed: None,
+        warm_parsed: 0,
+    },
+    Case {
         name: "vocab",
         args: &["vocab", "--json"],
         positional: true,

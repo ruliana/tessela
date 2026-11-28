@@ -228,20 +228,20 @@ impl Bundle {
 const PARALLEL_FROM: usize = 64;
 
 /// A file of the bundle found by the walk, not read yet.
-struct File {
-    full: PathBuf,
+pub(crate) struct File {
+    pub full: PathBuf,
     /// Relative to the root, with `/`.
-    rel: String,
+    pub rel: String,
 }
 
-enum Loaded {
+pub(crate) enum Loaded {
     Page(Page),
     Unreadable(String, String),
 }
 
 /// Reads and parses one file: the work `load` spreads over the cores. With a cache, a file
 /// that looks as it did when its page was cached is not read at all.
-fn read_page(file: &File, cache: Option<&Cache>) -> Loaded {
+pub(crate) fn read_page(file: &File, cache: Option<&Cache>) -> Loaded {
     let stamp = stamp_of(file);
     if let Some(page) = cached(file, cache, stamp.as_ref()) {
         return Loaded::Page(page);
@@ -273,7 +273,7 @@ fn names_in<'a>(pages: impl Iterator<Item = &'a Page>, concept: &str) -> Vec<Str
 }
 
 /// Every file of the bundle, in path order, not read yet.
-fn walk(root: &Path) -> std::io::Result<Vec<File>> {
+pub(crate) fn walk(root: &Path) -> std::io::Result<Vec<File>> {
     let mut files = Vec::new();
     let walker = WalkDir::new(root)
         .sort_by_file_name()
@@ -309,7 +309,7 @@ fn read_text(file: &File) -> Result<String, String> {
 }
 
 /// Removes the cache entries of pages that are gone, after a call that wrote some.
-fn sweep(cache: Option<&Cache>, files: &[File]) {
+pub(crate) fn sweep(cache: Option<&Cache>, files: &[File]) {
     if let Some(cache) = cache.filter(|c| c.written() > 0) {
         cache.sweep(files.iter().map(|f| f.rel.as_str()));
     }
@@ -318,7 +318,7 @@ fn sweep(cache: Option<&Cache>, files: &[File]) {
 /// What the file looks like now. Taken before the file is read, never after: a change in
 /// between then shows as a new stamp on the next call, where the other order would pair old
 /// text with a new stamp and keep it.
-fn stamp_of(file: &File) -> Option<Stamp> {
+pub(crate) fn stamp_of(file: &File) -> Option<Stamp> {
     std::fs::metadata(&file.full)
         .ok()
         .as_ref()
@@ -349,7 +349,10 @@ fn parsed(file: &File, text: &str, stamp: Option<&Stamp>, cache: Option<&Cache>)
 }
 
 /// `f` on every item, in order, on all the cores when there are many.
-fn spread<'a, T: Sync, R: Send>(items: &'a [T], f: impl Fn(&'a T) -> R + Sync + Send) -> Vec<R> {
+pub(crate) fn spread<'a, T: Sync, R: Send>(
+    items: &'a [T],
+    f: impl Fn(&'a T) -> R + Sync + Send,
+) -> Vec<R> {
     if items.len() < PARALLEL_FROM {
         items.iter().map(f).collect()
     } else {
