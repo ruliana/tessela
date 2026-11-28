@@ -261,12 +261,12 @@ fn unlinked_hits(bundle: &Bundle, page: &Page, spec: &Spec) -> Vec<Hit> {
     if spec.is_page(page) {
         return Vec::new();
     }
-    let file = unlinked::read_file(&bundle.root, page);
+    let file = unlinked::PageFile::new(&bundle.root, page);
     page.blocks
         .iter()
         .filter(|b| !mentions_concept(&b.path_refs, &spec.concept))
         .filter_map(|b| {
-            let mentions = spec.mentions(page, b, file.as_deref());
+            let mentions = spec.mentions(page, b, &file);
             (!mentions.is_empty()).then(|| Hit {
                 mentions,
                 ..block_hit(page, b)
