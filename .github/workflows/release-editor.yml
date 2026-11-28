@@ -57,6 +57,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: editor/package-lock.json
+      # The page model tests compare against `tessela blocks`; CI builds it for them too.
+      - run: cargo build -p tessela-cli
+        working-directory: .
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
