@@ -109,11 +109,15 @@ bullet while the cursor is at it.
 `livePreview.ts` gives both from the same `isEditing` answer, so the set of marks never depends on the
 cursor and only the construct that is revealed changes. The raw mark takes no room that the hidden one did
 not: a mark at the start of a line (heading `#`, quote `>`) hangs in the margin, a bullet or a checkbox is
-raw in the slot of its glyph, and inline code keeps its styling and padding. Marks inside a line (`**`, the
-brackets and address of a link, the backticks) are characters of the line and push the rest of that line, and
-nothing else; a picture or a table that opens as text changes height, as it must. The CSS for this is the
+raw in the slot of its glyph, and inline code keeps its styling and padding. A link's `[` hangs, and its
+address `](target)`, which can be long, is held out of the line (`cm-mk-addr`, positioned under the row of the
+link) so that the text after the link neither moves nor wraps anew. Marks inside a line that are short (`**`,
+the backticks) are characters of the line and push the rest of that line, and nothing else; a picture or a table that opens as text changes height, as it must. The CSS for this is the
 `cm-mk` rules in `style.css`, which nothing reads; `test/revealShift.test.ts` holds the decorations to it and
-`e2e/acceptance/reveal.mjs` measures a window.
+`e2e/acceptance/reveal.mjs` measures a window. Typewriter scrolling follows the same rule (2026-11-28):
+when typing makes the line wrap, the cursor drops a row and the page follows by gliding, not by a jump
+(`alongLine`, `typewriter.ts`); the status strip keeps a fixed width for the save state, so the words and
+problems next to it do not move when it changes.
 
 The facts the rule reads are kept in one place each: the focus in `editorFocus` (`reveal.ts`),
 the mode in `selectMode`, whether the Markdown is drawn at all in the `rendered` facet that live
