@@ -3,6 +3,15 @@
 //!
 //! Used by `tests/budgets.rs` (checks budgets in CI) and `benches/cli.rs` (prints a table for
 //! humans). Every speed change shows its effect here, and tightens the budgets in [`COMMANDS`].
+//!
+//! What a budget limits is work, never time: the machine that runs CI is shared and its clock
+//! says more about its neighbours than about the code. Work is counted two ways, both exact:
+//! pages parsed (`TESSELA_STATS`), and instructions executed, counted by Cachegrind
+//! (`valgrind --tool=cachegrind`) with rayon held to one thread so that the count does not
+//! depend on how the threads were scheduled. Wall-clock time is still measured, and `cargo
+//! bench` prints it, and so does the budgets test beside the instructions: that is how a new
+//! budget is set (run the test with `TESSELA_STATS=1`, read the instructions, add a little
+//! room). Budgets are for the binary `cargo test` builds, which is not the release one.
 #![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
@@ -216,9 +225,10 @@ pub struct Case {
     pub args: &'static [&'static str],
     /// How the bundle is named: the command takes a positional folder, or `--bundle`.
     pub positional: bool,
-    /// Wall-clock budget in ms of a warm call, on a release build, at 3,000 topics. A speed
-    /// PR that makes the command faster lowers this number in the same PR.
-    pub warm_ms: f64,
+    /// Instructions a warm call may execute, in millions, at 3,000 topics, in the binary that
+    /// `cargo test` builds. About 10% over what it takes, for another libc or compiler. A speed PR that makes the
+    /// command do less lowers this number in the same PR.
+    pub warm_minstr: u64,
     /// Pages the cold call may parse. `None` means all of them. A PR that makes a command
     /// parse fewer pages sets the exact limit here.
     pub cold_parsed: Option<usize>,
@@ -232,7 +242,7 @@ pub const COMMANDS: &[Case] = &[
         name: "pages",
         args: &["pages", "--json"],
         positional: true,
-        warm_ms: 80.0,
+        warm_minstr: 780,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -240,7 +250,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --words",
         args: &["query", "--words", "rust cache", "--limit", "20", "--json"],
         positional: true,
-        warm_ms: 220.0,
+        warm_minstr: 1350,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -248,7 +258,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --ref",
         args: &["query", "--ref", "#rust", "--limit", "20", "--json"],
         positional: true,
-        warm_ms: 220.0,
+        warm_minstr: 1370,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -256,7 +266,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --words rare",
         args: &["query", "--words", "zebrafish", "--limit", "20", "--json"],
         positional: true,
-        warm_ms: 45.0,
+        warm_minstr: 145,
         cold_parsed: Some(30),
         warm_parsed: 0,
     },
@@ -264,7 +274,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --ref rare",
         args: &["query", "--ref", "#zebrafish", "--limit", "20", "--json"],
         positional: true,
-        warm_ms: 45.0,
+        warm_minstr: 180,
         cold_parsed: Some(30),
         warm_parsed: 0,
     },
@@ -272,7 +282,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --page",
         args: &["query", "--page", "topics/topic-1", "--json"],
         positional: true,
-        warm_ms: 25.0,
+        warm_minstr: 75,
         cold_parsed: Some(1),
         warm_parsed: 0,
     },
@@ -280,7 +290,7 @@ pub const COMMANDS: &[Case] = &[
         name: "query --unlinked",
         args: &["query", "--unlinked", "cache", "--limit", "20", "--json"],
         positional: true,
-        warm_ms: 500.0,
+        warm_minstr: 2640,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -288,7 +298,7 @@ pub const COMMANDS: &[Case] = &[
         name: "related",
         args: &["related", "topics/topic-1", "--json"],
         positional: false,
-        warm_ms: 80.0,
+        warm_minstr: 550,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -296,7 +306,7 @@ pub const COMMANDS: &[Case] = &[
         name: "blocks",
         args: &["blocks", "topics/topic-1", "--json"],
         positional: false,
-        warm_ms: 20.0,
+        warm_minstr: 10,
         cold_parsed: Some(1),
         warm_parsed: 1,
     },
@@ -304,7 +314,7 @@ pub const COMMANDS: &[Case] = &[
         name: "read",
         args: &["read", "topics/topic-1", "--json"],
         positional: false,
-        warm_ms: 20.0,
+        warm_minstr: 6,
         cold_parsed: Some(1),
         warm_parsed: 0,
     },
@@ -321,7 +331,7 @@ pub const COMMANDS: &[Case] = &[
             "--json",
         ],
         positional: false,
-        warm_ms: 60.0,
+        warm_minstr: 117,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -329,7 +339,7 @@ pub const COMMANDS: &[Case] = &[
         name: "vocab",
         args: &["vocab", "--json"],
         positional: true,
-        warm_ms: 140.0,
+        warm_minstr: 1040,
         cold_parsed: None,
         warm_parsed: 0,
     },
@@ -337,6 +347,7 @@ pub const COMMANDS: &[Case] = &[
 
 /// What one call of a command cost.
 pub struct Run {
+    /// Wall-clock time. For people and for choosing budgets: nothing fails because of it.
     pub ms: f64,
     /// Pages the call parsed, read from `TESSELA_STATS`.
     pub parsed: usize,
@@ -367,6 +378,49 @@ pub fn run(case: &Case, bundle: &Path) -> Run {
         .and_then(|n| n.trim().parse().ok())
         .unwrap_or_else(|| panic!("{} printed no stats: {stderr}", case.name));
     Run { ms, parsed }
+}
+
+/// Whether `valgrind` can be run here. CI installs it; on a machine without it the instruction
+/// budgets cannot be checked, and a test says so instead of failing.
+pub fn have_valgrind() -> bool {
+    Command::new("valgrind")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// How many instructions one call of the command executes, counted by Cachegrind. The same
+/// bundle and the same binary always give the same number. The parse cache is whatever the
+/// bundle has now, so run it after the call whose cache it should see.
+pub fn instructions(case: &Case, bundle: &Path) -> u64 {
+    let mut cmd = Command::new("valgrind");
+    cmd.args([
+        "--tool=cachegrind",
+        "--cache-sim=no",
+        "--cachegrind-out-file=/dev/null",
+        env!("CARGO_BIN_EXE_tessela"),
+    ])
+    .args(case.args)
+    // One worker: the work is the same however many threads share it, but idle workers
+    // spinning while they wait for it would add instructions that vary from run to run.
+    .env("RAYON_NUM_THREADS", "1");
+    if case.positional {
+        cmd.arg(bundle);
+    } else {
+        cmd.arg("-b").arg(bundle);
+    }
+    let out = cmd.output().expect("valgrind runs");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "{} failed under valgrind: {stderr}",
+        case.name
+    );
+    stderr
+        .lines()
+        .find_map(|l| l.split_once("I refs:"))
+        .map(|(_, n)| n.trim().replace(',', "").parse().unwrap())
+        .unwrap_or_else(|| panic!("{}: valgrind printed no count: {stderr}", case.name))
 }
 
 /// A command measured cold and then warm.

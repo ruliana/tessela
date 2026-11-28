@@ -1,34 +1,37 @@
 //! Speed budgets for the commands that read a bundle, on a generated bundle of 3,000 topics
-//! (see `tests/support`). Each command runs cold, with no parse cache, and then warm. Two
-//! kinds of check:
+//! (see `tests/support`). Each command runs cold, with no parse cache, and then warm. What a
+//! budget limits is work, so that it holds on any machine and never flakes:
 //!
-//! - pages parsed per call: exact, so it never flakes; a command that needs one page must
-//!   parse one page, and a warm call that loads the bundle parses none;
-//! - wall-clock time: generous, because CI runners are noisy. The budget is the limit for a
-//!   release build; the test binary is built without optimisations, so debug builds get a
-//!   multiplier. `TESSELA_BUDGET_SCALE` scales it further (a slow machine, a profiler).
+//! - pages parsed per call: exact; a command that needs one page must parse one page, and a
+//!   warm call that loads the bundle parses none;
+//! - instructions a warm call executes, counted by Cachegrind (`valgrind` must be installed;
+//!   CI does). The count is the same on every run of the same binary, so the budget is a few
+//!   percent over what the code needs today, and a change that makes a command do more shows
+//!   up as a number, not as a slow day on a shared runner.
 //!
-//! Each speed PR lowers the numbers in `support::COMMANDS` for what it speeds up.
+//! Wall-clock time is printed and checked against nothing: `TESSELA_STATS=1 cargo test -p
+//! tessela-cli --test budgets -- --nocapture` prints a table of both, which is where the
+//! budgets in `support::COMMANDS` come from. A speed PR lowers them.
 
 mod support;
 
 use support::{COMMANDS, SIZES, measure};
 
-fn scale() -> f64 {
-    let debug = if cfg!(debug_assertions) { 3.0 } else { 1.0 };
-    let extra = std::env::var("TESSELA_BUDGET_SCALE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1.0);
-    debug * extra
-}
-
 #[test]
 fn every_command_stays_within_its_budget_at_3000_topics() {
     let bundle = support::Bundle::generate(SIZES[2]);
+    let valgrind = support::have_valgrind();
+    assert!(
+        valgrind || std::env::var_os("CI").is_none(),
+        "valgrind is not installed: CI needs it to count instructions"
+    );
+    if !valgrind {
+        eprintln!("valgrind is not installed: only pages parsed are checked");
+    }
+    let stats = std::env::var_os("TESSELA_STATS").is_some();
     let mut over = Vec::new();
     for case in COMMANDS {
-        let m = measure(case, &bundle.root, 2);
+        let m = measure(case, &bundle.root, 1);
         // A command that has to look at everything parses everything cold, no more.
         let cold_max = case.cold_parsed.unwrap_or(bundle.pages);
         assert!(
@@ -44,14 +47,22 @@ fn every_command_stays_within_its_budget_at_3000_topics() {
             m.warm.parsed,
             case.warm_parsed
         );
-        // Only the warm time has a budget. A cold call writes a file for every page, and how
-        // long that takes is up to the file system (a few hundred ms to over a second on one
-        // that is busy deleting): the parse counts above are what holds a cold call to account.
-        let budget = case.warm_ms * scale();
-        if m.warm.ms > budget {
+        if !valgrind {
+            continue;
+        }
+        // The warm call, again, under Cachegrind: the cache is the one this case's cold call
+        // wrote, so the count does not depend on which commands ran before.
+        let minstr = support::instructions(case, &bundle.root) / 1_000_000;
+        if stats {
+            println!(
+                "{:<20} {minstr:>6} Minstr (budget {:>6}), {:>6.1} ms",
+                case.name, case.warm_minstr, m.warm.ms
+            );
+        }
+        if minstr > case.warm_minstr {
             over.push(format!(
-                "{} warm: {:.0} ms, budget {budget:.0} ms",
-                case.name, m.warm.ms
+                "{} warm: {minstr} M instructions, budget {} M",
+                case.name, case.warm_minstr
             ));
         }
     }
