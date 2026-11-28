@@ -38,6 +38,12 @@ my-notes/
   as it arrived (an export, a pasted document), not a note written to these rules.
 - Everything under `.tessela/` can be deleted at any time. Tools rebuild it from the
   Markdown files. It is never committed.
+- `.tessela/cache/` holds the parse cache: one file per page with what the parser made of it,
+  so a call that reads the bundle checks each file's size and modification time and parses
+  only the ones that changed. It makes no difference to any answer. Entries from another
+  build of the tool, damaged ones, and those for a file changed in the last two seconds are
+  ignored and rebuilt; `TESSELA_NO_CACHE=1` makes a call neither read nor write it. The folder
+  carries its own `.gitignore`.
 
 ### Home pages
 

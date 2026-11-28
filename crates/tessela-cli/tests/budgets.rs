@@ -1,8 +1,9 @@
 //! Speed budgets for the commands that read a bundle, on a generated bundle of 3,000 topics
-//! (see `tests/support`). Two kinds of check:
+//! (see `tests/support`). Each command runs cold, with no parse cache, and then warm. Two
+//! kinds of check:
 //!
 //! - pages parsed per call: exact, so it never flakes; a command that needs one page must
-//!   parse one page;
+//!   parse one page, and a warm call that loads the bundle parses none;
 //! - wall-clock time: generous, because CI runners are noisy. The budget is the limit for a
 //!   release build; the test binary is built without optimisations, so debug builds get a
 //!   multiplier. `TESSELA_BUDGET_SCALE` scales it further (a slow machine, a profiler).
@@ -27,28 +28,30 @@ fn every_command_stays_within_its_budget_at_3000_topics() {
     let bundle = support::Bundle::generate(SIZES[2]);
     let mut over = Vec::new();
     for case in COMMANDS {
-        let run = measure(case, &bundle.root, 2);
-        match case.max_parsed {
-            Some(max) => assert!(
-                run.parsed <= max,
-                "{} parsed {} pages, at most {max} allowed",
-                case.name,
-                run.parsed
-            ),
-            // A command that has to look at everything parses everything, no more.
-            None => assert!(
-                run.parsed <= bundle.pages,
-                "{} parsed {} pages of {}",
-                case.name,
-                run.parsed,
-                bundle.pages
-            ),
-        }
-        let budget = case.max_ms * scale();
-        if run.ms > budget {
+        let m = measure(case, &bundle.root, 2);
+        // A command that has to look at everything parses everything cold, no more.
+        let cold_max = case.cold_parsed.unwrap_or(bundle.pages);
+        assert!(
+            m.cold.parsed <= cold_max,
+            "{} parsed {} pages cold, at most {cold_max} allowed",
+            case.name,
+            m.cold.parsed
+        );
+        assert!(
+            m.warm.parsed <= case.warm_parsed,
+            "{} parsed {} pages warm, at most {} allowed",
+            case.name,
+            m.warm.parsed,
+            case.warm_parsed
+        );
+        // Only the warm time has a budget. A cold call writes a file for every page, and how
+        // long that takes is up to the file system (a few hundred ms to over a second on one
+        // that is busy deleting): the parse counts above are what holds a cold call to account.
+        let budget = case.warm_ms * scale();
+        if m.warm.ms > budget {
             over.push(format!(
-                "{}: {:.0} ms, budget {budget:.0} ms",
-                case.name, run.ms
+                "{} warm: {:.0} ms, budget {budget:.0} ms",
+                case.name, m.warm.ms
             ));
         }
     }
@@ -57,11 +60,13 @@ fn every_command_stays_within_its_budget_at_3000_topics() {
 
 #[test]
 fn the_parse_counter_counts_every_page_a_cold_call_reads() {
-    // Without a cache a call that lists pages parses all of them; the speed PRs lower this.
+    // With no cache a call that lists pages parses all of them; the next call parses none.
     let bundle = support::Bundle::generate(40);
     let pages = &COMMANDS[0];
     assert_eq!(pages.name, "pages");
-    assert_eq!(support::run(pages, &bundle.root).parsed, bundle.pages);
+    let m = measure(pages, &bundle.root, 1);
+    assert_eq!(m.cold.parsed, bundle.pages);
+    assert_eq!(m.warm.parsed, 0);
 }
 
 #[test]
@@ -71,7 +76,10 @@ fn a_query_for_a_rare_word_or_tag_parses_only_the_pages_that_have_it() {
     assert!(rare > 0);
     for name in ["query --words rare", "query --ref rare"] {
         let case = COMMANDS.iter().find(|c| c.name == name).unwrap();
+        let _ = std::fs::remove_dir_all(bundle.root.join(".tessela"));
         assert_eq!(support::run(case, &bundle.root).parsed, rare, "{name}");
+        // The pages it parsed are cached now: the same call parses none.
+        assert_eq!(support::run(case, &bundle.root).parsed, 0, "{name}");
     }
 }
 

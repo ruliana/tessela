@@ -1,17 +1,19 @@
-//! `cargo bench -p tessela-cli` prints a table: each command at each bundle size, with the
-//! fastest of a few runs and how many pages it parsed. Release build, one call per row.
+//! `cargo bench -p tessela-cli` prints a table: each command at each bundle size, cold (no
+//! parse cache yet) and warm, with the fastest of a few runs and how many pages the warm call
+//! parsed. Release build, one call per row.
 
 #[path = "../tests/support/mod.rs"]
 mod support;
 
 fn main() {
     let filter = std::env::args().skip(1).find(|a| !a.starts_with('-'));
+    println!("each cell: cold / warm time, pages the warm call parsed");
     println!(
         "{:<18}{}",
         "command",
         support::SIZES
             .iter()
-            .map(|n| format!("{:>26}", format!("{n} topics")))
+            .map(|n| format!("{:>34}", format!("{n} topics")))
             .collect::<String>()
     );
     let bundles: Vec<_> = support::SIZES
@@ -25,8 +27,14 @@ fn main() {
         let cells: String = bundles
             .iter()
             .map(|b| {
-                let run = support::measure(case, &b.root, 5);
-                format!("{:>26}", format!("{:.1} ms, {} parsed", run.ms, run.parsed))
+                let m = support::measure(case, &b.root, 5);
+                format!(
+                    "{:>34}",
+                    format!(
+                        "{:.1} / {:.1} ms, {} parsed",
+                        m.cold.ms, m.warm.ms, m.warm.parsed
+                    )
+                )
             })
             .collect();
         println!("{:<18}{cells}", case.name);

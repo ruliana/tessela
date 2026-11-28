@@ -396,6 +396,9 @@ enum Command {
 
 /// With `TESSELA_STATS` set, a call reports on stderr how many pages it parsed, so tests and
 /// benchmarks can check that a command reads only what it needs.
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> ExitCode {
     let code = run();
     if std::env::var_os("TESSELA_STATS").is_some() {
@@ -588,8 +591,9 @@ fn run() -> ExitCode {
         }),
         Command::Related { edit, name, limit } => run_edit(&edit, |_| {
             let bundle = Bundle::load(&edit.bundle)
+                .map(keep)
                 .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
-            let related = related::related(&bundle, &name, limit);
+            let related = related::related(bundle, &name, limit);
             Ok(Done::new(
                 &related,
                 |r| {
@@ -613,8 +617,9 @@ fn run() -> ExitCode {
         Command::Fence { edit, file } => run_edit(&edit, |_| {
             let input = read_input(file.as_deref())?;
             let bundle = Bundle::load(&edit.bundle)
+                .map(keep)
                 .map_err(|e| EditError::new(ErrorCode::Io, e.to_string()))?;
-            let out = fence::run(&bundle, &input)?;
+            let out = fence::run(bundle, &input)?;
             Ok(Done::new(&out, |o| o.text(), true))
         }),
         Command::Remove { edit, page, expect } => run_edit(&edit, |store| {
@@ -819,22 +824,22 @@ fn api(json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn load(common: &Common) -> Result<Bundle, ExitCode> {
+fn load(common: &Common) -> Result<&'static Bundle, ExitCode> {
     load_with(common, |path| Bundle::load(path))
 }
 
 /// Loads only the pages `query` could find something in; see [`Bundle::load_for`].
-fn load_for(common: &Common, query: &Query) -> Result<Bundle, ExitCode> {
+fn load_for(common: &Common, query: &Query) -> Result<&'static Bundle, ExitCode> {
     load_with(common, |path| Bundle::load_for(path, query))
 }
 
 fn load_with(
     common: &Common,
     load: impl FnOnce(&std::path::Path) -> std::io::Result<Bundle>,
-) -> Result<Bundle, ExitCode> {
+) -> Result<&'static Bundle, ExitCode> {
     edit::check_api(common.api)
         .and_then(|()| {
-            load(&common.path).map_err(|e| {
+            load(&common.path).map(keep).map_err(|e| {
                 let code = if e.kind() == ErrorKind::NotFound {
                     ErrorCode::NotFound
                 } else {
@@ -844,6 +849,12 @@ fn load_with(
             })
         })
         .map_err(|e| fail(common.json, &e))
+}
+
+/// Keeps a loaded bundle until the process ends. The call prints its answer and exits, and
+/// freeing a few million small strings first costs 15 ms at 3,000 pages for nothing.
+fn keep(bundle: Bundle) -> &'static Bundle {
+    Box::leak(Box::new(bundle))
 }
 
 fn print_json<T: Serialize>(value: &T) {
@@ -864,7 +875,7 @@ fn lint(common: Common, strict: bool, min_severity: &str) -> ExitCode {
         _ => Severity::Info,
     };
     let diagnostics: Vec<_> = Linter::default()
-        .run(&bundle)
+        .run(bundle)
         .into_iter()
         .filter(|d| d.severity >= min)
         .collect();
@@ -985,7 +996,7 @@ fn run_query(common: Common, query: Query, limit: Option<usize>) -> ExitCode {
         Ok(b) => b,
         Err(code) => return code,
     };
-    let mut hits = query.run(&bundle);
+    let mut hits = query.run(bundle);
     let total = hits.len();
     hits.truncate(limit.unwrap_or(usize::MAX));
 
@@ -1026,7 +1037,7 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
         Err(code) => return code,
     };
     if write {
-        let report = match index::write_indexes(&bundle, force) {
+        let report = match index::write_indexes(bundle, force) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("tessela: {e}");
@@ -1046,9 +1057,9 @@ fn run_index(common: Common, dir: &str, recursive: bool, write: bool, force: boo
         return ExitCode::SUCCESS;
     }
     let listing = if recursive {
-        index::recursive_listing(&bundle, dir)
+        index::recursive_listing(bundle, dir)
     } else {
-        index::listing(&bundle, dir)
+        index::listing(bundle, dir)
     };
     if common.json {
         print_ok(&listing);
@@ -1070,7 +1081,7 @@ fn vocab(common: Common, unwritten: bool, min_count: usize, prefix: Option<Strin
         Err(code) => return code,
     };
     let prefix = prefix.map(|p| p.trim_start_matches('#').to_lowercase());
-    let entries: Vec<_> = vocabulary(&bundle)
+    let entries: Vec<_> = vocabulary(bundle)
         .into_iter()
         .filter(|e| !unwritten || (!e.has_page && e.mentions > 0))
         .filter(|e| e.mentions >= min_count)

@@ -30,17 +30,31 @@ fn write(dir: &std::path::Path, files: &[(String, Vec<u8>)]) {
     for (path, bytes) in files {
         let file = dir.join(path);
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(file, bytes).unwrap();
+        std::fs::write(&file, bytes).unwrap();
+        // Old enough for the parse cache to keep the page, so the loads below fill it and
+        // then read from it.
+        std::fs::File::options()
+            .write(true)
+            .open(file)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000))
+            .unwrap();
     }
 }
 
-/// What a query answers on the bundle in `dir`, loaded whole and loaded for the query.
+/// What a query answers on the bundle in `dir`, loaded whole and loaded for the query. The
+/// load for the query runs twice: first with some pages in the parse cache and some not (the
+/// ones it admitted are cached by it), then with all of them; both must give the same answer.
 fn answers(dir: &std::path::Path, query: &Query) -> (String, String) {
     let hits = |bundle: Bundle| format!("{:#?}", query.run(&bundle));
-    (
-        hits(Bundle::load(dir).unwrap()),
-        hits(Bundle::load_for(dir, query).unwrap()),
-    )
+    let partly_cached = hits(Bundle::load_for(dir, query).unwrap());
+    let full = hits(Bundle::load(dir).unwrap());
+    let cached = hits(Bundle::load_for(dir, query).unwrap());
+    assert_eq!(
+        partly_cached, cached,
+        "the cache changed what the query finds"
+    );
+    (full, cached)
 }
 
 /// Words that a query and a file can share, written in the ways that differ in bytes.
