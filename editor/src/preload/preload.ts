@@ -23,6 +23,7 @@ const api: Api = {
   setModOff: (id, off) => ipcRenderer.invoke("setModOff", id, off),
   cli: (argv, input) => ipcRenderer.invoke("cli", argv, input),
   jev: (id, request) => ipcRenderer.invoke("jev", id, request),
+  jevCheck: () => ipcRenderer.invoke("jevCheck"),
   jevCancel: (id) => ipcRenderer.invoke("jevCancel", id),
   updateState: () => ipcRenderer.invoke("updateState"),
   downloadUpdate: () => ipcRenderer.invoke("downloadUpdate"),

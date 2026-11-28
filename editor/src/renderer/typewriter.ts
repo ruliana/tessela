@@ -2,7 +2,7 @@
 // the line you are on stays at the golden ratio from the bottom (shared/typewriter.ts). On by default; the
 // config folder's settings.json can turn it off (`{"editor": {"typewriter": false}}`).
 
-import type { Extension, Transaction } from "@codemirror/state";
+import type { EditorState, Extension, Transaction } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
 import { selectionDelta, typewriterDelta } from "../shared/typewriter";
@@ -15,6 +15,15 @@ import { isSelecting } from "./selectMode";
  */
 export function wantsTypewriter(tr: Transaction): boolean {
   return tr.scrollIntoView && !tr.isUserEvent("select.pointer");
+}
+
+/**
+ * Whether the cursor stays on its line of the page (and no line was added or removed): the writer is
+ * typing along it. When the line wraps, the cursor drops a row and the text has to follow, and a jump
+ * of a row in the middle of a word reads as the page trembling, so that scroll glides.
+ */
+export function alongLine(before: EditorState, after: EditorState): boolean {
+  return before.doc.lines === after.doc.lines && before.doc.lineAt(before.selection.main.head).number === after.doc.lineAt(after.selection.main.head).number;
 }
 
 /** The nearest ancestor that scrolls: the stack of cards, a peek panel, or the editor's own scroller. */
@@ -47,6 +56,7 @@ export function typewriter(enabled: () => boolean): Extension {
       class {
         update(update: ViewUpdate) {
           if (!enabled() || !update.view.hasFocus || !update.transactions.some(wantsTypewriter)) return;
+          const along = alongLine(update.startState, update.state);
           update.view.requestMeasure({
             key: this,
             read: (view) => {
@@ -58,7 +68,9 @@ export function typewriter(enabled: () => boolean): Extension {
               return { area, delta: typewriterDelta(box.top, area.getBoundingClientRect().top, area.clientHeight) };
             },
             write: (found) => {
-              if (found && found.delta !== 0) found.area.scrollTop += found.delta;
+              if (!found || found.delta === 0) return;
+              if (along) found.area.scrollTo({ top: found.area.scrollTop + found.delta, behavior: "smooth" });
+              else found.area.scrollTop += found.delta;
             },
           });
         }

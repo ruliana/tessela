@@ -43,6 +43,18 @@ suite("Sidebar and status strip", bundle, (test) => {
     await s.win.waitForFunction(() => document.querySelector("#strip-words")?.textContent === "4 words");
   });
 
+  test("the words and the problems stay where they are while the save state changes", async (s) => {
+    await s.open("alpha");
+    await s.saved();
+    const left = (id) => s.win.evaluate((i) => document.querySelector(i).getBoundingClientRect().left, id);
+    const still = await Promise.all([left("#strip-words"), left("#problems-toggle")]);
+    await s.type(" More.");
+    await s.win.waitForFunction(() => document.querySelector("#strip-status")?.textContent === "Editing…");
+    assert.deepEqual(await Promise.all([left("#strip-words"), left("#problems-toggle")]), still, "Editing… moved the neighbours");
+    await s.saved();
+    assert.deepEqual(await Promise.all([left("#strip-words"), left("#problems-toggle")]), still, "Saved moved the neighbours");
+  });
+
   test("the strip is quiet when the notes are clean and amber when they are not", async (s) => {
     // The demo notes have one page without front matter.
     await s.win.waitForFunction(() => document.querySelector("#problems-toggle")?.textContent?.startsWith("▲"));
