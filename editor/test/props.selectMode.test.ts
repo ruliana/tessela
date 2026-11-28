@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { KEYS, type Key, LEAVE, STAY, respond, typed } from "../src/renderer/blockKeys";
 import { pageModel } from "../src/renderer/pageModelField";
 import { blockSelection, visibleIn } from "../src/renderer/selectMode";
-import { membersOf, selectable, selectedLines } from "../src/shared/blockSelection";
+import { membersOf, nesting, selectable, selectedLines } from "../src/shared/blockSelection";
 import { foldables, zoomAt } from "../src/shared/folds";
 import { lines, outline, runs } from "./support/props";
 import { type Setup, pageState } from "./support/selecting";
@@ -64,7 +64,7 @@ function apply(state: EditorState, step: Step): { state: EditorState; taken: boo
 }
 
 /** The ways out of select mode that the table lists. */
-const EXITS: Step[] = ["Enter", " ", "ArrowLeft", "ArrowRight", "type", "Backspace", "Delete", "Mod-Enter", "Mod-d", "Tab", "Shift-Tab", "Alt-ArrowUp", "Alt-ArrowDown"];
+const EXITS: Step[] = ["Enter", "Shift-Enter", " ", "ArrowLeft", "ArrowRight", "type", "Backspace", "Delete", "Mod-Enter", "Mod-d", "Tab", "Shift-Tab", "Alt-ArrowUp", "Alt-ArrowDown"];
 
 function check(state: EditorState): void {
   const sel = state.field(blockSelection);
@@ -135,6 +135,22 @@ describe("select mode on any page, with any keys", () => {
         }
       }),
       runs(400),
+    );
+  });
+
+  it("walks with Up and Down never deeper than the block it began on", () => {
+    fc.assert(
+      fc.property(scene, fc.array(fc.constantFrom<Step>("Escape", "ArrowUp", "ArrowDown"), { maxLength: 12 }), ({ text, setup }, keys) => {
+        let state = apply(pageState(text, setup), "Escape").state;
+        const began = state.field(blockSelection);
+        if (!began) return;
+        for (const key of keys) {
+          state = apply(state, key).state;
+          const sel = state.field(blockSelection);
+          if (sel) for (const n of membersOf(sel)) expect(nesting(n), `${n} in\n${text}`).toBeLessThanOrEqual(began.depth);
+        }
+      }),
+      runs(300),
     );
   });
 

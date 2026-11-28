@@ -20,6 +20,12 @@ export interface BlockSelection {
   readonly head: PageNode;
   /** A heading selected as its own line, without the section under it. Only for a single section. */
   readonly heading: boolean;
+  /**
+   * How deep Up and Down go: the nesting of the block that select mode began on (or deeper, when the
+   * selection has been made deeper since). A block nested deeper than this is not a stop, and a parent
+   * leads into its children only as far as this. Escape up to the parents leaves it as it was.
+   */
+  readonly depth: number;
 }
 
 /** Whether a block is shown: its first line is not inside a fold or outside a zoom. */
@@ -30,6 +36,13 @@ export const everything: Visible = () => true;
 /** What can be selected: everything but the page and its front matter, which is drawn as a title. */
 export function selectable(n: PageNode | null | undefined): n is PageNode {
   return !!n && n.kind !== "page" && n.kind !== "frontmatter";
+}
+
+/** How many blocks hold this one: its items' parents, quotes and the paragraph that owns a list, but not the page or the sections (a heading is not a level). */
+export function nesting(n: PageNode): number {
+  let depth = 0;
+  for (const a of n.ancestors()) if (a.kind !== "page" && a.kind !== "section" && a.kind !== "frontmatter") depth++;
+  return depth;
 }
 
 /** Whether items under `parent` are a list of their own: at the top of a page or a section. */
@@ -48,7 +61,7 @@ function chain(n: PageNode): PageNode[] {
  * The selection from `anchor` to `head`: the smallest run of siblings that holds them both. A node
  * that holds the other is the run by itself. Null when either is not something that can be selected.
  */
-export function makeSelection(anchor: PageNode, head: PageNode = anchor, heading = false): BlockSelection | null {
+export function makeSelection(anchor: PageNode, head: PageNode = anchor, heading = false, depth = 0): BlockSelection | null {
   if (!selectable(anchor) || !selectable(head) || anchor.model !== head.model) return null;
   const up = chain(anchor);
   const hs = chain(head);
@@ -56,11 +69,13 @@ export function makeSelection(anchor: PageNode, head: PageNode = anchor, heading
   if (!common) return null;
   // A heading is its own line only when it is all that was asked for.
   const own = heading && anchor === head && anchor.kind === "section";
-  if (common === anchor || common === head) return selectable(common) ? { anchor: common, head: common, heading: own && common === anchor } : null;
+  if (common === anchor || common === head) {
+    return selectable(common) ? { anchor: common, head: common, heading: own && common === anchor, depth: Math.max(depth, nesting(common)) } : null;
+  }
   const a = up[up.indexOf(common) - 1]!;
   const h = hs[hs.indexOf(common) - 1]!;
   if (!selectable(a) || !selectable(h)) return null;
-  return { anchor: a, head: h, heading: false };
+  return { anchor: a, head: h, heading: false, depth: Math.max(depth, nesting(a)) };
 }
 
 /** The blocks of the run, in page order. */
@@ -100,14 +115,25 @@ export function nodeStartingAt(model: PageModel, line: number): PageNode | null 
 /**
  * Up and Down in select mode: the block before or after the selected ones, in the order the page is read
  * and as it is shown. Code blocks, quotes and nested items are blocks like any other, and a heading is
- * its own line, so that the blocks under it are the next stops. A run of blocks is left by its end.
- * Null at the ends of what is shown.
+ * its own line, so that the blocks under it are the next stops. A run of blocks is left by its end. A
+ * block nested deeper than `sel.depth` is not a stop: it is left with the block that owns it, and the way
+ * to it is `enterBlock`. Null at the ends of what is shown.
  */
 export function stepBlock(model: PageModel, sel: BlockSelection, dir: "up" | "down", visible: Visible = everything): BlockSelection | null {
   const [first, last] = selectedLines(sel);
-  const all = model.readingOrder().filter((n) => selectable(n) && visible(n));
+  const all = model.readingOrder().filter((n) => selectable(n) && visible(n) && nesting(n) <= sel.depth);
   const b = dir === "down" ? all.find((c) => c.startLine - 1 > last) : all.findLast((c) => c.startLine - 1 < first);
-  return b ? makeSelection(b, b, b.kind === "section") : null;
+  return b ? makeSelection(b, b, b.kind === "section", sel.depth) : null;
+}
+
+/**
+ * Down on a block that is selected with what it owns: its first child, as far as it is shown and not
+ * deeper than `sel.depth`. This is the way back in after Up (or Escape) took the selection out to a parent.
+ */
+export function enterBlock(sel: BlockSelection, visible: Visible = everything): BlockSelection | null {
+  if (sel.heading || sel.anchor !== sel.head) return null;
+  const child = sel.head.children.find((c) => selectable(c) && visible(c) && nesting(c) <= sel.depth);
+  return child ? makeSelection(child, child, child.kind === "section", sel.depth) : null;
 }
 
 /** The sibling of `node` in a direction when it can be taken in: it exists and is shown. */
@@ -127,7 +153,7 @@ function neighbourOf(node: PageNode, dir: "up" | "down", visible: Visible): Page
  */
 export function extendBlock(sel: BlockSelection, dir: "up" | "down", visible: Visible = everything): BlockSelection | null {
   const { anchor, head } = sel;
-  if (sel.heading && dir === "down" && head.endLine > head.startLine) return makeSelection(head);
+  if (sel.heading && dir === "down" && head.endLine > head.startLine) return makeSelection(head, head, false, sel.depth);
   const siblings = head.parent!.children;
   const ai = siblings.indexOf(anchor);
   const hi = siblings.indexOf(head);
@@ -140,10 +166,10 @@ export function extendBlock(sel: BlockSelection, dir: "up" | "down", visible: Vi
         // A list is one step: go to its last item (or its first, going up).
         for (let n: PageNode | null = to; n?.kind === "item"; n = neighbourOf(n, dir, visible)) to = n;
       }
-      return makeSelection(anchor, to);
+      return makeSelection(anchor, to, false, sel.depth);
     }
     const parent = head.parent;
-    return parent && selectable(parent) && visible(parent) ? makeSelection(parent) : null;
+    return parent && selectable(parent) && visible(parent) ? makeSelection(parent, parent, false, sel.depth) : null;
   }
   let to = siblings[hi + step]!;
   if (head.kind === "item" && anchor.kind !== "item" && listsIn(head.parent)) {
@@ -152,7 +178,7 @@ export function extendBlock(sel: BlockSelection, dir: "up" | "down", visible: Vi
     while (siblings[k + step]?.kind === "item") k += step;
     to = siblings[k + step]!;
   }
-  return makeSelection(anchor, to);
+  return makeSelection(anchor, to, false, sel.depth);
 }
 
 /** A selection the page can be widened to, with the lines it covers (0-based, both included). */
@@ -198,9 +224,10 @@ function unitsOf(model: PageModel, visible: Visible): Unit[] {
  * while editing, or the blocks selected already): the block at the cursor, then the one around it each
  * time: the parent item, the list, the section under its heading, the section that holds that and in the
  * end the whole page. Only what is shown counts, so a zoom is a limit and not something Escape leaves.
- * Null when there is nothing wider, or when a cursor is in the gap between blocks.
+ * `depth` is the one the selection to widen has (see `BlockSelection`). Null when there is nothing wider, or
+ * when a cursor is in the gap between blocks.
  */
-export function widenBlock(model: PageModel, cover: { from: number; to: number }, visible: Visible = everything): BlockSelection | null {
+export function widenBlock(model: PageModel, cover: { from: number; to: number }, visible: Visible = everything, depth = 0): BlockSelection | null {
   if (cover.from === cover.to) {
     const line = model.doc.lineAt(cover.from).number;
     const n = model.nodeAtLine(line);
@@ -219,7 +246,7 @@ export function widenBlock(model: PageModel, cover: { from: number; to: number }
       best = u.sel;
     }
   }
-  return best;
+  return best && makeSelection(best.anchor, best.head, best.heading, depth);
 }
 
 // ---- removing ------------------------------------------------------------------------
