@@ -21,7 +21,7 @@ enum Op {
     WipeCache,
     /// Scribble in the summary file, or cut it short.
     Damage(bool),
-    Ask(String, usize, Option<String>),
+    Ask(String, usize, Option<String>, bool),
 }
 
 /// Pages that give the sources something to find: titles, aliases, tags, dates, open tasks,
@@ -70,8 +70,9 @@ fn op() -> impl Strategy<Value = Op> {
             page_path(),
             1usize..30,
             proptest::option::of("[a-zA-Z0-9 #]{0,40}|Alpha Beta zebrafish plumage 2026-12-03"),
+            proptest::bool::weighted(0.3),
         )
-            .prop_map(|(p, l, t)| Op::Ask(p, l, t)),
+            .prop_map(|(p, l, t, w)| Op::Ask(p, l, t, w)),
     ]
 }
 
@@ -129,6 +130,13 @@ fn check(dir: &Path, req: &Request, answer: &Surface) -> Result<(), TestCaseErro
                 prop_assert!(heading.is_some(), "no heading {} at {}", c.handle, c.line);
             }
         }
+        if same_page && req.whole {
+            prop_assert!(
+                false,
+                "{} is the page being read, which is not a candidate for itself",
+                c.path
+            );
+        }
         if same_page {
             prop_assert!(
                 c.end_line < answer.at.line || answer.at.end_line < c.line,
@@ -181,8 +189,8 @@ proptest! {
                         std::fs::write(&file, bytes).unwrap();
                     }
                 }
-                Op::Ask(page, line, text) => {
-                    let req = Request { page: &page, line, text: text.as_deref(), limit: 20 };
+                Op::Ask(page, line, text, whole) => {
+                    let req = Request { page: &page, line, whole, text: text.as_deref(), limit: 20 };
                     let cached = surface(&dir, &req);
                     let fresh = surface_uncached(&dir, &req);
                     match (&cached, &fresh) {
