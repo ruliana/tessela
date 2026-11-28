@@ -223,6 +223,18 @@ h2 { margin: 14px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.09
 .cm-lp-quote { background: linear-gradient(var(--accent), var(--accent)) 24px 0 / 3px 100% no-repeat; padding-left: 37px !important; color: var(--muted); font-style: italic; }
 .cm-lp-rule { display: inline-block; width: 100%; height: 0; border-top: 1px solid var(--border); vertical-align: middle; }
 
+/* Marks that turn raw under the cursor (the reveal policy, reveal.ts). A mark is hidden or raw over the same
+   characters, so what has to stay put is what is around it: a mark at the start of a line is drawn in the
+   margin and takes no room (hang), and a bullet or a checkbox is raw in the slot of its glyph. Marks inside a
+   line (`**`, a link's brackets) are the characters they are, and push the rest of their own line. */
+.cm-mk { color: var(--muted); font-style: normal; font-weight: 400; animation: mk-in 0.12s ease-out; }
+@keyframes mk-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cm-mk { animation: none; } }
+.cm-mk-hang { --gap: 0px; --after: 0; --off: calc(var(--gap) + var(--after) * 1ch); display: inline-block; width: calc(var(--n) * 1ch); margin: 0 var(--off) 0 calc(-1 * (var(--n) * 1ch + var(--off))); font: 400 12px var(--mono); text-align: right; white-space: pre; text-decoration: none; letter-spacing: 0; }
+.cm-mk-quote { --gap: 15px; }
+.cm-mk-slot { display: inline-block; text-align: center; }
+.cm-mk-bullet { width: 1em; }
+.cm-mk-box { width: 1.4em; }
 .cm-lp-link { cursor: pointer; }
 .cm-lp-tablewrap { margin: 4px 30px; }
 /* Selected blocks (select mode) are drawn from the state, one way for every kind of block: a line of one

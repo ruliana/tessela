@@ -12,6 +12,7 @@ import "./acceptance/format.mjs";
 import "./acceptance/menus.mjs";
 import "./acceptance/syntax.mjs";
 import "./acceptance/preview.mjs";
+import "./acceptance/reveal.mjs";
 import "./acceptance/files.mjs";
 import "./acceptance/look.mjs";
 import "./acceptance/properties.mjs";
