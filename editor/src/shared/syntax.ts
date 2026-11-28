@@ -21,7 +21,7 @@
 // The extensions only add nodes. Nothing here reads a page on its own.
 
 import { yamlLanguage } from "@codemirror/lang-yaml";
-import { parseMixed } from "@lezer/common";
+import { type SyntaxNode, type Tree, parseMixed } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import type { BlockContext, Element, Line, MarkdownConfig } from "@lezer/markdown";
 
@@ -31,6 +31,50 @@ import type { BlockContext, Element, Line, MarkdownConfig } from "@lezer/markdow
  * front matter, turned the whole front matter into one big heading.
  */
 export const noSetext: MarkdownConfig = { remove: ["SetextHeading"] };
+
+/** The blocks that are drawn in place of, or under, their source. */
+export interface BlockNodes {
+  tables: SyntaxNode[];
+  fences: SyntaxNode[];
+  mathBlocks: SyntaxNode[];
+}
+
+/** Nodes with only text (or nothing more than themselves) inside: no table, fence or math block is in them. */
+const NO_BLOCKS_INSIDE = new Set(["Paragraph", "ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "HTMLBlock", "CommentBlock", "ProcessingInstructionBlock", "HorizontalRule", "LinkReference", "FrontMatter", "CodeBlock"]);
+
+const blocksOf = new WeakMap<Tree, BlockNodes>();
+
+/**
+ * The tables, fenced code and `$$` blocks of a syntax tree, in the order of the page, wherever they are
+ * (in a list, a quote, a callout, a footnote). Several things draw them, and every key makes a new tree:
+ * so they are found in one walk, which skips what has no block inside (most of the tree: the inline
+ * nodes of paragraphs and the cells of tables), and the answer is kept for the tree.
+ */
+export function blockNodes(tree: Tree): BlockNodes {
+  let found = blocksOf.get(tree);
+  if (found) return found;
+  found = { tables: [], fences: [], mathBlocks: [] };
+  const into = found;
+  tree.iterate({
+    enter: (node) => {
+      switch (node.name) {
+        case "Table":
+          into.tables.push(node.node);
+          return false;
+        case "FencedCode":
+          into.fences.push(node.node);
+          return false;
+        case "MathBlock":
+          into.mathBlocks.push(node.node);
+          return false;
+        default:
+          return NO_BLOCKS_INSIDE.has(node.name) ? false : undefined;
+      }
+    },
+  });
+  blocksOf.set(tree, found);
+  return found;
+}
 
 /** The kinds of callout, as GitHub writes them. */
 export const CALLOUT_KINDS = ["note", "tip", "important", "warning", "caution"] as const;

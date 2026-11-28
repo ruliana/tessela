@@ -61,12 +61,14 @@ suite("Favorites mod: marked pages above Recent", files, (test) => {
   });
 
   test("marks are the window's: they survive a reload, and the notes are left as they were", async (s) => {
-    const before = readdirSync(s.bundle).sort();
+    // `.tessela/` is the CLI's parse cache, made when a command first reads the bundle: not a note, and it may appear at any time.
+    const notes = () => readdirSync(s.bundle).filter((name) => name !== ".tessela").sort();
+    const before = notes();
     const text = read(s.bundle, "fav-one.md");
     await s.win.reload();
     await s.win.waitForSelector(".cm-content");
     await listed(s, ["fav-one", "fav-two"]);
-    assert.deepEqual(readdirSync(s.bundle).sort(), before);
+    assert.deepEqual(notes(), before);
     assert.equal(read(s.bundle, "fav-one.md"), text);
   });
 

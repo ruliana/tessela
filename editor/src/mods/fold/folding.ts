@@ -222,9 +222,9 @@ class Chevron extends WidgetType {
 /** The chevrons of the folds whose line is in the viewport. */
 export function chevronDecorations(state: EditorState, viewport: { from: number; to: number }): DecorationSet {
   const marks: Range<Decoration>[] = [];
-  for (const f of foldsOf(state)) {
+  const lines = { from: state.doc.lineAt(viewport.from).number - 1, to: state.doc.lineAt(viewport.to).number - 1 };
+  for (const f of foldables(modelOf(state), lines)) {
     const line = state.doc.line(f.line + 1);
-    if (line.to < viewport.from || line.from > viewport.to) continue;
     marks.push(Decoration.widget({ widget: new Chevron(isFolded(state, hidden(state, f))), side: -1 }).range(line.from));
   }
   return Decoration.set(marks);

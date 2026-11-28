@@ -1,9 +1,12 @@
 // What the gfm-extras mod draws, and when it shows the Markdown instead: the same reveal policy as
 // the rest of live preview (see `livePreview.test.ts`).
 
+import { syntaxTree } from "@codemirror/language";
+import type { DecorationSet } from "@codemirror/view";
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { mathDecorations, textDecorations } from "../src/mods/gfm-extras/main";
+import { footnotesIn, mathDecorations, textDecorations } from "../src/mods/gfm-extras/main";
 import { isEditing, isRendered } from "../src/renderer/reveal";
 import { coversRange } from "../src/renderer/selectMode";
 import { describe as shown, revealState } from "./support/reveal";
@@ -103,5 +106,63 @@ describe("a $$ block opens as a whole when the cursor enters it", () => {
   it("in a list item stays under its source: there is no line of its own to replace", () => {
     const item = "- item\n  $$\n  x\n  $$\n";
     expect(math(item, { at: 0 })).toEqual([`${item.trimEnd().length}-${item.trimEnd().length} Formula`]);
+  });
+});
+
+describe("what is drawn in the text, for the part of the page on the screen", () => {
+  /** Pieces of lines that make callouts, footnotes (before and after their references), math, code and lists. */
+  const piece = fc.constantFrom("", "text", "a[^1] b[^2]", "see [^2]", "$x$ and $y$", "> [!NOTE]", "> [!TIP] tip", "> quote [^1]", "> more", "[^1]: one", "[^2]: two $z$", "    continued", "```", "code [^1] $c$", "- item[^1]", "  - $w$", "$$", "x", "  [^3]: indented", "[^3]");
+  const pages = fc.array(piece, { minLength: 1, maxLength: 30 }).map((lines) => lines.join("\n"));
+
+  /** What is drawn, with what each widget says (the number of a footnote, its text, where it goes). */
+  const full = (set: DecorationSet): string[] => {
+    const out: string[] = [];
+    for (const c = set.iter(); c.value; c.next()) {
+      const spec = c.value.spec as { widget?: object; class?: string };
+      out.push(`${c.from}-${c.to} ${spec.widget ? `${spec.widget.constructor.name}${JSON.stringify(spec.widget)}` : spec.class}`);
+    }
+    return out;
+  };
+
+  it("is what the whole page draws there, footnote numbers included", () => {
+    fc.assert(
+      fc.property(pages, fc.nat(), fc.nat(40), fc.nat(40), (doc, at, a, b) => {
+        const state = revealState(doc, { at: at % (doc.length + 1) });
+        const first = state.doc.line(Math.min(a, b, state.doc.lines - 1) + 1).from;
+        const last = state.doc.line(Math.min(Math.max(a, b), state.doc.lines - 1) + 1).to;
+        const seen = { from: first, to: last };
+        const parse = (d: string) => /^(\d+)-(\d+) /.exec(d)!.slice(1).map(Number) as [number, number];
+        const expected = full(textDecorations(state, reveal)).filter((d) => {
+          const [from, to] = parse(d);
+          return to >= seen.from && from <= seen.to;
+        });
+        expect(full(textDecorations(state, reveal, [seen]))).toEqual(expected);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it("finds the footnotes the way a walk of the whole tree does", () => {
+    const walked = (doc: string) => {
+      const state = revealState(doc);
+      const refs: unknown[] = [];
+      const defs: unknown[] = [];
+      syntaxTree(state).iterate({
+        enter: (n) => {
+          if (n.name === "FootnoteReference") refs.push({ id: state.sliceDoc(n.from + 2, n.to - 1), from: n.from, to: n.to });
+          else if (n.name === "FootnoteDefinition") {
+            const label = n.node.getChild("FootnoteLabel");
+            if (label) defs.push({ id: state.sliceDoc(label.from + 2, label.to - 2), from: n.from, label: { from: label.from, to: label.to }, text: state.sliceDoc(label.to, n.to).replace(/\s+/g, " ").trim() });
+          }
+        },
+      });
+      return { refs, defs };
+    };
+    fc.assert(
+      fc.property(pages, (doc) => {
+        expect(footnotesIn(revealState(doc))).toEqual(walked(doc));
+      }),
+      { numRuns: 300 },
+    );
   });
 });

@@ -8,6 +8,7 @@ import { type EditorState, type Extension, StateEffect, StateField } from "@code
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 
 import type { FenceRender } from "../shared/mods";
+import { blockNodes } from "../shared/syntax";
 
 /** A closed code fence with an info string: where the drawing goes, and what to draw it from. */
 export interface FenceAt {
@@ -20,19 +21,15 @@ export interface FenceAt {
 function fencesIn(state: EditorState): FenceAt[] {
   const found: FenceAt[] = [];
   const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
-  tree.iterate({
-    enter: (node) => {
-      if (node.name !== "FencedCode") return;
-      const marks = node.node.getChildren("CodeMark");
-      const infoNode = node.node.getChild("CodeInfo");
-      if (marks.length >= 2 && infoNode) {
-        const info = state.sliceDoc(infoNode.from, infoNode.to).trim().split(/\s+/)[0] ?? "";
-        const body = node.node.getChildren("CodeText").map((t) => state.sliceDoc(t.from, t.to)).join("\n");
-        found.push({ info, body, end: state.doc.lineAt(marks[marks.length - 1]!.to).to });
-      }
-      return false;
-    },
-  });
+  for (const node of blockNodes(tree).fences) {
+    const marks = node.getChildren("CodeMark");
+    const infoNode = node.getChild("CodeInfo");
+    if (marks.length >= 2 && infoNode) {
+      const info = state.sliceDoc(infoNode.from, infoNode.to).trim().split(/\s+/)[0] ?? "";
+      const body = node.getChildren("CodeText").map((t) => state.sliceDoc(t.from, t.to)).join("\n");
+      found.push({ info, body, end: state.doc.lineAt(marks[marks.length - 1]!.to).to });
+    }
+  }
   return found;
 }
 

@@ -29,11 +29,15 @@ function isRunFence(n: PageNode): boolean {
   return !!n.fence?.closed && n.endLine > n.startLine && RUN_FENCES.includes(info);
 }
 
-/** Every block that can be folded, in page order. */
-export function foldables(model: PageModel): Fold[] {
+/**
+ * Every block that can be folded, in page order; or, given `lines` (first and last, 0-based, both included),
+ * only those whose first line is there, which is all that is drawn at a time and does not make the others.
+ */
+export function foldables(model: PageModel, lines?: { from: number; to: number }): Fold[] {
   const out: Fold[] = [];
   // The key is worked out when it is asked for: hashing the page is not needed to show a chevron.
   const fold = (n: PageNode, line: number, last: number, auto = false): void => {
+    if (lines && (line < lines.from || line > lines.to)) return;
     out.push({ line, last, depth: depthOf(n), get key() { return n.key; }, auto });
   };
   for (const n of model.readingOrder()) {

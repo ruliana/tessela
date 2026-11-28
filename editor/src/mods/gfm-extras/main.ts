@@ -12,6 +12,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import type { SyntaxNode } from "@lezer/common";
 
 import type { ModContext } from "../../renderer/mods";
+import { blockNodes } from "../../shared/syntax";
 import { CALLOUTS, type CalloutKind, type FootnoteDef, type FootnoteRef, asQuote, headingLink, nextLabel, numberFootnotes, pageTitle } from "./plan";
 
 const lazy = <T>(name: string): Promise<T> => import(/* @vite-ignore */ new URL(`./${name}.js`, import.meta.url).href) as Promise<T>;
@@ -126,38 +127,27 @@ class Formula extends WidgetType {
 
 const KINDS = new Set<string>(Object.keys(CALLOUTS));
 
-/** The callouts: the kind each `> [!NOTE]` says, and where its first line and marker are. */
-function calloutsOf(state: EditorState): { kind: CalloutKind; from: number; to: number; first: { from: number; to: number }; marker: { from: number; to: number } }[] {
-  const out: ReturnType<typeof calloutsOf> = [];
-  syntaxTree(state).iterate({
-    enter: (node) => {
-      if (node.name !== "Callout") return;
-      const mark = node.node.getChild("CalloutMark");
-      const kind = mark ? state.sliceDoc(mark.from + 2, mark.to - 1).toLowerCase() : "";
-      if (!mark || !KINDS.has(kind)) return;
-      const first = state.doc.lineAt(node.from);
-      out.push({ kind: kind as CalloutKind, from: node.from, to: node.to, first: { from: first.from, to: first.to }, marker: { from: mark.from, to: mark.to } });
-    },
-  });
-  return out;
-}
-
-/** The footnote references, the definitions and the label of each, in the order of the page. */
-function footnotesIn(state: EditorState): { refs: FootnoteRef[]; defs: FootnoteDef[] } {
+/**
+ * The footnote references, the definitions and the label of each, in the order of the page. Both start
+ * with `[^`, so the text is searched for that (a fast scan) and the tree says what each hit is, if
+ * anything: a walk of the whole tree to find them costs ten times as much on a long page.
+ */
+export function footnotesIn(state: EditorState): { refs: FootnoteRef[]; defs: FootnoteDef[] } {
   const refs: FootnoteRef[] = [];
   const defs: FootnoteDef[] = [];
-  syntaxTree(state).iterate({
-    enter: (node) => {
-      if (node.name === "FootnoteReference") {
-        refs.push({ id: state.sliceDoc(node.from + 2, node.to - 1), from: node.from, to: node.to });
-      } else if (node.name === "FootnoteDefinition") {
-        const label = node.node.getChild("FootnoteLabel");
-        if (!label) return;
-        const text = state.sliceDoc(label.to, node.to).replace(/\s+/g, " ").trim();
-        defs.push({ id: state.sliceDoc(label.from + 2, label.to - 2), from: node.from, label: { from: label.from, to: label.to }, text });
-      }
-    },
-  });
+  const tree = syntaxTree(state);
+  const text = state.doc.toString();
+  for (let at = text.indexOf("[^"); at >= 0; at = text.indexOf("[^", at + 2)) {
+    const node = tree.resolveInner(at, 1);
+    if (node.from !== at) continue;
+    if (node.name === "FootnoteReference") {
+      refs.push({ id: text.slice(node.from + 2, node.to - 1), from: node.from, to: node.to });
+    } else if (node.name === "FootnoteLabel" && node.parent?.name === "FootnoteDefinition") {
+      const def = node.parent;
+      const label = { from: node.from, to: node.to };
+      defs.push({ id: text.slice(label.from + 2, label.to - 2), from: def.from, label, text: text.slice(label.to, def.to).replace(/\s+/g, " ").trim() });
+    }
+  }
   return { refs, defs };
 }
 
@@ -170,19 +160,15 @@ function inlineMathOf(state: EditorState, node: SyntaxNode): { tex: string; from
 /** `$$` blocks that have a closing line: the TeX, and the lines they take. One that never closes is not drawn. */
 function mathBlocksOf(state: EditorState): { tex: string; from: number; to: number; top: boolean }[] {
   const out: ReturnType<typeof mathBlocksOf> = [];
-  syntaxTree(state).iterate({
-    enter: (node) => {
-      if (node.name !== "MathBlock") return;
-      const marks = node.node.getChildren("MathMark");
-      const text = node.node.getChild("MathText");
-      if (marks.length < 2 || !text) return false;
-      const first = state.doc.lineAt(node.from);
-      const last = state.doc.lineAt(node.to);
-      // Only a block that starts its line can stand in for its lines; one in a list or a quote is drawn under its source.
-      out.push({ tex: state.sliceDoc(text.from, text.to).trim(), from: first.from, to: last.to, top: first.from === node.from });
-      return false;
-    },
-  });
+  for (const node of blockNodes(syntaxTree(state)).mathBlocks) {
+    const marks = node.getChildren("MathMark");
+    const text = node.getChild("MathText");
+    if (marks.length < 2 || !text) continue;
+    const first = state.doc.lineAt(node.from);
+    const last = state.doc.lineAt(node.to);
+    // Only a block that starts its line can stand in for its lines; one in a list or a quote is drawn under its source.
+    out.push({ tex: state.sliceDoc(text.from, text.to).trim(), from: first.from, to: last.to, top: first.from === node.from });
+  }
   return out;
 }
 
@@ -196,29 +182,78 @@ export interface Reveal {
   isSelected?(state: EditorState, range: { from: number; to: number }): boolean;
 }
 
+/** A part of the page that is on the screen. */
+export interface Visible {
+  from: number;
+  to: number;
+}
+
 /**
  * Callouts, footnotes and inline math, drawn where the Markdown is rendered and the cursor is not in
  * them. The reveal policy is the editor's (`ctx.editor.isEditing`), the same one that hides the `**`
  * of a bold span: a construct is typed where the cursor touches it, and nothing else is.
+ *
+ * Only what is in `visible` is drawn, and it is found in one walk of the tree over that part. Footnotes
+ * are the exception that reads further: a note's number counts the references before it, and its text
+ * and place are in its definition, wherever that is. The walk of the whole page for them is made only
+ * when something to draw is among them, which is rare.
  */
-export function textDecorations(state: EditorState, reveal: Reveal): DecorationSet {
+export function textDecorations(state: EditorState, reveal: Reveal, visible: readonly Visible[] = [{ from: 0, to: state.doc.length }]): DecorationSet {
   const doc = state.doc;
   const draw = reveal.rendered(state);
   const editing = (from: number, to: number) => reveal.isEditing(state, { from, to });
   const ranges: Range<Decoration>[] = [];
+  let footnotes = false;
 
-  for (const { kind, from, to, first, marker } of calloutsOf(state)) {
-    const top = doc.lineAt(from).number;
-    for (let n = top; n <= doc.lineAt(to).number; n++) {
-      ranges.push(Decoration.line({ class: `tessela-callout tessela-callout-${kind}${n === top ? " tessela-callout-first" : ""}` }).range(doc.line(n).from));
-    }
-    if (draw && !editing(first.from, first.to)) ranges.push(Decoration.replace({ widget: new Title(kind) }).range(marker.from, marker.to));
+  for (const view of visible) {
+    syntaxTree(state).iterate({
+      from: view.from,
+      to: view.to,
+      enter: (node) => {
+        switch (node.name) {
+          case "FencedCode":
+          case "CodeBlock":
+          case "MathBlock":
+            return false;
+          case "FootnoteReference":
+          case "FootnoteDefinition":
+            footnotes = true;
+            return;
+          case "Callout": {
+            const mark = node.node.getChild("CalloutMark");
+            const kind = mark ? state.sliceDoc(mark.from + 2, mark.to - 1).toLowerCase() : "";
+            if (!mark || !KINDS.has(kind)) return;
+            const top = doc.lineAt(node.from);
+            const first = Math.max(top.number, doc.lineAt(Math.max(node.from, view.from)).number);
+            const last = Math.min(doc.lineAt(node.to).number, doc.lineAt(Math.min(node.to, view.to)).number);
+            for (let n = first; n <= last; n++) {
+              ranges.push(Decoration.line({ class: `tessela-callout tessela-callout-${kind}${n === top.number ? " tessela-callout-first" : ""}` }).range(doc.line(n).from));
+            }
+            if (draw && mark.to >= view.from && mark.from <= view.to && !editing(top.from, top.to)) ranges.push(Decoration.replace({ widget: new Title(kind as CalloutKind) }).range(mark.from, mark.to));
+            return;
+          }
+          case "InlineMath": {
+            if (!draw) return;
+            const m = inlineMathOf(state, node.node);
+            if (m && !editing(m.from, m.to)) ranges.push(Decoration.replace({ widget: new Formula(m.tex, false) }).range(m.from, m.to));
+          }
+        }
+      },
+    });
   }
 
+  if (footnotes) drawFootnotes(state, visible, draw, editing, ranges);
+  return Decoration.set(ranges, true);
+}
+
+/** The footnotes among `visible`, numbered by the whole page. */
+function drawFootnotes(state: EditorState, visible: readonly Visible[], draw: boolean, editing: (from: number, to: number) => boolean, ranges: Range<Decoration>[]): void {
+  const lineStart = (pos: number) => state.doc.lineAt(pos).from;
+  const seen = (from: number, to: number) => visible.some((v) => to >= v.from && from <= v.to);
   const { refs, defs } = footnotesIn(state);
   const notes = numberFootnotes(refs, defs);
-  const lineStart = (pos: number) => doc.lineAt(pos).from;
   for (const def of defs) {
+    if (!seen(def.from, def.label.to)) continue;
     const n = notes.numbers.get(def.id);
     ranges.push(Decoration.line({ class: "tessela-fn-def" }).range(lineStart(def.from)));
     const firstRef = notes.first.get(def.id);
@@ -227,6 +262,7 @@ export function textDecorations(state: EditorState, reveal: Reveal): DecorationS
     }
   }
   for (const r of refs) {
+    if (!seen(r.from, r.to)) continue;
     const n = notes.numbers.get(r.id);
     const defined = notes.defs.get(r.id);
     if (draw && n !== undefined && !editing(r.from, r.to)) {
@@ -235,18 +271,6 @@ export function textDecorations(state: EditorState, reveal: Reveal): DecorationS
       ranges.push(Decoration.mark({ class: "tessela-fn-raw" }).range(r.from, r.to));
     }
   }
-
-  if (draw) {
-    syntaxTree(state).iterate({
-      enter: (node) => {
-        if (node.name === "FencedCode" || node.name === "CodeBlock" || node.name === "MathBlock") return false;
-        if (node.name !== "InlineMath") return;
-        const m = inlineMathOf(state, node.node);
-        if (m && !editing(m.from, m.to)) ranges.push(Decoration.replace({ widget: new Formula(m.tex, false) }).range(m.from, m.to));
-      },
-    });
-  }
-  return Decoration.set(ranges, true);
 }
 
 /**
@@ -268,17 +292,17 @@ export function mathDecorations(state: EditorState, reveal: Reveal): DecorationS
   return Decoration.set(ranges, true);
 }
 
-/** Decorations that depend on what is typed are made again when the text, the tree or what is revealed changes. */
+/** Decorations that depend on what is typed are made again when the text, the tree, what is revealed or what is on the screen changes. */
 function drawing(ctx: ModContext): Extension {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
       constructor(view: EditorView) {
-        this.decorations = textDecorations(view.state, ctx.editor);
+        this.decorations = textDecorations(view.state, ctx.editor, view.visibleRanges);
       }
       update(update: ViewUpdate) {
-        if (update.docChanged || ctx.editor.revealChanged(update.startState, update.state) || syntaxTree(update.startState) !== syntaxTree(update.state)) {
-          this.decorations = textDecorations(update.state, ctx.editor);
+        if (update.docChanged || update.viewportChanged || ctx.editor.revealChanged(update.startState, update.state) || syntaxTree(update.startState) !== syntaxTree(update.state)) {
+          this.decorations = textDecorations(update.state, ctx.editor, update.view.visibleRanges);
         }
       }
     },
