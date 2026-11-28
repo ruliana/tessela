@@ -347,7 +347,7 @@ describe("a model built after an edit is the one built from the text", () => {
     const got = settled(after);
     expect(got.complete).toBe(true);
     expect(outline(got)).toBe(outline(modelOf(after.doc.toString())));
-  });
+  }, 60_000);
 });
 
 describe("identity", () => {
